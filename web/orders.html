@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sales Orders · VVS Local App</title>
+    <link rel="stylesheet" href="/web/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Sales Orders</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/web/customers.html">Customers</a>
+        <a href="/web/revisions.html">Revisions</a>
+        <a href="/web/payments.html">Payments</a>
+        <a href="/web/reports.html">Reports</a>
+      </nav>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Filter Orders</h2>
+        <form id="filter-form" class="form-grid">
+          <label>
+            Customer
+            <select id="filter-customer">
+              <option value="">All</option>
+            </select>
+          </label>
+          <label>
+            Status
+            <input type="text" id="filter-status" placeholder="e.g. Draft" />
+          </label>
+          <div>
+            <button type="submit">Apply</button>
+            <button type="button" id="reset-filter" class="secondary">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Create Sales Order</h2>
+        <form id="create-form" class="form-grid">
+          <label>
+            Customer
+            <select id="create-customer" required></select>
+          </label>
+          <label>
+            SO Code
+            <input type="text" id="create-so-code" required />
+          </label>
+          <label>
+            Status
+            <input type="text" id="create-status" value="Draft" required />
+          </label>
+          <label>
+            Priority
+            <input type="text" id="create-priority" value="P2" />
+          </label>
+          <label>
+            Lead Time (days)
+            <input type="number" id="create-lead-time" min="0" value="28" />
+          </label>
+          <label>
+            Started At
+            <input type="datetime-local" id="create-started" />
+          </label>
+          <div>
+            <button type="submit">Create Order</button>
+          </div>
+        </form>
+        <p id="create-status-msg" class="status-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Update Selected Order</h2>
+        <form id="update-form" class="form-grid">
+          <p id="selected-order" style="grid-column: 1 / -1">No order selected.</p>
+          <label>
+            Status
+            <input type="text" id="update-status" />
+          </label>
+          <label>
+            Priority
+            <input type="text" id="update-priority" />
+          </label>
+          <label>
+            Lead Time (days)
+            <input type="number" id="update-lead-time" min="0" />
+          </label>
+          <label>
+            Started At
+            <input type="datetime-local" id="update-started" />
+          </label>
+          <div>
+            <button type="submit" id="update-button" disabled>Update Order</button>
+            <button type="button" class="secondary" id="clear-selection">Clear</button>
+          </div>
+        </form>
+        <p id="update-status-msg" class="status-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Orders</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>SO Code</th>
+              <th>Customer</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>Lead Time</th>
+              <th>Started</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="orders-body"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          vvsapp.requireAuth();
+        } catch (err) {
+          return;
+        }
+
+        const filterForm = document.getElementById('filter-form');
+        const filterCustomer = document.getElementById('filter-customer');
+        const filterStatus = document.getElementById('filter-status');
+        const resetFilter = document.getElementById('reset-filter');
+        const createForm = document.getElementById('create-form');
+        const createCustomer = document.getElementById('create-customer');
+        const createSOCode = document.getElementById('create-so-code');
+        const createStatus = document.getElementById('create-status');
+        const createPriority = document.getElementById('create-priority');
+        const createLeadTime = document.getElementById('create-lead-time');
+        const createStarted = document.getElementById('create-started');
+        const createStatusMsg = document.getElementById('create-status-msg');
+
+        const updateForm = document.getElementById('update-form');
+        const updateStatus = document.getElementById('update-status');
+        const updatePriority = document.getElementById('update-priority');
+        const updateLeadTime = document.getElementById('update-lead-time');
+        const updateStarted = document.getElementById('update-started');
+        const updateStatusMsg = document.getElementById('update-status-msg');
+        const updateButton = document.getElementById('update-button');
+        const selectedOrderEl = document.getElementById('selected-order');
+        const clearSelection = document.getElementById('clear-selection');
+        const ordersBody = document.getElementById('orders-body');
+
+        let customersById = new Map();
+        let selectedOrder = null;
+
+        async function loadCustomers() {
+          const data = await vvsapp.apiFetch('/api/customers');
+          const list = data.customers || [];
+          customersById = new Map(list.map((c) => [c.id, c]));
+
+          const options = ['<option value="">Select…</option>'];
+          list.forEach((c) => {
+            options.push(`<option value="${c.id}">${c.business_name}</option>`);
+          });
+          createCustomer.innerHTML = options.join('');
+
+          const filterOptions = ['<option value="">All</option>'];
+          list.forEach((c) => {
+            filterOptions.push(`<option value="${c.id}">${c.business_name}</option>`);
+          });
+          filterCustomer.innerHTML = filterOptions.join('');
+        }
+
+        async function loadOrders() {
+          const params = new URLSearchParams();
+          if (filterCustomer.value) {
+            params.set('customer_id', filterCustomer.value);
+          }
+          if (filterStatus.value.trim()) {
+            params.set('status', filterStatus.value.trim());
+          }
+          const qs = params.toString() ? `?${params.toString()}` : '';
+          const data = await vvsapp.apiFetch(`/api/sales-orders${qs}`);
+          renderOrders(data.sales_orders || []);
+        }
+
+        function renderOrders(orders) {
+          ordersBody.innerHTML = '';
+          orders.forEach((order) => {
+            const tr = document.createElement('tr');
+            tr.dataset.id = order.id;
+            const customer = customersById.get(order.customer_id);
+            tr.innerHTML = `
+              <td>${order.so_code}</td>
+              <td>${customer ? customer.business_name : order.customer_id}</td>
+              <td>${order.status}</td>
+              <td>${order.priority}</td>
+              <td>${order.lead_time_days}</td>
+              <td>${order.started_at ? new Date(order.started_at).toLocaleString() : ''}</td>
+              <td>${new Date(order.created_at).toLocaleString()}</td>
+            `;
+            tr.addEventListener('click', () => selectOrder(order));
+            ordersBody.appendChild(tr);
+          });
+        }
+
+        function selectOrder(order) {
+          selectedOrder = order;
+          updateButton.disabled = false;
+          selectedOrderEl.textContent = `Editing ${order.so_code}`;
+          updateStatus.value = order.status || '';
+          updatePriority.value = order.priority || '';
+          updateLeadTime.value = order.lead_time_days ?? '';
+          updateStarted.value = order.started_at ? vvsapp.formatDateTimeLocal(order.started_at) : '';
+        }
+
+        function clearSelectionState() {
+          selectedOrder = null;
+          updateButton.disabled = true;
+          selectedOrderEl.textContent = 'No order selected.';
+          updateForm.reset();
+        }
+
+        filterForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          await loadOrders();
+        });
+
+        resetFilter.addEventListener('click', async () => {
+          filterCustomer.value = '';
+          filterStatus.value = '';
+          await loadOrders();
+        });
+
+        createForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          createStatusMsg.textContent = 'Creating…';
+          const payload = {
+            customer_id: parseInt(createCustomer.value, 10),
+            so_code: createSOCode.value.trim(),
+            status: createStatus.value.trim(),
+            priority: createPriority.value.trim(),
+            lead_time_days: parseInt(createLeadTime.value || '0', 10),
+          };
+          const startedISO = vvsapp.parseDateTimeLocal(createStarted.value);
+          if (startedISO) {
+            payload.started_at = startedISO;
+          }
+          try {
+            await vvsapp.apiFetch('/api/sales-orders', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            createStatusMsg.textContent = 'Order created.';
+            createForm.reset();
+            createPriority.value = 'P2';
+            createLeadTime.value = '28';
+            await loadOrders();
+          } catch (err) {
+            createStatusMsg.textContent = err.message;
+          }
+        });
+
+        updateForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (!selectedOrder) return;
+          updateStatusMsg.textContent = 'Updating…';
+          const payload = {};
+          if (updateStatus.value.trim()) payload.status = updateStatus.value.trim();
+          if (updatePriority.value.trim()) payload.priority = updatePriority.value.trim();
+          if (updateLeadTime.value) payload.lead_time_days = parseInt(updateLeadTime.value, 10);
+          if (updateStarted.value) {
+            const iso = vvsapp.parseDateTimeLocal(updateStarted.value);
+            if (iso) payload.started_at = iso;
+          }
+          try {
+            const response = await vvsapp.apiFetch(`/api/sales-orders/${selectedOrder.id}`, {
+              method: 'PUT',
+              body: JSON.stringify(payload),
+            });
+            selectedOrder = response.sales_order;
+            updateStatusMsg.textContent = 'Order updated.';
+            await loadOrders();
+          } catch (err) {
+            updateStatusMsg.textContent = err.message;
+          }
+        });
+
+        clearSelection.addEventListener('click', () => {
+          clearSelectionState();
+        });
+
+        (async function init() {
+          await loadCustomers();
+          await loadOrders();
+        })();
+      });
+    </script>
+  </body>
+</html>

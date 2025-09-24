@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Customers · VVS Local App</title>
+    <link rel="stylesheet" href="/web/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Customers</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/web/orders.html">Orders</a>
+        <a href="/web/revisions.html">Revisions</a>
+        <a href="/web/payments.html">Payments</a>
+        <a href="/web/reports.html">Reports</a>
+      </nav>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Search</h2>
+        <form id="search-form" class="form-grid">
+          <label>
+            Query
+            <input type="text" id="customer-search" placeholder="Name, phone, or email" />
+          </label>
+          <div>
+            <button type="submit">Search</button>
+            <button type="button" id="reset-search" class="secondary">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2 id="form-title">Add Customer</h2>
+        <div id="duplicate-banner" class="banner warning" style="display: none"></div>
+        <form id="customer-form" class="form-grid">
+          <label>
+            Business Name
+            <input type="text" id="business-name" required />
+          </label>
+          <label>
+            Contact Name
+            <input type="text" id="contact-name" />
+          </label>
+          <label>
+            Phone
+            <input type="tel" id="phone" />
+          </label>
+          <label>
+            Email
+            <input type="email" id="email" />
+          </label>
+          <label>
+            City
+            <input type="text" id="city" />
+          </label>
+          <label>
+            State
+            <input type="text" id="state" maxlength="2" />
+          </label>
+          <label>
+            ZIP
+            <input type="text" id="zip" />
+          </label>
+          <div>
+            <button type="submit" id="submit-button">Save</button>
+            <button type="button" class="secondary" id="cancel-edit" style="display: none">Cancel</button>
+          </div>
+        </form>
+        <p id="form-status" class="status-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Customer List</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Business</th>
+              <th>Contact</th>
+              <th>Phone</th>
+              <th>Email</th>
+              <th>Location</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="customers-body"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          vvsapp.requireAuth();
+        } catch (err) {
+          return;
+        }
+
+        const searchForm = document.getElementById('search-form');
+        const searchInput = document.getElementById('customer-search');
+        const resetSearch = document.getElementById('reset-search');
+        const form = document.getElementById('customer-form');
+        const formStatus = document.getElementById('form-status');
+        const duplicateBanner = document.getElementById('duplicate-banner');
+        const customersBody = document.getElementById('customers-body');
+        const cancelEdit = document.getElementById('cancel-edit');
+        const formTitle = document.getElementById('form-title');
+        const submitButton = document.getElementById('submit-button');
+
+        const fields = {
+          business_name: document.getElementById('business-name'),
+          contact_name: document.getElementById('contact-name'),
+          phone: document.getElementById('phone'),
+          email: document.getElementById('email'),
+          city: document.getElementById('city'),
+          state: document.getElementById('state'),
+          zip: document.getElementById('zip'),
+        };
+
+        let editingId = null;
+
+        async function loadCustomers(query = '') {
+          const params = query ? `?query=${encodeURIComponent(query)}` : '';
+          const data = await vvsapp.apiFetch(`/api/customers${params}`);
+          renderCustomers(data.customers || []);
+        }
+
+        function renderCustomers(customers) {
+          customersBody.innerHTML = '';
+          customers.forEach((customer) => {
+            const tr = document.createElement('tr');
+            tr.dataset.id = customer.id;
+            tr.innerHTML = `
+              <td>${customer.business_name}</td>
+              <td>${customer.contact_name || ''}</td>
+              <td>${customer.phone || ''}</td>
+              <td>${customer.email || ''}</td>
+              <td>${[customer.city, customer.state].filter(Boolean).join(', ')}</td>
+              <td>${new Date(customer.created_at).toLocaleString()}</td>
+            `;
+            tr.addEventListener('click', () => selectCustomer(customer));
+            customersBody.appendChild(tr);
+          });
+        }
+
+        function selectCustomer(customer) {
+          editingId = customer.id;
+          formTitle.textContent = 'Edit Customer';
+          submitButton.textContent = 'Update';
+          cancelEdit.style.display = 'inline-block';
+          duplicateBanner.style.display = 'none';
+          duplicateBanner.textContent = '';
+          Object.entries(fields).forEach(([key, input]) => {
+            input.value = customer[key] || '';
+          });
+        }
+
+        function resetForm() {
+          editingId = null;
+          formTitle.textContent = 'Add Customer';
+          submitButton.textContent = 'Save';
+          cancelEdit.style.display = 'none';
+          duplicateBanner.style.display = 'none';
+          duplicateBanner.textContent = '';
+          form.reset();
+          formStatus.textContent = '';
+        }
+
+        searchForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          await loadCustomers(searchInput.value);
+        });
+
+        resetSearch.addEventListener('click', async () => {
+          searchInput.value = '';
+          await loadCustomers('');
+        });
+
+        cancelEdit.addEventListener('click', () => {
+          resetForm();
+        });
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          formStatus.textContent = editingId ? 'Updating…' : 'Creating…';
+          const payload = {};
+          Object.entries(fields).forEach(([key, input]) => {
+            payload[key] = input.value.trim();
+          });
+
+          try {
+            let response;
+            if (editingId) {
+              response = await vvsapp.apiFetch(`/api/customers/${editingId}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload),
+              });
+            } else {
+              response = await vvsapp.apiFetch('/api/customers', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+              });
+            }
+
+            if (response.warnDuplicates && response.warnDuplicates.length > 0) {
+              duplicateBanner.style.display = 'block';
+              duplicateBanner.textContent = `Possible duplicates on: ${response.warnDuplicates.join(', ')}`;
+            } else {
+              duplicateBanner.style.display = 'none';
+              duplicateBanner.textContent = '';
+            }
+
+            formStatus.textContent = editingId ? 'Customer updated.' : 'Customer created.';
+            await loadCustomers(searchInput.value);
+            if (!editingId) {
+              form.reset();
+            }
+          } catch (err) {
+            formStatus.textContent = err.message;
+          }
+        });
+
+        loadCustomers();
+      });
+    </script>
+  </body>
+</html>

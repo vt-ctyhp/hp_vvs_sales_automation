@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Revisions · VVS Local App</title>
+    <link rel="stylesheet" href="/web/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Revisions</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/web/customers.html">Customers</a>
+        <a href="/web/orders.html">Orders</a>
+        <a href="/web/payments.html">Payments</a>
+        <a href="/web/reports.html">Reports</a>
+      </nav>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Find Revisions by Sales Order</h2>
+        <form id="revision-filter-form" class="form-grid">
+          <label>
+            Sales Order ID
+            <input type="number" id="filter-sales-order-id" name="sales_order_id" min="1" required />
+          </label>
+          <div>
+            <button type="submit">Load Revisions</button>
+          </div>
+        </form>
+        <p class="status-message" id="revision-status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Upload New Revision</h2>
+        <form id="revision-upload-form" enctype="multipart/form-data" class="form-grid">
+          <label>
+            Sales Order ID
+            <input type="number" id="upload-sales-order-id" name="sales_order_id" min="1" required />
+          </label>
+          <label>
+            Status
+            <input type="text" id="revision-status-input" name="status" placeholder="pending" />
+          </label>
+          <label>
+            Note
+            <input type="text" id="revision-note" name="note" placeholder="Optional notes" />
+          </label>
+          <label>
+            File
+            <input type="file" id="revision-file" name="file" required />
+          </label>
+          <div>
+            <button type="submit">Upload Revision</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Revisions</h2>
+        <table id="revisions-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Sales Order</th>
+              <th>Status</th>
+              <th>Note</th>
+              <th>File</th>
+              <th>Uploaded</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        window.vvsapp.requireAuth();
+
+        const filterForm = document.getElementById('revision-filter-form');
+        const uploadForm = document.getElementById('revision-upload-form');
+        const statusMessage = document.getElementById('revision-status');
+        const tableBody = document.querySelector('#revisions-table tbody');
+        const uploadSalesOrderInput = document.getElementById('upload-sales-order-id');
+        const fileInput = document.getElementById('revision-file');
+
+        let loading = false;
+
+        filterForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (loading) return;
+          const salesOrderId = filterForm.sales_order_id.value.trim();
+          if (!salesOrderId) {
+            setStatus('Enter a sales order id to load revisions.', true);
+            return;
+          }
+          uploadSalesOrderInput.value = salesOrderId;
+          await loadRevisions(salesOrderId);
+        });
+
+        uploadForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (loading) return;
+          const salesOrderId = uploadSalesOrderInput.value.trim();
+          if (!salesOrderId) {
+            setStatus('Provide a sales order id before uploading.', true);
+            return;
+          }
+          if (!fileInput.files || fileInput.files.length === 0) {
+            setStatus('Choose a file to upload.', true);
+            return;
+          }
+
+          const formData = new FormData(uploadForm);
+          setStatus('Uploading revision…', false);
+          toggleLoading(true);
+          try {
+            const data = await window.vvsapp.apiFetch('/api/revisions/upload', {
+              method: 'POST',
+              body: formData,
+            });
+            setStatus('Revision uploaded successfully.', false);
+            uploadForm.reset();
+            uploadSalesOrderInput.value = salesOrderId;
+            if (data && data.revision) {
+              await loadRevisions(salesOrderId);
+            }
+          } catch (err) {
+            setStatus(err.message || 'Upload failed.', true);
+          } finally {
+            toggleLoading(false);
+          }
+        });
+
+        async function loadRevisions(salesOrderId) {
+          setStatus('Loading revisions…', false);
+          toggleLoading(true);
+          try {
+            const data = await window.vvsapp.apiFetch(`/api/revisions?sales_order_id=${encodeURIComponent(salesOrderId)}`);
+            renderRevisions(data.revisions || []);
+            if (!data.revisions || data.revisions.length === 0) {
+              setStatus('No revisions found for this sales order.', false);
+            } else {
+              setStatus(`Loaded ${data.revisions.length} revision(s).`, false);
+            }
+          } catch (err) {
+            renderRevisions([]);
+            setStatus(err.message || 'Failed to load revisions.', true);
+          } finally {
+            toggleLoading(false);
+          }
+        }
+
+        function renderRevisions(revisions) {
+          tableBody.innerHTML = '';
+          revisions.forEach((rev) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${rev.id}</td>
+              <td>${rev.sales_order_id}</td>
+              <td>${rev.status || ''}</td>
+              <td>${rev.note || ''}</td>
+              <td><a href="${rev.file_url}" target="_blank" rel="noopener">Open</a></td>
+              <td>${formatTimestamp(rev.created_at)}</td>
+            `;
+            tableBody.appendChild(tr);
+          });
+        }
+
+        function formatTimestamp(value) {
+          if (!value) return '';
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) {
+            return '';
+          }
+          return date.toLocaleString();
+        }
+
+        function setStatus(message, isError) {
+          statusMessage.textContent = message;
+          statusMessage.style.color = isError ? '#b91c1c' : '#1f2933';
+        }
+
+        function toggleLoading(state) {
+          loading = state;
+          const disable = state;
+          filterForm.querySelectorAll('button, input').forEach((el) => {
+            el.disabled = disable;
+          });
+          uploadForm.querySelectorAll('button, input').forEach((el) => {
+            el.disabled = disable;
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

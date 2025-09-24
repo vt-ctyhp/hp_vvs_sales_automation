@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VVS Local App</title>
+    <link rel="stylesheet" href="/web/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>VVS Local Operations</h1>
+      <nav>
+        <a href="/web/customers.html">Customers</a>
+        <a href="/web/orders.html">Orders</a>
+        <a href="/web/revisions.html">Revisions</a>
+        <a href="/web/payments.html">Payments</a>
+        <a href="/web/reports.html">Reports</a>
+      </nav>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Login</h2>
+        <form id="login-form" class="form-grid">
+          <label>
+            Email
+            <input type="email" id="login-email" required />
+          </label>
+          <label>
+            Password
+            <input type="password" id="login-password" required />
+          </label>
+          <div>
+            <button type="submit">Sign In</button>
+            <button type="button" class="secondary" id="logout-button">Sign Out</button>
+          </div>
+        </form>
+        <p id="login-status" class="status-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Quick Links</h2>
+        <p>Select a module to manage current pipelines:</p>
+        <ul>
+          <li><a href="/web/customers.html">Customers</a></li>
+          <li><a href="/web/orders.html">Sales Orders</a></li>
+          <li><a href="/web/revisions.html">Revisions</a></li>
+          <li><a href="/web/payments.html">Payments</a></li>
+          <li><a href="/web/reports.html">Reports &amp; KPIs</a></li>
+        </ul>
+      </section>
+    </main>
+    <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('login-form');
+        const statusEl = document.getElementById('login-status');
+        const emailInput = document.getElementById('login-email');
+        const passwordInput = document.getElementById('login-password');
+        const logoutButton = document.getElementById('logout-button');
+
+        const token = vvsapp.getToken();
+        if (token) {
+          statusEl.textContent = `Signed in as ${localStorage.getItem('vvsapp_email') || 'session user'}`;
+        }
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          statusEl.textContent = 'Signing in…';
+          try {
+            const result = await vvsapp.login(emailInput.value, passwordInput.value);
+            statusEl.textContent = `Signed in as ${result.email}`;
+            passwordInput.value = '';
+          } catch (err) {
+            statusEl.textContent = err.message;
+          }
+        });
+
+        logoutButton.addEventListener('click', () => {
+          vvsapp.logout();
+          statusEl.textContent = 'Signed out';
+        });
+      });
+    </script>
+  </body>
+</html>
