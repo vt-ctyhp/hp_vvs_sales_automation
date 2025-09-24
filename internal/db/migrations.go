@@ -40,10 +40,10 @@ var migrations = []Migration{
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );`,
 	},
-        {
-                Version: 3,
-                Name:    "create_inquiries_sales_orders",
-                Up: `CREATE TABLE IF NOT EXISTS inquiries (
+	{
+		Version: 3,
+		Name:    "create_inquiries_sales_orders",
+		Up: `CREATE TABLE IF NOT EXISTS inquiries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             customer_id INTEGER NOT NULL,
             product_description TEXT,
@@ -69,11 +69,11 @@ var migrations = []Migration{
         CREATE INDEX IF NOT EXISTS idx_sales_orders_so_code ON sales_orders(so_code);
         CREATE INDEX IF NOT EXISTS idx_sales_orders_customer_status ON sales_orders(customer_id, status);
         `,
-        },
-        {
-                Version: 4,
-                Name:    "create_revisions",
-                Up: `CREATE TABLE IF NOT EXISTS revisions (
+	},
+	{
+		Version: 4,
+		Name:    "create_revisions",
+		Up: `CREATE TABLE IF NOT EXISTS revisions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sales_order_id INTEGER NOT NULL,
             note TEXT,
@@ -85,7 +85,46 @@ var migrations = []Migration{
 
         CREATE INDEX IF NOT EXISTS idx_revisions_sales_order ON revisions(sales_order_id, created_at DESC);
         `,
-        },
+	},
+	{
+		Version: 5,
+		Name:    "create_payments_allocations_documents",
+		Up: `CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sales_order_id INTEGER,
+            date DATETIME NOT NULL,
+            method TEXT NOT NULL,
+            amount REAL NOT NULL,
+            reference TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(sales_order_id) REFERENCES sales_orders(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payment_id INTEGER NOT NULL,
+            sales_order_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            FOREIGN KEY(payment_id) REFERENCES payments(id) ON DELETE CASCADE,
+            FOREIGN KEY(sales_order_id) REFERENCES sales_orders(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sales_order_id INTEGER NOT NULL,
+            doc_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            file_path TEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(sales_order_id) REFERENCES sales_orders(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_payments_order_date ON payments(sales_order_id, date);
+        CREATE INDEX IF NOT EXISTS idx_allocations_payment ON allocations(payment_id);
+        CREATE INDEX IF NOT EXISTS idx_allocations_sales_order ON allocations(sales_order_id);
+        CREATE INDEX IF NOT EXISTS idx_documents_sales_order ON documents(sales_order_id, created_at DESC);
+        `,
+	},
 }
 
 // RunMigrations applies pending migrations and returns the versions that were newly applied.

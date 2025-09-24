@@ -17,7 +17,9 @@ import (
 	"github.com/example/vvsapp/internal/config"
 	"github.com/example/vvsapp/internal/customers"
 	"github.com/example/vvsapp/internal/db"
+	"github.com/example/vvsapp/internal/documents"
 	"github.com/example/vvsapp/internal/logging"
+	"github.com/example/vvsapp/internal/payments"
 	"github.com/example/vvsapp/internal/revisions"
 	"github.com/example/vvsapp/internal/salesorders"
 	"github.com/example/vvsapp/internal/storage"
@@ -38,6 +40,8 @@ type Server struct {
 	customerSvc  *customers.Service
 	orderSvc     *salesorders.Service
 	revisionSvc  *revisions.Service
+	paymentSvc   *payments.Service
+	documentSvc  *documents.Service
 	storage      storage.Adapter
 	staticServer http.Handler
 	filesServer  http.Handler
@@ -54,6 +58,8 @@ func New(cfg *config.Config, logger *logging.Logger, database *sql.DB, authSvc *
 		customerSvc:  customers.NewService(database),
 		orderSvc:     salesorders.NewService(database),
 		revisionSvc:  revisions.NewService(database),
+		paymentSvc:   payments.NewService(database),
+		documentSvc:  documents.NewService(database, storageAdapter),
 		storage:      storageAdapter,
 		staticServer: http.StripPrefix("/web/", http.FileServer(http.Dir("web"))),
 	}
@@ -72,6 +78,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/sales-orders/", s.handleSalesOrderByID)
 	mux.HandleFunc("/api/revisions", s.handleRevisions)
 	mux.HandleFunc("/api/revisions/upload", s.handleRevisionsUpload)
+	mux.HandleFunc("/api/payments", s.handlePayments)
+	mux.HandleFunc("/api/documents", s.handleDocuments)
 	mux.Handle("/web/", s.staticServer)
 	if s.filesPrefix != "" && s.filesServer != nil {
 		mux.Handle(s.filesPrefix, s.filesServer)
@@ -410,6 +418,92 @@ func (s *Server) listRevisions(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"revisions": responses})
 }
 
+func (s *Server) handlePayments(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.listPayments(w, r)
+	case http.MethodPost:
+		s.createPayment(w, r)
+	default:
+		s.writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
+}
+
+func (s *Server) listPayments(w http.ResponseWriter, r *http.Request) {
+	var filter payments.Filter
+	if so := strings.TrimSpace(r.URL.Query().Get("sales_order_id")); so != "" {
+		id, err := strconv.ParseInt(so, 10, 64)
+		if err != nil || id <= 0 {
+			s.writeError(w, http.StatusBadRequest, errors.New("invalid sales_order_id"))
+			return
+		}
+		filter.SalesOrderID = id
+	}
+	if from := strings.TrimSpace(r.URL.Query().Get("from")); from != "" {
+		parsed, err := parseDate(from)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, errors.New("invalid from date"))
+			return
+		}
+		filter.From = &parsed
+	}
+	if to := strings.TrimSpace(r.URL.Query().Get("to")); to != "" {
+		parsed, err := parseDate(to)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, errors.New("invalid to date"))
+			return
+		}
+		filter.To = &parsed
+	}
+
+	paymentsList, err := s.paymentSvc.List(r.Context(), filter)
+	if err != nil {
+		s.writeServerError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"payments": paymentsList})
+}
+
+func (s *Server) createPayment(w http.ResponseWriter, r *http.Request) {
+	var input payments.CreateInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		s.writeError(w, http.StatusBadRequest, errors.New("invalid JSON payload"))
+		return
+	}
+	payment, err := s.paymentSvc.Create(r.Context(), input)
+	if err != nil {
+		if errors.Is(err, payments.ErrValidation) {
+			s.writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		s.writeServerError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusCreated, map[string]any{"payment": payment})
+}
+
+func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input documents.CreateInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		s.writeError(w, http.StatusBadRequest, errors.New("invalid JSON payload"))
+		return
+	}
+	doc, err := s.documentSvc.Create(r.Context(), input)
+	if err != nil {
+		if errors.Is(err, documents.ErrValidation) {
+			s.writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		s.writeServerError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusCreated, map[string]any{"document": doc})
+}
+
 func (s *Server) listSalesOrders(w http.ResponseWriter, r *http.Request) {
 	var customerID int64
 	if cid := strings.TrimSpace(r.URL.Query().Get("customer_id")); cid != "" {
@@ -526,10 +620,34 @@ func isValidationError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, customers.ErrValidation) || errors.Is(err, salesorders.ErrValidation) || errors.Is(err, revisions.ErrValidation) {
+	if errors.Is(err, customers.ErrValidation) ||
+		errors.Is(err, salesorders.ErrValidation) ||
+		errors.Is(err, revisions.ErrValidation) ||
+		errors.Is(err, payments.ErrValidation) ||
+		errors.Is(err, documents.ErrValidation) {
 		return true
 	}
 	return false
+}
+
+func parseDate(value string) (time.Time, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, fmt.Errorf("invalid date")
+	}
+	layouts := []string{time.RFC3339, "2006-01-02"}
+	var lastErr error
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, trimmed); err == nil {
+			return t.UTC(), nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return time.Time{}, lastErr
+	}
+	return time.Time{}, fmt.Errorf("invalid date")
 }
 
 type revisionResponse struct {

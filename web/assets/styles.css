@@ -72,6 +72,18 @@ th {
   font-size: 0.9rem;
 }
 
+.status-message.success {
+  color: #047857;
+}
+
+.status-message.error {
+  color: #b91c1c;
+}
+
+.error {
+  color: #b91c1c;
+}
+
 button, input, select {
   padding: 0.5rem;
   border-radius: 4px;
@@ -91,4 +103,60 @@ button.secondary {
 button:disabled {
   background: #9aa5b1;
   cursor: not-allowed;
+}
+
+.help-text {
+  font-size: 0.85rem;
+  color: #52606d;
+  margin-bottom: 0.5rem;
+}
+
+.allocation-fieldset {
+  grid-column: 1 / -1;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.allocation-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.allocation-row label {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 160px;
+  font-weight: 600;
+  gap: 0.25rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+  align-self: flex-end;
+}
+
+.link-button:hover,
+.link-button:focus {
+  text-decoration: underline;
+}
+
+.allocations-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.allocations-list li {
+  margin-bottom: 0.25rem;
+}
+
+.muted {
+  color: #9aa5b1;
 }

@@ -19,11 +19,285 @@
     </header>
     <main>
       <section class="card">
-        <h2>Coming Soon</h2>
-        <p>Payment creation, allocation, and ledger summaries will live here once the API is implemented.</p>
-        <p>For now, confirm that static routing returns this placeholder card.</p>
+        <h2>Filter Payments</h2>
+        <form id="filter-form" class="form-grid">
+          <label>
+            Sales Order ID
+            <input type="number" id="filter-sales-order" min="1" />
+          </label>
+          <label>
+            From Date
+            <input type="date" id="filter-from" />
+          </label>
+          <label>
+            To Date
+            <input type="date" id="filter-to" />
+          </label>
+          <div>
+            <button type="submit">Apply</button>
+            <button type="button" id="filter-reset" class="secondary">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Record Payment</h2>
+        <form id="payment-form" class="form-grid">
+          <label>
+            Primary Sales Order
+            <input type="number" id="payment-sales-order" min="1" placeholder="Optional" />
+          </label>
+          <label>
+            Payment Date
+            <input type="date" id="payment-date" required />
+          </label>
+          <label>
+            Method
+            <input type="text" id="payment-method" required />
+          </label>
+          <label>
+            Amount
+            <input type="number" id="payment-amount" step="0.01" min="0" required />
+          </label>
+          <label>
+            Reference
+            <input type="text" id="payment-reference" placeholder="Check #, notes" />
+          </label>
+          <fieldset class="allocation-fieldset">
+            <legend>Allocations (optional)</legend>
+            <p class="help-text">Leave blank to auto-allocate by oldest outstanding sales order. Add rows to override.</p>
+            <div id="allocation-rows"></div>
+            <button type="button" id="add-allocation" class="secondary">Add Allocation</button>
+          </fieldset>
+          <div>
+            <button type="submit">Save Payment</button>
+          </div>
+        </form>
+        <p id="payment-form-status" class="status-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Recent Payments</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Method</th>
+              <th>Amount</th>
+              <th>Reference</th>
+              <th>Primary SO</th>
+              <th>Allocations</th>
+              <th>Recorded</th>
+            </tr>
+          </thead>
+          <tbody id="payments-body"></tbody>
+        </table>
       </section>
     </main>
     <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          vvsapp.requireAuth();
+        } catch (err) {
+          return;
+        }
+
+        const filterForm = document.getElementById('filter-form');
+        const filterSalesOrder = document.getElementById('filter-sales-order');
+        const filterFrom = document.getElementById('filter-from');
+        const filterTo = document.getElementById('filter-to');
+        const filterReset = document.getElementById('filter-reset');
+        const paymentForm = document.getElementById('payment-form');
+        const paymentSalesOrder = document.getElementById('payment-sales-order');
+        const paymentDate = document.getElementById('payment-date');
+        const paymentMethod = document.getElementById('payment-method');
+        const paymentAmount = document.getElementById('payment-amount');
+        const paymentReference = document.getElementById('payment-reference');
+        const allocationRows = document.getElementById('allocation-rows');
+        const addAllocation = document.getElementById('add-allocation');
+        const paymentsBody = document.getElementById('payments-body');
+        const statusMessage = document.getElementById('payment-form-status');
+
+        paymentDate.valueAsDate = new Date();
+
+        filterForm.addEventListener('submit', (event) => {
+          event.preventDefault();
+          loadPayments();
+        });
+
+        filterReset.addEventListener('click', () => {
+          filterSalesOrder.value = '';
+          filterFrom.value = '';
+          filterTo.value = '';
+          loadPayments();
+        });
+
+        addAllocation.addEventListener('click', () => {
+          const row = document.createElement('div');
+          row.className = 'allocation-row';
+          row.innerHTML = `
+            <label>
+              Sales Order
+              <input type="number" class="allocation-so" min="1" required />
+            </label>
+            <label>
+              Amount
+              <input type="number" class="allocation-amount" step="0.01" min="0" required />
+            </label>
+            <button type="button" class="link-button remove-allocation">Remove</button>
+          `;
+          allocationRows.appendChild(row);
+          const removeBtn = row.querySelector('.remove-allocation');
+          removeBtn.addEventListener('click', () => {
+            allocationRows.removeChild(row);
+          });
+        });
+
+        paymentForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          statusMessage.textContent = '';
+          statusMessage.classList.remove('error', 'success');
+
+          const payload = {
+            sales_order_id: parseOptionalInt(paymentSalesOrder.value),
+            date: paymentDate.value,
+            method: paymentMethod.value,
+            amount: parseFloat(paymentAmount.value),
+            reference: paymentReference.value,
+            allocations: collectAllocations(),
+          };
+
+          if (!Number.isFinite(payload.amount) || payload.amount <= 0) {
+            statusMessage.textContent = 'Enter a valid payment amount.';
+            statusMessage.classList.add('error');
+            return;
+          }
+
+          if (!payload.date) {
+            statusMessage.textContent = 'Choose a payment date.';
+            statusMessage.classList.add('error');
+            return;
+          }
+
+          try {
+            await vvsapp.apiFetch('/api/payments', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            statusMessage.textContent = 'Payment saved successfully.';
+            statusMessage.classList.remove('error');
+            statusMessage.classList.add('success');
+            paymentForm.reset();
+            paymentDate.valueAsDate = new Date();
+            allocationRows.innerHTML = '';
+            loadPayments();
+          } catch (err) {
+            statusMessage.textContent = err.message || 'Failed to save payment.';
+            statusMessage.classList.remove('success');
+            statusMessage.classList.add('error');
+          }
+        });
+
+        function collectAllocations() {
+          const rows = Array.from(allocationRows.querySelectorAll('.allocation-row'));
+          const allocations = [];
+          for (const row of rows) {
+            const soInput = row.querySelector('.allocation-so');
+            const amountInput = row.querySelector('.allocation-amount');
+            const so = parseInt(soInput.value, 10);
+            const amount = parseFloat(amountInput.value);
+            if (Number.isInteger(so) && so > 0 && Number.isFinite(amount) && amount > 0) {
+              allocations.push({ sales_order_id: so, amount });
+            }
+          }
+          return allocations;
+        }
+
+        function parseOptionalInt(value) {
+          const trimmed = String(value || '').trim();
+          if (!trimmed) return undefined;
+          const parsed = parseInt(trimmed, 10);
+          return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+        }
+
+        async function loadPayments() {
+          const params = new URLSearchParams();
+          const so = parseOptionalInt(filterSalesOrder.value);
+          if (so) {
+            params.set('sales_order_id', String(so));
+          }
+          if (filterFrom.value) {
+            params.set('from', filterFrom.value);
+          }
+          if (filterTo.value) {
+            params.set('to', filterTo.value);
+          }
+          const url = params.toString() ? `/api/payments?${params.toString()}` : '/api/payments';
+          try {
+            const data = await vvsapp.apiFetch(url);
+            renderPayments(data.payments || []);
+          } catch (err) {
+            const message = escapeHtml(err.message || 'Unable to load payments.');
+            paymentsBody.innerHTML = `<tr><td colspan="7" class="error">${message}</td></tr>`;
+          }
+        }
+
+        function renderPayments(payments) {
+          if (!payments.length) {
+            paymentsBody.innerHTML = '<tr><td colspan="7">No payments found.</td></tr>';
+            return;
+          }
+          paymentsBody.innerHTML = '';
+          payments.forEach((payment) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${formatDate(payment.date)}</td>
+              <td>${escapeHtml(payment.method || '')}</td>
+              <td>$${Number(payment.amount).toFixed(2)}</td>
+              <td>${escapeHtml(payment.reference || '')}</td>
+              <td>${payment.sales_order_id || ''}</td>
+              <td>${renderAllocations(payment.allocations || [])}</td>
+              <td>${formatDateTime(payment.created_at)}</td>
+            `;
+            paymentsBody.appendChild(tr);
+          });
+        }
+
+        function renderAllocations(allocations) {
+          if (!allocations.length) {
+            return '<span class="muted">Pending allocation</span>';
+          }
+          const items = allocations
+            .map((alloc) => `<li>SO ${alloc.sales_order_id}: $${Number(alloc.amount).toFixed(2)}</li>`)
+            .join('');
+          return `<ul class="allocations-list">${items}</ul>`;
+        }
+
+        function formatDate(value) {
+          const date = value ? new Date(value) : null;
+          if (!date || Number.isNaN(date.getTime())) return '';
+          return date.toLocaleDateString();
+        }
+
+        function formatDateTime(value) {
+          const date = value ? new Date(value) : null;
+          if (!date || Number.isNaN(date.getTime())) return '';
+          return date.toLocaleString();
+        }
+
+        function escapeHtml(value) {
+          return value.replace(/[&<>"']/g, (ch) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+          }[ch] || ch));
+        }
+
+        loadPayments();
+      });
+    </script>
   </body>
 </html>
