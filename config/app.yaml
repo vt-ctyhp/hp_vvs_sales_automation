@@ -1,0 +1,17 @@
+server:
+  address: ":8080"
+
+database:
+  path: "./local.db"
+
+logging:
+  level: "info"
+
+auth:
+  jwt_secret: "local-dev-secret-please-change"
+  token_ttl_minutes: 15
+
+seed:
+  admin_email: "admin@example.com"
+  admin_password: "changeme123"
+  admin_role: "admin"

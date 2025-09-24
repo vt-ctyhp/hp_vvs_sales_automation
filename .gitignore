@@ -1,0 +1,30 @@
+# Binaries and build artifacts
+/app/
+app/
+*.exe
+*.out
+*.o
+
+# Databases
+local.db
+*.sqlite
+*.db
+
+# Environment
+.env
+
+# Logs and backups
+logs/
+backup/
+
+# Uploaded files
+files/
+
+# Node/Go tooling cache
+node_modules/
+.tmp/
+coverage/
+*.log
+
+# Go specific
+bin/
