@@ -1,0 +1,368 @@
+<!doctype html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body { font: 13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial; margin: 16px; }
+  h2 { margin: 0 0 6px; }
+  .sub { color:#555; margin: 0 0 14px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(240px, 1fr));
+    gap: 4px;
+  }
+  fieldset { border:1px solid #ddd; border-radius:10px; padding:10px 12px; }
+  legend { padding:0 6px; font-weight:600; }
+  .controls { display:flex; gap:8px; margin:4px 0 8px; }
+  .list { max-height:180px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:6px 8px; }
+  .list label { display:block; margin:4px 0; }
+  .foot { display:flex; justify-content:space-between; align-items:center; margin-top:14px; }
+  .btns { display:flex; gap:8px; }
+  button { padding:8px 12px; }
+  .muted { color:#666; font-size:12px; }
+  .chips { margin:10px 0 4px; display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .chip-group { display:flex; align-items:center; gap:6px; margin-right:10px; }
+  .chip-label { font-weight:600; color:#444; }
+  .chip { display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; background:#fafafa; }
+  /* Fixed-height preview rows (two visible lines) */
+  .table-2line td { height: 46px; vertical-align: top; }
+  .cell-clip2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; }
+</style>
+</head>
+<body>
+<? var L = lists || {}; ?>
+
+ <div class="sub">
+   Select zero or more values. Matching uses <b>OR</b> within each list and <b>AND</b> across lists.
+ </div>
+
+<div class="grid">
+  <!-- Four lists -->
+  <fieldset data-group="salesStage">
+    <legend>Sales Stage</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.salesStage || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="salesStage" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-salesStage"></div>
+  </fieldset>
+
+  <fieldset data-group="conversionStatus">
+    <legend>Conversion Status</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.conversionStatus || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="conversionStatus" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-conversionStatus"></div>
+  </fieldset>
+
+  <fieldset data-group="customOrderStatus">
+    <legend>Custom Order Status</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.customOrderStatus || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="customOrderStatus" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-customOrderStatus"></div>
+  </fieldset>
+
+  <fieldset data-group="centerStoneStatus">
+    <legend>Center Stone Order Status</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.centerStoneStatus || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="centerStoneStatus" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-centerStoneStatus"></div>
+  </fieldset>
+</div>
+
+<div class="foot">
+  <div class="muted" id="summary">0 selected</div>
+  <div class="btns">
+    <button type="button" id="btnRun">Run Report</button>
+    <button type="button" id="btnExportTab" disabled>Export → New tab</button>
+    <button type="button" id="btnExportPdf" disabled>Export → PDF</button>
+    <button type="button" id="btnTest">Server Test</button>
+    <button type="button" onclick="google.script.host.close()">Close</button>
+  </div>
+</div>
+
+<div id="chipBar" class="chips"></div>
+<div id="sumBar" class="chips"></div>
+<div id="resultMeta" class="muted" style="margin-top:10px;"></div>
+
+<div id="resultWrap" style="margin-top:8px; max-height:380px; overflow:auto; border:1px solid #eee; border-radius:8px;"></div>
+
+<script>
+// Surface any JS errors in the UI
+window.onerror = function(msg){
+  const el = document.getElementById('resultMeta');
+  if (el) el.textContent = 'JS error: ' + msg;
+};
+
+// Helpers
+function qsAll(sel){ return Array.from(document.querySelectorAll(sel)); }
+function escapeHtml(s){
+  return String(s || '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
+}
+function linkify(v){
+  const s = (v==null?'':String(v).trim());
+  if (/^https?:\/\//i.test(s)) return '<a href="'+s+'" target="_blank">Open</a>';
+  return escapeHtml(s);
+}
+function selectionPayload(){
+  const pick = (name) => qsAll('input[name="'+name+'"]:checked').map(el => el.value);
+  return {
+    salesStage: pick('salesStage'),
+    conversionStatus: pick('conversionStatus'),
+    customOrderStatus: pick('customOrderStatus'),
+    centerStoneStatus: pick('centerStoneStatus'),
+    _mode: 'preview' // ask server for preview shaping
+  };
+}
+function setBusy(b){
+  document.getElementById('btnRun').disabled = b;
+  document.getElementById('btnExportTab').disabled = b || !window.__lastStatusPayload;
+  document.getElementById('btnExportPdf').disabled = b || !window.__lastStatusPayload;
+  document.getElementById('resultMeta').textContent = b ? 'Running…' : '';
+}
+function renderChipsStatus(p){
+  const bar = document.getElementById('chipBar');
+  const groups = [
+    ['Sales Stage',         p.salesStage],
+    ['Conversion Status',   p.conversionStatus],
+    ['Custom Order Status', p.customOrderStatus],
+    ['Center Stone Status', p.centerStoneStatus],
+  ];
+  const html = groups.map(([label, arr]) => {
+    const chips = (arr && arr.length)
+      ? arr.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join(' ')
+      : `<span class="chip">All</span>`;
+    return `<span class="chip-group"><span class="chip-label">${label}:</span>${chips}</span>`;
+  }).join('');
+  bar.innerHTML = html;
+}
+function renderSummaryChipsStatus(summary){
+  const bar = document.getElementById('sumBar');
+  if (!summary || !summary.groups) { bar.innerHTML = ''; return; }
+  function topEntries(map) {
+    const arr = Object.keys(map).map(k => [k, map[k]]);
+    arr.sort((a,b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+    return arr.slice(0, 10);
+  }
+  const g = summary.groups;
+  const sections = [
+    ['Rep',                       g.rep],
+    ['Sales Stage',               g.salesStage],
+    ['Conversion Status',         g.conversionStatus],
+    ['Custom Order Status',       g.customOrderStatus],
+    ['Center Stone Status',       g.centerStoneStatus],
+  ];
+  const html = sections.map(([label, map]) => {
+    if (!map) return '';
+    const chips = topEntries(map).map(([k,c]) => `<span class="chip">${escapeHtml(k)} (${c})</span>`).join(' ');
+    return `<span class="chip-group"><span class="chip-label">${label}:</span>${chips || '<span class="chip">(none)</span>'}</span>`;
+  }).join('');
+  bar.innerHTML = html;
+}
+function renderTable(res){
+  const wrap = document.getElementById('resultWrap');
+  if (!res || !res.headers) { wrap.innerHTML=''; return; }
+
+  const limit = Math.min(res.previewLimit || 1000, res.rows.length);
+
+  const thead = '<thead><tr>' + res.headers.map(h => `<th style="position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;text-align:left;padding:6px 8px;">${escapeHtml(h)}</th>`).join('') + '</tr></thead>';
+
+  // Helpers to compare yyyy-mm-dd strings safely
+  function ymdToday() {
+    const d = new Date();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  }
+  const todayYMD = ymdToday();
+
+  const cosIdx = res.headers.indexOf('Custom Order Status');
+  const pdIdx  = res.headers.indexOf('Production Deadline');
+
+  const rows = res.rows.slice(0, limit).map(r => {
+    // preview already formats Production Deadline as yyyy-mm-dd via server
+    const status = cosIdx >= 0 ? String(r[cosIdx] || '').trim().toLowerCase() : '';
+    return '<tr>' + r.map((cell, i) => {
+      let extraStyle = '';
+      if (i === pdIdx && pdIdx >= 0 && status === 'in production') {
+        const ymd = String(cell || '').trim();           // expected "yyyy-mm-dd" in preview
+        if (ymd && /^\d{4}-\d{2}-\d{2}$/.test(ymd) && ymd < todayYMD) {
+          extraStyle = 'background:#ff3b30;color:#000;';
+        }
+      }
+      return `<td style="border-bottom:1px solid #f1f1f1;padding:6px 8px;vertical-align:top;${extraStyle}"><div class="cell-clip2">${linkify(cell)}</div></td>`;
+    }).join('') + '</tr>';
+  }).join('');
+
+
+  // Widths: includes the 2 appended payment columns at the end
+  const widthMap = {
+    'APPT_ID': '90px',
+    'Customer Name': '220px',
+    'Assigned Rep': '160px',
+    'Assisted Rep': '160px',
+    'Brand': '100px',
+    'SO#': '110px',
+    'Visit Date': '120px',
+    'Order Total': '150px',
+    'Total Pay To Date': '150px',
+    'Sales Stage': '190px',
+    'Conversion Status': '190px',
+    'Custom Order Status': '190px',
+    'In Production Status': '190px',  // NEW
+    'Production Deadline': '140px',   // NEW
+    'Center Stone Order Status': '140px',
+    'Next Steps': '320px',
+    'Client Status Report URL': '140px'
+  };
+
+  const colgroup = '<colgroup>' + res.headers.map(h =>
+    `<col style="width:${widthMap[h] || '140px'}">`
+  ).join('') + '</colgroup>';
+
+
+  wrap.innerHTML = `<table class="table-2line" style="width:100%; border-collapse:collapse;">${colgroup}${thead}<tbody>${rows}</tbody></table>`;
+
+  const meta = (limit < res.total)
+    ? `Showing ${limit.toLocaleString()} of ${res.total.toLocaleString()} (preview capped).`
+    : `Showing ${res.total.toLocaleString()} rows.`;
+  const metaEl = document.getElementById('resultMeta');
+  metaEl.textContent = meta + (res.warn ? (' • ' + res.warn) : '');
+  document.getElementById('btnExportTab').disabled = false;
+  document.getElementById('btnExportPdf').disabled = false;
+}
+
+// Select all / clear per fieldset + selection counters
+function updateCounts() {
+  const groups = ['salesStage','conversionStatus','customOrderStatus','centerStoneStatus'];
+  let total = 0;
+  for (const g of groups) {
+    const n = qsAll('input[name="'+g+'"]:checked').length;
+    total += n;
+    const ct = document.getElementById('ct-' + g);
+    if (ct) ct.textContent = n + ' selected';
+  }
+  document.getElementById('summary').textContent = total + ' selected';
+}
+document.querySelectorAll('fieldset').forEach(fs => {
+  fs.addEventListener('click', (e) => {
+    if (!(e.target instanceof HTMLButtonElement)) return;
+    const act = e.target.dataset.act;
+    const group = fs.getAttribute('data-group');
+    fs.querySelectorAll('input[name="'+group+'"]').forEach(b => b.checked = (act === 'all'));
+    updateCounts();
+  });
+});
+qsAll('input[type="checkbox"]').forEach(cb => cb.addEventListener('change', updateCounts));
+updateCounts();
+
+// Run + Export + sanity
+document.getElementById('btnRun').addEventListener('click', () => {
+  const payload = selectionPayload();
+  renderChipsStatus(payload);
+  window.__lastStatusPayload = payload;
+  setBusy(true);
+  google.script.run
+    .withSuccessHandler(res => { setBusy(false); renderSummaryChipsStatus(res.summary); renderTable(res); })
+    .withFailureHandler(err => { setBusy(false); document.getElementById('resultMeta').textContent = 'Error: ' + err.message; })
+    .report_runStatus(payload);
+});
+
+// Export → New tab (creates a sheet tab and returns links)
+document.getElementById('btnExportTab').addEventListener('click', () => {
+  const payload = window.__lastStatusPayload || selectionPayload();
+  setBusy(true);
+  google.script.run
+    .withSuccessHandler(info => {
+      setBusy(false);
+      const link  = info.url ? ` — <a href="${info.url}" target="_blank">Open sheet</a>` : '';
+      const pdf   = info.pdfUrl ? ` — <a href="${info.pdfUrl}" target="_blank">PDF (browser)</a>` : '';
+      const dpdf  = info.drivePdfUrl ? ` — <a href="${info.drivePdfUrl}" target="_blank">PDF (Drive ✓filename)</a>` : '';
+      document.getElementById('resultMeta').innerHTML =
+        `Exported to sheet: ${escapeHtml(info.sheetName)} (${info.rows} rows).` + link + pdf + dpdf;
+    })
+    .withFailureHandler(err => {
+      setBusy(false);
+      document.getElementById('resultMeta').textContent = 'Export error: ' + err.message;
+    })
+    .report_export('status', payload);
+});
+
+// Export → PDF (NO new tab; creates a Drive PDF with exact filename)
+document.getElementById('btnExportPdf').addEventListener('click', () => {
+  const payload = window.__lastStatusPayload || selectionPayload();
+  setBusy(true);
+  google.script.run
+    .withSuccessHandler(res => {
+      setBusy(false);
+      if (!res || !res.ok) {
+        document.getElementById('resultMeta').textContent =
+          'Export error: ' + (res && res.error ? res.error : 'Unexpected response.');
+        return;
+      }
+      document.getElementById('resultMeta').textContent =
+        `Exported PDF: ${escapeHtml(res.fileName)}`;
+      downloadBase64Pdf(res.fileName, res.bytesBase64, res.mimeType || 'application/pdf');
+    })
+    .withFailureHandler(err => {
+      setBusy(false);
+      document.getElementById('resultMeta').textContent = 'Export error: ' + err.message;
+    })
+    .report_exportPdf('status', payload);
+});
+
+document.getElementById('btnTest').addEventListener('click', () => {
+  google.script.run
+    .withSuccessHandler(msg => { document.getElementById('resultMeta').textContent = 'Server: ' + msg; })
+    .withFailureHandler(err => { document.getElementById('resultMeta').textContent = 'Error: ' + err.message; })
+    .report_ping();
+});
+
+function downloadBase64Pdf(fileName, b64, mime) {
+  try {
+    const byteChars = atob(b64);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime || 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'report.pdf';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    a.remove();
+  } catch (e) {
+    alert('Failed to download PDF: ' + (e && e.message ? e.message : e));
+  }
+}
+</script>
+</body>
+</html>

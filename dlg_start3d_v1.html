@@ -1,0 +1,559 @@
+<!-- File: dlg_start3d_v1.html — FINAL FULL REPLACEMENT
+     Compatible with your existing menu/helpers (Assign SO, 3D Revision, Drive utils).
+-->
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root{
+      --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --primary:#1f6feb;
+      --warn-bg:#fff7ed; --warn-bd:#fdba74; --danger:#b3261e;
+      --bg:#ffffff; --panel:#f9fafb;
+    }
+    html,body{height:auto}
+    body{font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial; color:var(--fg); margin:0; background:var(--bg);}
+    .wrap{padding:14px 16px; max-width:720px;}
+    h2{margin:0 0 10px 0; font-size:16px; font-weight:700}
+    h3{margin:0 0 10px 0; font-size:15px; font-weight:700}
+    label{display:block; margin:8px 0 4px; font-weight:600}
+    input,select,textarea{width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:6px; background:#fff}
+    textarea{resize:vertical}
+    .row{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
+    .btns{margin-top:14px; display:flex; gap:8px; justify-content:flex-end}
+    button{padding:8px 12px; border:0; border-radius:6px; cursor:pointer}
+    .primary{background:var(--primary); color:#fff}
+    .ghost{background:#fff; border:1px solid var(--line)}
+    .muted{color:var(--muted)}
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px}
+    .warn{background:var(--warn-bg); border:1px solid var(--warn-bd)}
+    .danger{color:var(--danger)}
+    .grid2{display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center}
+    .inline-check{display:flex; align-items:center; gap:8px}
+    /* Checkbox row: full width, hard-left aligned, one line */
+    .checkline{display:inline-flex; align-items:center; gap:8px; margin:8px 0 6px 0; padding:0}
+    .checkline span{white-space:nowrap}
+    .help{font-size:12px; color:var(--muted); margin-top:-6px}
+    .err{font-size:12px; color:var(--danger); display:none}
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%); bottom:12px;
+      background:#111827; color:#fff; padding:8px 12px; border-radius:6px; opacity:0; pointer-events:none; transition:opacity .18s;
+    }
+    .toast.show{opacity:1}
+    .topwarn{margin:-4px 0 10px 0; padding:10px; border-radius:8px}
+    .copy-box{white-space:pre-wrap; background:#fff; border:1px dashed var(--line); padding:8px; border-radius:8px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .xDisabled{opacity:.55; pointer-events:none}
+  </style>
+</head>
+<body>
+  <div class="wrap" id="root">
+
+    <!-- Step‑1 warnings -->
+    <div id="topWarn" class="topwarn warn" style="display:none"></div>
+
+    <div class="panel" id="step1">
+      <h3>Step 1 — Design Details</h3>
+
+      <div class="muted" style="margin-bottom:8px">
+        Mode is fixed to <b>Start 3D Design / Create New SO</b>.
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Accent Diamond Type</label>
+          <select id="accType">
+            <option value="" selected></option>
+            <option>LAB</option><option>NATURAL</option>
+          </select>
+        </div>
+        <div>
+          <label>Metal</label>
+          <input id="metal" placeholder="e.g., 14K YG / 18K WG / Pt950">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Ring Style</label>
+          <input id="ringStyle" placeholder="e.g., Solitaire / Pavé / Cathedral">
+        </div>
+        <div>
+          <label>US Size</label>
+          <input id="size" placeholder="e.g., 6.25">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Band Width (mm)</label>
+          <input id="band" placeholder="e.g., 1.8">
+        </div>
+        <div></div>
+      </div>
+
+      <label>Design Notes (3 bullets)</label>
+      <textarea id="notes" rows="4" placeholder="- note 1&#10;- note 2&#10;- note 3"></textarea>
+
+      <hr style="margin:12px 0">
+
+      <h3 style="margin-top:0">Center Stone</h3>
+      <div class="row">
+        <div>
+          <label>Diamond Type</label>
+          <select id="centerType">
+            <option value="" selected></option>
+            <option>LAB</option><option>NATURAL</option>
+          </select>
+        </div>
+        <div>
+          <label>Shape</label>
+          <input id="shape" placeholder="e.g., Oval">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Diamond Dimension</label>
+          <input id="dim" placeholder="e.g., 10.3 x 7.4">
+        </div>
+        <div></div>
+      </div>
+
+      <div class="btns">
+        <button type="button" class="ghost" onclick="google.script.host.close()">Cancel</button>
+        <button id="nextBtn" type="button" class="primary">Next</button>
+      </div>
+      <div class="muted" id="step1Hint"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Injected by menu open (falls back to null if not available) -->
+  <script>
+    /* Apps Script template output */
+    window.__START3D_BOOTSTRAP__ = <?!= JSON.stringify(BOOTSTRAP || null) ?>;
+  </script>
+
+
+  <script>
+    // Debounce helper: only run fn after no new calls for delay ms
+    function debounce(fn, delay){
+      let t=null;
+      return function(...args){
+        clearTimeout(t);
+        t = setTimeout(()=>fn.apply(this, args), delay);
+      };
+    }
+
+    (function(){
+      const MODE_DISPLAY = 'Start 3D Design / Create New SO';
+
+      // Cache for Step-3 preview returned from start3d_step2Payload()
+      let STEP3_PREVIEW = null;
+
+      // Helpers
+      const $ = sel => document.querySelector(sel);
+      const val = sel => { const e=$(sel); return e ? (e.value||'').trim() : ''; };
+      const on = (el, ev, fn) => { if(el) el.addEventListener(ev, fn); };
+      const fitDialog = (w=650) => { try{
+        google.script.host.setWidth(w);
+        requestAnimationFrame(()=>{
+          const h=Math.max(320, Math.min(720, document.body.scrollHeight+16));
+          google.script.host.setHeight(h);
+        });
+      }catch(_){/* ignore */}};
+      const toast = txt => { const t=$('#toast'); t.textContent=txt; t.classList.add('show'); fitDialog(); setTimeout(()=>t.classList.remove('show'),1600); };
+      const titleCase = s => String(s||'').toLowerCase().replace(/\b[\p{L}’']+/gu, w => w[0].toUpperCase()+w.slice(1));
+
+        // Build the "Copy into Odoo" text locally (no server call)
+        function buildOdooPasteClient(p){
+          const lines = [];
+          const add = s => lines.push(s);
+          add('—— 3D DESIGN REQUEST — START 3D / CREATE NEW SO ——');
+          add('');
+          add('SETTING');
+          add('• Accent Diamond: ' + (p.AccentDiamondType || ''));
+          add('• Ring Style    : ' + (p.RingStyle || ''));
+          add('• Metal         : ' + (p.Metal || ''));
+          add('• US Size       : ' + (p.USSize || ''));
+          add('• Band Width    : ' + (p.BandWidthMM || '') + ' mm');
+          add('');
+          add('DESIGN NOTES');
+          const notes = String(p.DesignNotes||'').trim();
+          if (notes){ notes.split(/\r?\n/).forEach(s=> add('• ' + s.replace(/^\s*[-•]\s*/,'').trim())); }
+          add('');
+          add('CENTER STONE');
+          add('• Type       : ' + (p.CenterDiamondType || ''));
+          add('• Shape      : ' + (p.Shape || ''));
+          add('• Dimension  : ' + (p.DiamondDimension || ''));
+          add('');
+          add('(Mode: Start 3D Design / Create New SO)');
+          return lines.join('\n');
+        }
+
+      const truncate = (s,n)=>{s=String(s||''); return s.length<=n?s:s.slice(0,n).replace(/\s+\S*$/,'').trim();};
+
+      // ---------- Step 2 (Copy to Odoo) ----------
+      function renderStep2(payload){
+        const paste = (payload && payload.paste) || '';
+        const form  = (payload && payload.form)  || {};
+        $('#root').innerHTML = `
+          <div class="panel">
+            <h3>Step 2 — Copy into Odoo</h3>
+            <div class="muted" style="margin-bottom:8px">
+              Copy the text below into the Odoo Sales Order <b>Description / Design details</b> field.<br>
+              After creating the SO in Odoo, return here to link the SO# and URL.
+            </div>
+            <div class="copy-box" id="copyBox"></div>
+            <div class="btns">
+              <button type="button" class="ghost" id="backBtn">Back</button>
+              <button type="button" class="ghost" id="copyBtn">Copy</button>
+              <button type="button" class="primary" id="nextAssign">Next: Assign SO#</button>
+            </div>
+          </div>
+        `;
+        $('#copyBox').textContent = paste;
+
+        on($('#copyBtn'),'click', async ()=>{
+          try{ await navigator.clipboard.writeText(paste); }
+          catch(e){ const ta=document.createElement('textarea'); ta.value=paste; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+          toast('Copied! Create the SO# in Odoo, paste this description, and keep this tab open for linking the URL.');
+        });
+        on($('#backBtn'),'click', ()=> history.back());
+        on($('#nextAssign'),'click', ()=> renderStep3AssignSO({ paste, form }));
+        fitDialog();
+      }
+
+      // ---------- Step 3 (Assign SO#) ----------
+      function renderStep3AssignSO(design){
+        $('#root').innerHTML = `
+          <div class="panel">
+            <h3>Step 3 — Assign SO#</h3>
+            <div id="previewBox" class="panel" style="margin-bottom:10px">Loading…</div>
+
+            <!-- Aesthetic inline warning injected here when needed -->
+            <div id="matchWarn" class="topwarn warn" style="display:none"></div>
+
+            <!-- Checkbox ABOVE Brand; left aligned, single line -->
+            <label class="checkline">
+              <input id="chkMatch" type="checkbox"><span>This matches the customer</span>
+            </label>
+
+            <div class="grid2">
+              <label for="brand">Brand</label>
+              <select id="brand" required>
+                <option value="" disabled selected>Select brand…</option>
+                <option value="VVS">VVS</option>
+                <option value="HPUSA">HPUSA</option>
+              </select>
+            </div>
+
+            <div class="grid2">
+              <label for="so">SO#</label>
+              <input id="so" type="text" inputmode="numeric" autocomplete="off" placeholder="12.3456" aria-describedby="so-hint so-err" required />
+            </div>
+            <div class="grid2"><div></div><div id="so-hint" class="help">Format: two digits, dot, four digits (e.g., 12.3456)</div></div>
+            <div class="grid2"><div></div><div id="so-err" class="err">SO# must match NN.NNNN</div></div>
+
+            <div class="grid2">
+              <label for="odoo">Odoo SO URL</label>
+              <input id="odoo" type="text" placeholder="https://... .com/web#id=..." aria-describedby="odoo-hint odoo-err" required />
+            </div>
+            <div class="grid2"><div></div><div id="odoo-hint" class="help">Paste the Sales Order page URL from Odoo (.com domain)</div></div>
+            <div class="grid2"><div></div><div id="odoo-err" class="err">Please paste a valid URL ending with .com</div></div>
+
+            <div class="grid2">
+              <label for="shortTag">Short Tag (optional)</label>
+              <input id="shortTag" type="text" maxlength="24" placeholder="e.g., Oval Solitaire" />
+            </div>
+
+            <div id="dupWarn" class="topwarn warn" style="display:none"></div>
+
+            <div class="btns">
+              <button type="button" class="ghost" id="back2">Back</button>
+              <button type="button" class="primary" id="btnSave">Save</button>
+            </div>
+            <textarea id="designReq" style="display:none"></textarea>
+          </div>
+        `;
+
+        // Prefill preview + brand
+        let preview = null;
+
+        // If we already have the preview from start3d_step2Payload(), use it
+        if (STEP3_PREVIEW) {
+          preview = STEP3_PREVIEW;
+          $('#previewBox').innerHTML =
+            `<div><b>Customer:</b> ${preview.customer||''}</div>`+
+            ((preview.email||preview.phone)?`<div><b>Contact:</b> ${preview.email||''}${(preview.email&&preview.phone)?' | ':''}${preview.phone||''}</div>`:'')+
+            (preview.masterLink?`<div style="margin-top:6px;"><a href="${preview.masterLink}" target="_blank">Open 100_Master row</a></div>`:'')+
+            (preview.hasLinkedSO ? `<div class="topwarn warn" style="margin-top:8px"><b>Already linked:</b> ${preview.existingBrand||''} · ${preview.existingSo||''}${preview.existingLinkedAtDisplay?` (linked ${preview.existingLinkedAtDisplay})`:''}</div>`:'');
+          if (preview.brand) $('#brand').value = String(preview.brand).toUpperCase();
+          fitDialog();
+        } else {
+          // Fallback: call server if cache is missing (safety)
+          google.script.run
+            .withSuccessHandler(function(p){
+              preview = p || {};
+              $('#previewBox').innerHTML =
+                `<div><b>Customer:</b> ${p.customer||''}</div>`+
+                ((p.email||p.phone)?`<div><b>Contact:</b> ${p.email||''}${(p.email&&p.phone)?' | ':''}${p.phone||''}</div>`:'')+
+                (p.masterLink?`<div style="margin-top:6px;"><a href="${p.masterLink}" target="_blank">Open 100_Master row</a></div>`:'')+
+                (p.hasLinkedSO ? `<div class="topwarn warn" style="margin-top:8px"><b>Already linked:</b> ${p.existingBrand||''} · ${p.existingSo||''}${p.existingLinkedAtDisplay?` (linked ${p.existingLinkedAtDisplay})`:''}</div>`:'');
+              if (p.brand) $('#brand').value = String(p.brand).toUpperCase();
+              fitDialog();
+            })
+            .getActiveMasterPreview();
+        }
+
+        const so = $('#so'), soErr = $('#so-err');
+        const odoo = $('#odoo'), odooErr = $('#odoo-err');
+        const chkMatch = $('#chkMatch');
+        const btnSave = $('#btnSave'), back2 = $('#back2');
+        const dupWarn = $('#dupWarn');
+        const matchWarn = $('#matchWarn');
+        const designReq = $('#designReq');
+        designReq.value = (design && design.paste) || '';
+
+        // Pre‑populate Short Tag from Step‑1 (Shape + Ring Style)
+        (function(){
+          const f = (design && design.form) || {};
+          const pre = titleCase(truncate([f.Shape, f.RingStyle].filter(Boolean).join(' '), 24));
+          if (pre) $('#shortTag').value = pre;
+        })();
+
+        const normSO = s => {
+          s = String(s||'').replace(/[^\d.]/g,'');
+          const p=s.split('.'); const L=(p[0]||'').slice(0,2).replace(/\D/g,''); const R=(p[1]||'').slice(0,4).replace(/\D/g,'');
+          return L + (R.length || p.length>1 ? '.'+R : '');
+        };
+        const validSO = ()=>{ const ok=/^\d{2}\.\d{4}$/.test((so.value||'').trim()); soErr.style.display = ok?'none':'block'; return ok; };
+        const validURL= ()=>{ const v=(odoo.value||'').trim(); const ok=/^(https?:\/\/)?[^\s]+\.com(\/|\?|#|$)/i.test(v); odooErr.style.display=ok?'none':'block'; return ok; };
+        const setSubmitting = (state)=>{
+          if (state){ btnSave.disabled=true; btnSave.classList.add('xDisabled'); btnSave.textContent='Submitting…'; back2.disabled=true; chkMatch.disabled=true; }
+          else { btnSave.disabled=false; btnSave.classList.remove('xDisabled'); btnSave.textContent='Save'; back2.disabled=false; chkMatch.disabled=false; }
+        };
+        const showMatchNeeded = ()=>{
+          matchWarn.innerHTML = `<b>Confirmation needed:</b> Please check “This matches the customer” before saving.`;
+          matchWarn.style.display = 'block'; fitDialog();
+        };
+
+on(so,'input', debounce(function(){
+  so.value = normSO(so.value);
+  validSO();
+
+  const brandSel = $('#brand').value;
+  const okSO = /^\d{2}\.\d{4}$/.test(so.value);
+
+          if (okSO && brandSel){
+            const payload = { brand: brandSel, so: so.value };
+            google.script.run
+              .withSuccessHandler(function(res){
+                if (res && (res.existsInMaster || res.existsInOrders)){
+                  dupWarn.dataset.needOverwrite = '1';
+                  dupWarn.innerHTML =
+                    `<div><b>Warning:</b> This SO# already exists${res.existsInOrders?` in <b>${res.ordersLabel}</b>`:''}${res.existsInMaster?' in 100_':''}.</div>`+
+                    (res.ordersLink? `<div>Orders match: <a href="${res.ordersLink}" target="_blank">${res.ordersLabel} row</a></div>` : '')+
+                    (res.masterHits && res.masterHits.length ? `<div>100_ match: <a href="${res.masterHits[0].link}" target="_blank">Open row ${res.masterHits[0].row}</a></div>` : '')+
+                    `<label class="inline-check" style="margin-top:8px"><input id="chkOverwrite" type="checkbox"> <span>I understand the previous SO data may be overwritten.</span></label>`;
+                  dupWarn.style.display = 'block';
+                } else {
+                  dupWarn.dataset.needOverwrite = '';
+                  dupWarn.style.display = 'none';
+                  dupWarn.innerHTML = '';
+                }
+                fitDialog();
+              })
+              .checkSOConflicts(payload);
+          } else {
+            dupWarn.dataset.needOverwrite = '';
+            dupWarn.style.display = 'none';
+            dupWarn.innerHTML = '';
+            fitDialog();
+          }
+        }, 400));
+
+        on(odoo,'input', ()=> validURL());
+        on($('#brand'),'change', ()=> so.dispatchEvent(new Event('input')));
+        on(chkMatch,'change', ()=>{ if(chkMatch.checked){ matchWarn.style.display='none'; } });
+
+        on(back2,'click', ()=>{ renderStep2({ paste: (design && design.paste)||'', form: (design && design.form)||{} }); });
+
+        on(btnSave,'click', function(){
+          setSubmitting(true);                    // gray-out immediately
+
+          if (!chkMatch.checked){
+            showMatchNeeded();
+            setSubmitting(false);                 // re-enable for user to confirm
+            chkMatch.focus();
+            return;
+          }
+          if (!validSO() || !validURL()) { setSubmitting(false); return; }
+
+          const payload = {
+            brand: $('#brand').value,
+            so: (so.value||'').trim(),
+            odooUrl: (odoo.value||'').trim(),
+            designRequest: (design && design.paste)||'',
+            shortTag: ($('#shortTag')?.value || '').trim(),
+            designForm: (design && design.form)||{},
+            forceOverwrite: !!$('#chkOverwrite') && $('#chkOverwrite').checked
+          };
+
+          google.script.run
+            .withSuccessHandler(function(res){
+              if (res && res.ok && res.summary){
+                // keep disabled; just render success
+                renderSuccess(res.summary);
+              } else {
+                setSubmitting(false);
+                alert('Saved, but no summary returned.');
+                google.script.host.close();
+              }
+            })
+            .withFailureHandler(function(err){
+              setSubmitting(false);
+              const msg = (err && err.message) ? err.message : String(err);
+              if (msg.indexOf('DUPLICATE_SO|')===0){
+                dupWarn.dataset.needOverwrite = '1';
+                const info = JSON.parse(msg.split('|')[1]||'{}');
+                dupWarn.innerHTML =
+                  `<div><b>Warning:</b> This SO# already exists.</div>`+
+                  (info.ordersLink? `<div>Orders match: <a href="${info.ordersLink}" target="_blank">${info.ordersLabel} row</a></div>` : '')+
+                  (info.masterHits && info.masterHits.length ? `<div>100_ match: <a href="${info.masterHits[0].link}" target="_blank">Open row ${info.masterHits[0].row}</a></div>` : '')+
+                  `<label class="inline-check" style="margin-top:8px"><input id="chkOverwrite" type="checkbox"> <span>I understand the previous SO data may be overwritten.</span></label>`;
+                dupWarn.style.display = 'block';
+                fitDialog();
+                return;
+              }
+              alert('Failed: ' + msg);
+            })
+            .saveAssignedSO(payload);
+        });
+
+        function renderSuccess(summary){
+          const s = summary || {};
+          const hasSO = !!s.so;
+
+          const trackerRow = s.trackerUrl
+            ? `<div><b>3D Revision Log:</b> <a href="${s.trackerUrl}" target="_blank">Open</a></div>`
+            : '';
+
+          const orderFolderRow = s.orderFolderLink
+            ? `<div><b>Order Folder:</b> <a href="${s.orderFolderLink}" target="_blank">Open</a></div>`
+            : '';
+
+          const folder3dRow = s.threeDFolderLink
+            ? `<div><b>05-3D Folder:</b> <a href="${s.threeDFolderLink}" target="_blank">Open</a></div>`
+            : '';
+
+          $('#root').innerHTML = `
+            <div class="panel">
+              <h3>${hasSO ? '✅ SO linked' : '✅ Start 3D ready'}</h3>
+              ${hasSO ? `<div><b>Brand / SO:</b> ${s.brand||''} · ${s.so||''}</div>`:''}
+              ${(s.customer) ? `<div><b>Customer:</b> ${s.customer}</div>` : ''}
+              ${(s.email||s.phone) ? `<div><b>Contact:</b> ${(s.email||'')}${(s.email&&s.phone?' | ':'')+(s.phone||'')}</div>`:''}
+              ${s.masterLink ? `<div style="margin-top:6px;"><b>100_Master row:</b> <a href="${s.masterLink}" target="_blank">Open</a></div>`:''}
+              ${trackerRow}
+              ${orderFolderRow}
+              ${folder3dRow}
+              ${s.linkedAt ? `<div style="margin-top:6px;"><b>SO Linked At:</b> ${s.linkedAt}</div>`:''}
+              ${s.shortTag ? `<div><b>Short Tag:</b> ${s.shortTag}</div>`:''}
+              <div class="btns" style="margin-top:12px">
+                <button type="button" class="primary" onclick="google.script.host.close()">Close</button>
+              </div>
+            </div>`;
+          fitDialog();
+        }
+
+        fitDialog();
+      }
+
+      // ---------- Step 1 (FINAL — bootstrap-aware, single block) ----------
+      document.addEventListener('DOMContentLoaded', function(){
+
+        // Renderer is identical to your current UI (no behavior change)
+        function renderInitBanner(info){
+          if (!info) return;
+          const warn = $('#topWarn');
+          if (info.hasSO || info.hasDesignRequest){
+            let html = `<div><b>Heads up:</b> This row ${info.hasSO ? 'already has an <b>SO#</b>' : 'has an existing <b>Design Request</b>'}.</div>`;
+            if (info.hasSO){
+              html += `<div style="margin-top:4px">Please use <b>3D Revision Request</b> instead.</div>
+                      <div class="btns" style="justify-content:flex-start; margin-top:8px">
+                        <button class="primary" id="btnRevision">Open 3D Revision Request</button>
+                      </div>`;
+            } else {
+              html += `<div style="margin-top:4px">No SO# yet — first <b>Assign SO#</b>, then submit a <b>3D Revision Request</b>.</div>
+                      <div class="btns" style="justify-content:flex-start; margin-top:8px">
+                        <button class="primary" id="btnAssignSO">Assign SO#</button>
+                        <button class="ghost" id="btnRevision">Open 3D Revision Request</button>
+                      </div>`;
+            }
+            warn.innerHTML = html; warn.style.display='block';
+
+            const disableOnce = (b)=>{ if(!b) return; b.disabled=true; b.classList.add('xDisabled'); b.textContent='Opening…'; };
+            on($('#btnRevision'),'click', ()=>{ disableOnce($('#btnRevision')); google.script.run.open3DRevision(); });
+            on($('#btnAssignSO'),'click', ()=>{ disableOnce($('#btnAssignSO')); google.script.run.openAssignSOWithDesign_(''); });
+            fitDialog();
+          }
+        }
+
+        // Prefer server-precomputed bootstrap; fall back to client call if missing
+        const boot = (typeof window !== 'undefined') ? window.__START3D_BOOTSTRAP__ : null;
+        if (boot) {
+          renderInitBanner(boot);               // instant — no round-trip
+        } else {
+          google.script.run
+            .withSuccessHandler(renderInitBanner)
+            .withFailureHandler(function(err){
+              // Optional: surface errors like "Select a data row..." instead of silently failing
+              alert((err && err.message) ? err.message : String(err));
+            })
+            .start3d_init();
+        }
+
+        // Bind "Next" here so we have exactly one handler
+        on($('#nextBtn'),'click', function(){
+          const payload = {
+            Mode: 'Start 3D Design / Create New SO',
+            AccentDiamondType: val('#accType'),
+            RingStyle:         val('#ringStyle'),
+            Metal:             val('#metal'),
+            USSize:            val('#size'),
+            BandWidthMM:       val('#band'),
+            DesignNotes:       val('#notes'),
+            CenterDiamondType: val('#centerType'),
+            Shape:             val('#shape'),
+            DiamondDimension:  val('#dim')
+          };
+
+          const btn = $('#nextBtn');
+          btn.disabled = true; btn.classList.add('xDisabled'); btn.textContent = 'Preparing…';
+
+          // 1) Build Step-2 paste LOCALLY (instant) and render Step-2 immediately
+          const paste = buildOdooPasteClient(payload);   // from Option A
+          try { history.pushState({step:1},''); } catch(_){}
+          renderStep2({ paste, form: payload });
+
+          // 2) In the BACKGROUND, prefetch Step-3 preview (no blocking)
+          google.script.run
+            .withSuccessHandler(function(p){
+              STEP3_PREVIEW = p || null;  // used by renderStep3AssignSO()
+            })
+            .withFailureHandler(function(_){ STEP3_PREVIEW = null; })
+            .getActiveMasterPreview();     // lighter to just fetch preview
+
+          // 3) Re-enable button (user is already on Step-2)
+          btn.disabled = false; btn.classList.remove('xDisabled'); btn.textContent = 'Next';
+        });
+
+
+        fitDialog();
+      });
+
+    })();
+  </script>
+</body>
+</html>

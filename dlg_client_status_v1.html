@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Client Status Update</title>
+  <style>
+    :root{
+      --brand:#1f6feb; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#fff;
+      --chip:#f1f5f9; --error:#e55353; --shadow:0 8px 28px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.06);
+    }
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    .wrap{padding:18px 20px 22px; max-width:1100px}
+    .hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+    .hdr .bar{width:6px;height:28px;border-radius:3px;background:linear-gradient(180deg,var(--brand),#60a5fa)}
+    .title{font-size:16px;font-weight:700;margin:0}
+    .subtitle{margin:2px 0 0;color:var(--muted);font-size:12px}
+
+    /* panels & grid */
+    fieldset{border:1px solid var(--line); border-radius:12px; padding:14px}
+    fieldset[disabled]{opacity:.7; pointer-events:none;}
+    .twoCols{display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start}
+    @media(max-width:900px){ .twoCols{grid-template-columns:1fr;} }
+    .panel h3{font-size:13px; font-weight:700; margin:0 0 10px; color:#0b1220}
+    .sub{font-size:12px; color:var(--muted); margin:6px 0 10px}
+    label.lbl{font-weight:700; display:block; margin:10px 0 8px}
+    .req{color:var(--error)}
+
+    /* Left column checklists */
+    .stack{display:grid;gap:10px}
+    fieldset.box{border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px}
+    fieldset.box legend{padding:0 6px;font-weight:700}
+    .list{max-height:460px;overflow:auto;border:1px solid #eee;border-radius:8px;padding:6px 8px;background:#fff}
+    .list label{display:block;margin:6px 0}
+    .ck{display:flex; align-items:center; gap:8px; font-size:13px}
+    .ck input{width:16px; height:16px}
+    .muted{color:var(--muted)}
+
+    /* Right column: compact “dropdown” + shared popover */
+    .colorselect{
+      width:100%; display:flex; align-items:center; gap:10px;
+      padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer;
+    }
+    .colorselect .placeholder{color:#94a3b8}
+    .colorselect .mini{display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid rgba(0,0,0,.06)}
+    .colorselect .chev{margin-left:auto}
+    .popover{position:absolute; z-index:9999; min-width:220px; max-width:360px; max-height:280px; overflow:auto; border:1px solid var(--line); background:#fff; border-radius:10px; box-shadow:var(--shadow); padding:10px}
+    .hidden{display:none}
+    .optchip{display:inline-flex; align-items:center; justify-content:center; margin:4px; min-width:44px; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid rgba(0,0,0,.06); cursor:pointer}
+    .optchip[aria-selected="true"]{box-shadow:0 0 0 2px rgba(0,0,0,.06) inset}
+    .optchip:focus-visible{ outline:2px solid var(--brand); outline-offset:2px; }
+    .sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0}
+    .actions{margin-top:14px; display:flex; gap:10px; justify-content:flex-end}
+    .btn{padding:8px 12px; border:0; border-radius:8px; cursor:pointer; font-weight:600}
+    .btn-primary{background:var(--brand); color:#fff}
+    .btn-ghost{background:#f8fafc; color:#0b1220; border:1px solid var(--line)}
+
+    /* Compact spacing for the right-column status controls */
+    /* Wax Request inline layout */
+    .wax-row{
+      display:grid;
+      grid-template-columns: 1fr 220px; /* left = Needed By, right = Priority */
+      gap:12px;
+      align-items:end;
+    }
+    .wax-field{ display:flex; flex-direction:column; }
+    @media(max-width:900px){
+      .wax-row{ grid-template-columns: 1fr; } /* stack on small screens */
+    }
+
+    .stack.statusCol { gap: 6px; }                             /* was 10px via .stack */
+    .stack.statusCol .lbl { margin: 4px 0 2px; }               /* was 10px 0 8px */
+    .stack.statusCol .colorselect { padding: 6px 10px; }       /* slightly tighter internal padding */
+    .stack.statusCol .popover .optchip { margin: 3px; }        /* tighter chips inside popover */
+    @media (max-width:900px){
+      .stack.statusCol { gap: 8px; }                           /* allow a touch more breathing room on narrow screens */
+    }
+
+  </style>
+
+  <script>
+    function fitDialogToContent(w){
+      if (google && google.script && google.script.host) {
+        try { google.script.host.setWidth(w || 1040); } catch(e){}
+        requestAnimationFrame(()=> {
+          const h = Math.max(640, Math.min(760, document.body.scrollHeight + 24));
+          try { google.script.host.setHeight(h); } catch(e){}
+        });
+      }
+    }
+    document.addEventListener('DOMContentLoaded', ()=>fitDialogToContent(1040));
+  </script>
+
+  <script>
+    // Injected from server so we can filter options in real-time
+    const RULES_FLAT = <?!= JSON.stringify(rulesFlat || {matrix:[], viewing:[]}) ?>;
+    const VISIT_ISO  = '<?= prefill.visitISO ?>';
+  </script>
+
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="hdr">
+      <div class="bar"></div>
+      <div>
+        <p class="subtitle"><strong><?= prefill.clientName ?></strong> (<?= prefill.apptId ?>)</p>
+      </div>
+    </div>
+
+    <form id="frm" onsubmit="return false;">
+      <fieldset id="formFields" style="border:0;padding:0">
+        <div class="twoCols">
+          <!-- LEFT: reps -->
+          <div class="stack">
+            <fieldset class="box">
+              <legend>Assigned Rep</legend>
+              <div class="list">
+                <? (lists.assignedReps || []).forEach(function(r){ ?>
+                  <label class="ck">
+                    <input type="checkbox" name="assignedRep" value="<?= r ?>" <?= ((prefill.assignedRep||'').indexOf(r) >= 0 ? 'checked' : '') ?>>
+                    <span><?= r ?></span>
+                  </label>
+                <? }); ?>
+              </div>
+            </fieldset>
+
+            <fieldset class="box">
+              <legend>Assisted Rep</legend>
+              <div class="list">
+                <? (lists.assistedReps || lists.assignedReps || []).forEach(function(r){ ?>
+                  <label class="ck">
+                    <input type="checkbox" name="assistedRep" value="<?= r ?>" <?= ((prefill.assistedRep||'').indexOf(r) >= 0 ? 'checked' : '') ?>>
+                    <span><?= r ?></span>
+                  </label>
+                <? }); ?>
+              </div>
+            </fieldset>
+          </div>
+
+          <!-- RIGHT: statuses + next steps -->
+          <div class="stack statusCol">
+            <label class="lbl">Sales Stage <span class="req">*</span></label>
+            <button type="button" class="colorselect" data-field="salesStage" aria-haspopup="listbox" aria-expanded="false">
+              <span class="placeholder">— Select —</span><span class="chev">▾</span>
+            </button>
+            <input id="salesStage" class="sr-only" value="<?= prefill.salesStage ?>">
+
+            <label class="lbl">Conversion Status <span class="req">*</span></label>
+            <button type="button" class="colorselect" data-field="convStatus" aria-haspopup="listbox" aria-expanded="false">
+              <span class="placeholder">— Select —</span><span class="chev">▾</span>
+            </button>
+            <input id="convStatus" class="sr-only" value="<?= prefill.convStatus ?>">
+
+            <label class="lbl">Custom Order Status <span class="req">*</span></label>
+            <button type="button" class="colorselect" data-field="customOrder" aria-haspopup="listbox" aria-expanded="false">
+              <span class="placeholder">— Select —</span><span class="chev">▾</span>
+            </button>
+            <input id="customOrder" class="sr-only" value="<?= prefill.customOrder ?>">
+
+            <!-- Wrap IPS controls so JS can show/hide this block -->
+            <div id="row-inProduction">
+              <label class="lbl">In Production Status <span class="req">*</span></label>
+              <button type="button" class="colorselect" data-field="inProduction" aria-haspopup="listbox" aria-expanded="false">
+                <span class="placeholder">— Select —</span><span class="chev">▾</span>
+              </button>
+              <input id="inProduction" class="sr-only" value="<?= prefill.inProduction ?>">
+            </div>
+
+            <!-- NEW: Order Date (required for specific COS values) -->
+            <div id="row-orderDate" style="display:none;">
+              <label class="lbl">Order Date <span class="req">*</span></label>
+              <input id="orderDate" type="date" style="width:100%;" value="<?= prefill.orderDate ?>">
+            </div>
+
+            <!-- NEW: Production Deadline (only when COS = In Production) -->
+            <div id="row-prodDeadline" style="display:none;">
+              <label class="lbl">Production Deadline <span class="req">*</span></label>
+              <input id="prodDeadline" type="date" style="width:100%;">
+            </div>
+
+            <!-- NEW: 3D Deadline (only when COS = 3D Requested / 3D Revision Requested) -->
+            <div id="row-3dDeadline" style="display:none;">
+              <label class="lbl">3D Deadline <span class="req">*</span></label>
+              <input id="deadline3d" type="date" style="width:100%;">
+            </div>
+
+            <label class="lbl">Center Stone Order Status <span class="req">*</span></label>
+            <button type="button" class="colorselect" data-field="centerStone" aria-haspopup="listbox" aria-expanded="false">
+              <span class="placeholder">— Select —</span><span class="chev">▾</span>
+            </button>
+            <input id="centerStone" class="sr-only" value="<?= prefill.centerStone ?>">
+
+            <!-- NEW: diamond readiness warnings -->
+            <div id="cs_warning" class="sub" style="color:#e55353; display:none;"></div>
+
+            <label class="lbl">Next Steps</label>
+            <textarea id="nextSteps" rows="6" style="width:100%;"><?= prefill.nextSteps ?></textarea>
+
+            <!-- Wax Print Request (optional) -->
+            <div class="divider"></div>
+            <h3>Wax Print Request (optional)</h3>
+            <label class="ck" style="display:flex;gap:8px;align-items:center">
+              <input type="checkbox" id="wr_toggle"> <span>Request Wax Print</span>
+            </label>
+
+            <div id="wr_fields" style="display:none; margin-top:8px">
+              <label class="lbl">SO/MO Number</label>
+              <input id="wr_soMo" placeholder="e.g., SO-10421 / MO-8765">
+
+              <div class="wax-row">
+                <div class="wax-field">
+                  <label class="lbl">Needed By (Rep)</label>
+                  <input id="wr_needed" type="date">
+                </div>
+                <div class="wax-field">
+                  <label class="lbl">Priority</label>
+                  <select id="wr_priority">
+                    <option value="">(select)</option>
+                    <option>Low</option><option>Normal</option><option>High</option><option>Rush</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button class="btn btn-ghost" type="button" onclick="google.script.host.close()">Cancel</button>
+        <button id="btnSubmit" class="btn btn-primary" type="button">Submit Update</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Shared popover (content injected per field on open) -->
+  <div id="chipPopover" class="popover hidden" role="listbox" aria-label="Choose status"></div>
+
+  <!-- Hidden option templates (server-rendered once; copied into popover on demand) -->
+  <div id="tmpl-salesStage" class="sr-only" aria-hidden="true">
+    <? for (var i = 0; i < lists.salesStages.length; i++) {
+         var v = lists.salesStages[i]; var hex = (colors.salesStage[v] || '').trim(); ?>
+      <button type="button" class="optchip" data-value="<?= v ?>" data-hex="<?= hex ?>"><?= v ?></button>
+    <? } ?>
+  </div>
+  <div id="tmpl-convStatus" class="sr-only" aria-hidden="true">
+    <? for (var i = 0; i < lists.convStatuses.length; i++) {
+         var v = lists.convStatuses[i]; var hex = (colors.convStatus[v] || '').trim(); ?>
+      <button type="button" class="optchip" data-value="<?= v ?>" data-hex="<?= hex ?>"><?= v ?></button>
+    <? } ?>
+  </div>
+  <div id="tmpl-customOrder" class="sr-only" aria-hidden="true">
+    <? for (var i = 0; i < lists.customOrderStatuses.length; i++) {
+         var v = lists.customOrderStatuses[i]; var hex = (colors.customOrder[v] || '').trim(); ?>
+      <button type="button" class="optchip" data-value="<?= v ?>" data-hex="<?= hex ?>"><?= v ?></button>
+    <? } ?>
+  </div>
+  <div id="tmpl-inProduction" class="sr-only" aria-hidden="true">
+    <? for (var i = 0; i < (lists.inProductionStatuses || []).length; i++) {
+        var v = lists.inProductionStatuses[i];
+        var hex = ((colors.inProduction && colors.inProduction[v]) || '').trim(); ?>
+      <button type="button" class="optchip" data-value="<?= v ?>" data-hex="<?= hex ?>"><?= v ?></button>
+    <? } ?>
+  </div>
+  <div id="tmpl-centerStone" class="sr-only" aria-hidden="true">
+    <? for (var i = 0; i < lists.centerStoneStatuses.length; i++) {
+         var v = lists.centerStoneStatuses[i]; var hex = (colors.centerStone[v] || '').trim(); ?>
+      <button type="button" class="optchip" data-value="<?= v ?>" data-hex="<?= hex ?>"><?= v ?></button>
+    <? } ?>
+  </div>
+
+  <script>
+    // ---------- Utilities ----------
+    const $ = id => document.getElementById(id);
+    function escapeHtml(s){return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));}
+    function getCheckedValues(name){ return Array.from(document.querySelectorAll('input[name="'+name+'"]:checked')).map(el=>el.value).filter(Boolean); }
+    function setFormDisabled(disabled){ const fs = $('formFields'); if (fs) fs.disabled = !!disabled; }
+    function textColorFor(hex){ const h=(hex||'').replace('#',''); if(!/^[0-9A-Fa-f]{6}$/.test(h)) return '#000'; const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return ((r*299+g*587+b*114)/1000)>=140?'#000':'#fff'; }
+
+    // Safe chip-summary renderer (no-op if container missing)
+    function renderChips(name, chipsId){
+      const box = $(chipsId); if (!box) return;
+      const vals = getCheckedValues(name);
+      box.innerHTML = vals.length
+        ? vals.map(v=>'<span class="chip">'+escapeHtml(v)+'</span>').join(' ')
+        : '<span class="muted">None selected</span>';
+    }
+
+    // ---------- Shared Popover ----------
+    const pop = $('chipPopover'); let popActiveField = ''; let popAnchor = null;
+
+    function hexFor(field, value){
+      const tmpl = $('tmpl-'+field); if (!tmpl || !value) return '';
+      const btns = tmpl.querySelectorAll('.optchip');
+      for (let i=0;i<btns.length;i++){ const b=btns[i]; if (b.getAttribute('data-value')===value) return (b.getAttribute('data-hex')||'').replace('#',''); }
+      return '';
+    }
+
+    function renderColorSelectFace(field){
+      const btn = document.querySelector('.colorselect[data-field="'+field+'"]'); if (!btn) return;
+      const val = $(field).value || '';
+      if (!val){
+        btn.innerHTML = '<span class="placeholder">— Select —</span><span class="chev">▾</span>';
+        return;
+      }
+      const hx = hexFor(field, val); const hex = hx ? '#'+hx : '#f1f5f9'; const fg = textColorFor(hx);
+      btn.innerHTML = '<span class="mini" style="background:'+hex+'; color:'+fg+'">'+escapeHtml(val)+'</span><span class="chev">▾</span>';
+    }
+
+    // --- NEW helpers for conditional IPS ---
+    function isInProductionStatus(val){
+      return /(^|\W)in\s*production($|\W)/i.test(String(val||''));
+    }
+    function syncInProductionRow(){
+      var row = document.getElementById('row-inProduction');
+      if (!row) return;
+      var show = isInProductionStatus(document.getElementById('customOrder').value);
+      row.style.display = show ? '' : 'none';
+      if (!show) {
+        var ip = document.getElementById('inProduction');
+        if (ip) { ip.value = ''; renderColorSelectFace('inProduction'); }
+      }
+      fitDialogToContent();
+    }
+
+    function openPopover(field, anchorBtn){
+      const tmpl = $('tmpl-'+field); if (!tmpl) return;
+      pop.innerHTML = tmpl.innerHTML;
+      filterPopoverChips(field);   // NEW: hide disallowed chips for this field
+      pop.dataset.field = field; popActiveField = field; popAnchor = anchorBtn;
+
+      const cur = $(field).value || '';
+      const chips = pop.querySelectorAll('.optchip');
+      chips.forEach(ch => {
+        const h = (ch.getAttribute('data-hex')||'').replace('#','');
+        const bg = /^[0-9A-Fa-f]{6}$/.test(h) ? '#'+h : '#f8fafc';
+        ch.style.background = bg; ch.style.color = textColorFor(h);
+        ch.setAttribute('aria-selected', ch.getAttribute('data-value')===cur ? 'true':'false');
+        ch.setAttribute('tabindex','-1');
+      });
+
+      const r = anchorBtn.getBoundingClientRect();
+      pop.style.top  = (window.scrollY + r.bottom + 6) + 'px';
+      pop.style.left = (window.scrollX + Math.max(8, r.left)) + 'px';
+
+      anchorBtn.setAttribute('aria-expanded','true');
+      pop.classList.remove('hidden');
+
+      (pop.querySelector('.optchip[aria-selected="true"]') || pop.querySelector('.optchip'))?.focus();
+
+      // global listeners until close
+      document.addEventListener('keydown', onKey, { capture:true });
+    }
+
+    function closePopover(){
+      if (pop.classList.contains('hidden')) return;
+      pop.classList.add('hidden'); pop.innerHTML = ''; popActiveField = '';
+      if (popAnchor) { try { popAnchor.setAttribute('aria-expanded','false'); } catch(e){} }
+      document.removeEventListener('keydown', onKey, { capture:true });
+      popAnchor = null;
+    }
+
+    // one-click apply inside popover
+    pop.addEventListener('click', function(e){
+      const chip = e.target.closest('.optchip'); if (!chip) return;
+      const field = popActiveField; if (!field) return;
+      $(field).value = chip.getAttribute('data-value') || '';
+      renderColorSelectFace(field);
+      closePopover();
+
+      // NEW: cascades & conditional UI
+      if (field === 'salesStage' || field === 'convStatus') {
+        enforceCascadeAfterStageOrConv();
+      }
+      if (field === 'customOrder') {
+        syncConditionalBlocks();
+      }
+      if (field === 'centerStone') {
+        updateCSWarning();
+      }
+      fitDialogToContent();
+    });
+
+    function onKey(e){
+      if (e.key === 'Escape'){ e.preventDefault(); closePopover(); return; }
+      if (e.key === 'Tab'){ closePopover(); return; }
+      const chips=[...pop.querySelectorAll('.optchip')]; const i=chips.indexOf(document.activeElement);
+      if ((e.key==='ArrowRight'||e.key==='ArrowDown') && chips.length){ e.preventDefault(); (chips[(i+1+chips.length)%chips.length]||chips[0]).focus(); }
+      if ((e.key==='ArrowLeft'||e.key==='ArrowUp') && chips.length){ e.preventDefault(); (chips[(i-1+chips.length)%chips.length]||chips[0]).focus(); }
+      if ((e.key==='Enter'||e.key===' ') && document.activeElement?.classList?.contains('optchip')){ e.preventDefault(); document.activeElement.click(); }
+    }
+
+    // Delegated open/close + click-away
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.colorselect');
+      if (btn) {
+        const f = btn.getAttribute('data-field'); if (!f) return;
+        if (!pop.classList.contains('hidden') && popActiveField === f) { closePopover(); }
+        else { openPopover(f, btn); }
+        return;
+      }
+      if (!e.target.closest('#chipPopover')) closePopover();
+    }, true);
+
+    // Build a neat summary line for Wax request (used by success screen)
+    function buildWaxSummary() {
+      // Adjust the IDs below only if your inputs use different ids
+      // Suggested ids (based on our last UI pass):
+      //   chkWaxReq        → checkbox for "Request Wax Print"
+      //   waxSoMo          → text input for SO/MO Number
+      //   waxNeededBy      → date input for Needed By (Rep)
+      //   waxPriority      → select for Priority
+      const req    = document.getElementById('wr_toggle');
+      const soMo   = document.getElementById('wr_soMo');
+      const need   = document.getElementById('wr_needed');
+      const prio   = document.getElementById('wr_priority');
+
+      const requested = !!(req && req.checked);
+      if (!requested) return '';
+
+      const parts = [];
+      if (soMo && soMo.value)   parts.push('SO/MO ' + soMo.value.trim());
+      if (need && need.value)   parts.push('Needed by ' + need.value);
+      if (prio && prio.value)   parts.push('Priority ' + prio.value);
+
+      return 'Wax Request — ' + (parts.length ? parts.join(' · ') : 'details pending');
+    }
+
+    // ---------- Submit ----------
+    document.getElementById('btnSubmit').addEventListener('click', onSubmit);
+
+    function onSubmit(){
+      const btn = $('btnSubmit'); btn.disabled = true; btn.textContent = 'Submitting…'; setFormDisabled(true);
+
+    // ---- Required fields (conditional) ----
+    const ssVal  = $('salesStage').value;
+    const csVal  = $('convStatus').value;
+    const cosVal = $('customOrder').value;
+    // NEW: if rules yield zero options, allow empty COS
+    const cosOptions = allowedCOSByStageConv(ssVal, csVal);
+    const cosAllowedEmpty = (cosOptions.length === 0);
+    const ipVal  = $('inProduction') ? $('inProduction').value : '';
+    const cstone = $('centerStone').value;
+
+    const mustCS = centerStoneRequired(ssVal, csVal);
+    const errs = [];
+
+    if (!ssVal)  errs.push('Sales Stage');
+    if (!csVal)  errs.push('Conversion Status');
+    if (!cosVal) errs.push('Custom Order Status');
+
+    if (requiresIPS(cosVal) && !ipVal) errs.push('In Production Status (required when COS = In Production)');
+
+    // Deadlines
+    const need3D = /^(3D Requested|3D Revision Requested)$/.test(cosVal);
+    const needPD = requiresIPS(cosVal);
+    const d3d = (document.getElementById('deadline3d') || {}).value || '';
+    const pd  = (document.getElementById('prodDeadline') || {}).value || '';
+    if (need3D && !d3d) errs.push('3D Deadline (required for 3D Requested / 3D Revision Requested)');
+    if (needPD && !pd)  errs.push('Production Deadline (required when COS = In Production)');
+
+    if (!cosAllowedEmpty && !cosVal) errs.push('Custom Order Status');
+
+
+    if (errs.length) {
+      alert('Please complete the following before submitting:\n\n• ' + errs.join('\n• '));
+      setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update';
+      return;
+    }
+      // Order Date requirement
+      if (requiresOrderDate(cosVal) && !((document.getElementById('orderDate')||{}).value || '').trim()) {
+        errs.push('Order Date (required for this Custom Order Status)');
+      }
+
+      // NEW: Conditional requirement for IPS
+      const isInProd = isInProductionStatus($('customOrder').value);
+      if (isInProd && !$('inProduction').value) {
+        alert('Please select an "In Production Status" since Custom Order Status is In Production.');
+        setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update'; return;
+      }
+
+      const pick = (name)=>Array.from(document.querySelectorAll('input[name="'+name+'"]:checked')).map(el=>el.value);
+      // Always define waxSummary so the success view doesn’t crash
+      const waxSummary = buildWaxSummary();
+
+      const payload = {
+        assignedRep: pick('assignedRep'),
+        assistedRep: pick('assistedRep'),
+        salesStage:  $('salesStage').value,
+        convStatus:  $('convStatus').value,
+        customOrder: $('customOrder').value,
+        cosAllowedEmpty: cosAllowedEmpty,
+        inProduction: $('inProduction') ? $('inProduction').value : '',
+        centerStone: $('centerStone').value,
+        nextSteps:   $('nextSteps').value,
+        orderDate:   (document.getElementById('orderDate')   || {}).value || '',
+        prodDeadline: (document.getElementById('prodDeadline') || {}).value || '',
+        deadline3d:   (document.getElementById('deadline3d')   || {}).value || '',
+
+        // Optional: send wax fields too (server ignores them if it doesn’t handle wax yet)
+        wax: {
+          request:  !!(document.getElementById('wr_toggle') && document.getElementById('wr_toggle').checked),
+          soMo:       (document.getElementById('wr_soMo')      || {}).value || '',
+          neededBy:   (document.getElementById('wr_needed')    || {}).value || '',
+          priority:   (document.getElementById('wr_priority')  || {}).value || ''
+        },
+
+        // Handy for the success screen
+        waxSummary: waxSummary
+      };
+
+
+      if (!(window.google && google.script && google.script.run)) {
+        alert('google.script.run is not available in this dialog.');
+        setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update'; return;
+      }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update';
+          if (!res || res.ok !== true) { alert('Server error: ' + (res && res.error || 'Unknown')); return; }
+          if (res.summary) { renderSuccess(res.summary); return; }
+          google.script.host.close();
+        })
+        .withFailureHandler(err => {
+          setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update';
+          alert('Server error: ' + (err && err.message || err));
+        })
+        .cs_submitFromDialog(payload);
+    }
+
+    // Success view
+    function renderSuccess(s){
+      var html = ''
+        + '<div class="wrap"><fieldset>'
+        + '<h3 style="margin:0 0 6px 0; font-size:15px;">✅ Client Status submitted</h3>'
+        + '<div><strong>Customer:</strong> ' + escapeHtml(s.clientName||'—') + ' (' + escapeHtml(s.apptId||'—') + ')</div>'
+        + '<div><strong>Assigned Rep(s):</strong> ' + escapeHtml(s.assignedRep||'—') + '</div>'
+        + (s.assistedRep ? ('<div><strong>Assisted Rep(s):</strong> ' + escapeHtml(s.assistedRep) + '</div>') : '')
+        + '<div style="margin-top:6px;"><strong>Sales Stage:</strong> ' + escapeHtml(s.salesStage||'—') + '</div>'
+        + '<div><strong>Conversion Status:</strong> ' + escapeHtml(s.convStatus||'—') + '</div>'
+        + '<div><strong>Custom Order Status:</strong> ' + escapeHtml(s.customOrder||'—') + '</div>'
+        + (s.deadline3d   ? ('<div><strong>3D Deadline:</strong> ' + escapeHtml(s.deadline3d)   + '</div>') : '')
+        + (s.orderDate ? ('<div><strong>Order Date:</strong> ' + escapeHtml(s.orderDate) + '</div>') : '')
+        + (s.inProduction ? ('<div><strong>In Production Status:</strong> ' + escapeHtml(s.inProduction) + '</div>') : '')
+        + (s.prodDeadline ? ('<div><strong>Production Deadline:</strong> ' + escapeHtml(s.prodDeadline) + '</div>') : '')
+        + '<div><strong>Center Stone Order Status:</strong> ' + escapeHtml(s.centerStone||'—') + '</div>'
+        + '<div><strong>Next Steps:</strong> ' + escapeHtml(s.nextSteps||'—') + '</div>'
+        + '<div style="margin-top:6px;"><strong>Submitted by:</strong> ' + escapeHtml(s.submittedBy||'—') + '</div>'
+        + '<div><strong>Submitted at:</strong> ' + escapeHtml(s.submittedAt||'—') + '</div>'
+        + (s.reportUrl ? ('<div style="margin-top:6px;"><strong>Client Status Report:</strong> <a href="'+s.reportUrl+'" target="_blank">Open</a></div>') : '')
+        + (s.masterLink ? ('<div><strong>100_Master row:</strong> <a href="'+s.masterLink+'" target="_blank">Open</a></div>') : '');
+
+        if (s.waxSummary) {
+          html += '<div style="margin-top:6px;"><strong>Wax:</strong> ' + escapeHtml(s.waxSummary) + '</div>';
+        }
+        if (s.wax && s.wax.created) {
+          html += '<div class="divider"></div>';
+          html += '<div><b>Wax Request:</b> created as ' + (s.wax.requestId || '') + '</div>';
+          if (s.wax.folderUrl) html += '<div><a target="_blank" href="' + s.wax.folderUrl + '">Open Wax Requests folder (upload spec sheet)</a></div>';
+          if (s.wax.rowUrl)    html += '<div><a target="_blank" href="' + s.wax.rowUrl + '">Open request row</a></div>';
+        }
+
+        html += '<div class="actions" style="margin-top:10px;"><button class="btn btn-primary" type="button" onclick="google.script.host.close()">Close</button></div>';
+        html += '</fieldset></div>';
+      document.body.innerHTML = html;
+      fitDialogToContent();
+    }
+
+    // ---------- Init ----------
+    document.addEventListener('DOMContentLoaded', () => {
+      // Pre-render the faces for prefilled values
+    ['salesStage','convStatus','customOrder','inProduction','centerStone'].forEach(renderColorSelectFace);
+
+    // NEW: apply conditional blocks & warnings on load
+    syncConditionalBlocks();
+    enforceCascadeAfterStageOrConv();
+    updateCSWarning();
+
+      // Safe no-ops if you haven't added summary holders yet
+      ['assignedRep','assistedRep'].forEach(name => renderChips(name, name+'Chips'));
+    });
+
+    // Wax toggle show/hide
+    (function(){
+      var t = document.getElementById('wr_toggle');
+      var box = document.getElementById('wr_fields');
+      if (t) {
+        t.addEventListener('change', function(){
+          box.style.display = t.checked ? '' : 'none';
+          try{ google.script.host.setHeight(Math.max(640, document.body.scrollHeight + 24)); }catch(_){}
+        });
+      }
+    })();
+
+    // ====== RULE HELPERS (client-side) ======
+    function uniq(list){ const s=new Set(); const out=[]; (list||[]).forEach(v=>{ if(v && !s.has(v)){ s.add(v); out.push(v); } }); return out; }
+
+    function allowedConvByStage(stage){
+      return uniq((RULES_FLAT.matrix||[])
+        .filter(r => r.salesStage === String(stage||'').trim())
+        .map(r => r.convStatus));
+    }
+    function allowedCOSByConv(conv){
+      return uniq((RULES_FLAT.matrix||[])
+        .filter(r => r.convStatus === String(conv||'').trim())
+        .map(r => r.customOrderStatus));
+    }
+
+    // NEW: Stage+Conversion aware Custom Order list (fallback to (any) if no exact rows)
+    function allowedCOSByStageConv(stage, conv){
+      const s = String(stage||'').trim();
+      const c = String(conv||'').trim();
+      const m = (RULES_FLAT.matrix||[]).filter(r => String(r.customOrderStatus||'').trim());
+
+      // Prefer exact stage match
+      const exact = m.filter(r => r.salesStage === s && r.convStatus === c)
+                    .map(r => r.customOrderStatus);
+      if (exact.length) return uniq(exact);
+
+      // Fallback to (any) for cross-stage rules
+      const any = m.filter(r => r.salesStage === '(any)' && r.convStatus === c)
+                  .map(r => r.customOrderStatus);
+      return uniq(any);
+    }
+
+    function requiresIPS(customOrder){ return String(customOrder||'').trim() === 'In Production'; }
+    function prohibitsIPS(customOrder){ return String(customOrder||'').trim() === 'Approved for Production'; }
+
+    function centerStoneRequired(stage, conv){
+      if (/^Lost Lead/i.test(String(stage||''))) return false;
+      if (/^Viewing Scheduled$/i.test(String(conv||''))) return true;
+      if (/^(Deposit Paid|Confirmed Order|Order In Progress)$/i.test(String(conv||''))) return true;
+      return false;
+    }
+
+    function daysUntilViewing(){
+      if (!VISIT_ISO) return null;
+      const t = new Date(VISIT_ISO); if (isNaN(t)) return null;
+      const now = new Date(); return Math.floor((t - now) / (1000*60*60*24));
+    }
+
+    function allowedCenterStone(stage, conv, dLeft){
+      // Special cases
+      if (/^Lost Lead/i.test(String(stage||''))) return []; // must be blank
+      if (/^(Deposit Paid|Confirmed Order|Order In Progress)$/i.test(String(conv||''))) {
+        return ['Diamond Deposit, Confirmed Order'];
+      }
+      if (/^Viewing Scheduled$/i.test(String(conv||''))) {
+        // Baseline allowed under Viewing Scheduled
+        const base = [
+          'Diamond Memo – Proposed',
+          'Diamond Memo – SOME On the Way',
+          'Diamond Memo – NONE APPROVED',
+          'Diamond Memo – On the Way',
+          'Diamond Memo – SOME Delivered',
+          'Diamond Memo – Delivered',
+          'Diamond Viewing Ready'
+        ];
+        if (typeof dLeft !== 'number') return base;
+        if (dLeft < 2)  return ['Diamond Viewing Ready'];
+        if (dLeft < 3)  return ['Diamond Memo – SOME Delivered','Diamond Memo – Delivered','Diamond Viewing Ready'];
+        if (dLeft < 7)  return ['Diamond Memo – SOME On the Way','Diamond Memo – On the Way','Diamond Memo – SOME Delivered','Diamond Memo – Delivered','Diamond Viewing Ready'];
+        if (dLeft < 10) return base.filter(v => v !== 'Diamond Memo – Proposed');
+        return base;
+      }
+      // Otherwise not required → show all options but do not require
+      // We'll just return null to avoid hiding anything (user can leave blank)
+      return null;
+    }
+
+    function updateCSWarning(){
+      const el = document.getElementById('cs_warning'); if (!el) return;
+      const conv = document.getElementById('convStatus').value;
+      const pick = document.getElementById('centerStone').value;
+      const d = daysUntilViewing();
+      let msg = '';
+      if (conv === 'Viewing Scheduled' && typeof d === 'number') {
+        if (d < 2 && pick !== 'Diamond Viewing Ready') {
+          msg = 'Viewing is in < 2 days → Center Stone must be “Diamond Viewing Ready”.';
+        } else if (d < 3 && !['Diamond Memo – SOME Delivered','Diamond Memo – Delivered','Diamond Viewing Ready'].includes(pick)) {
+          msg = 'Viewing is in < 3 days → Status must be SOME Delivered / Delivered / Ready.';
+        } else if (d < 7 && !['Diamond Memo – SOME On the Way','Diamond Memo – On the Way','Diamond Memo – SOME Delivered','Diamond Memo – Delivered','Diamond Viewing Ready'].includes(pick)) {
+          msg = 'Viewing is in < 7 days → Must be On the Way / SOME On the Way / SOME Delivered / Delivered / Ready.';
+        } else if (d < 10 && pick === 'Diamond Memo – Proposed') {
+          msg = 'Viewing is in < 10 days → Status cannot still be “Proposed”.';
+        }
+      }
+      if (msg) { el.textContent = msg; el.style.display = ''; }
+      else { el.textContent = ''; el.style.display = 'none'; }
+    }
+
+    function clearIfNotAllowed(field, allowed) {
+      const inp = document.getElementById(field);
+      if (!inp) return;
+      const cur = inp.value;
+      if (cur && Array.isArray(allowed) && allowed.length && !allowed.includes(cur)) {
+        inp.value = '';
+        renderColorSelectFace(field);
+      }
+    }
+
+    // Filter chips on open
+    function filterPopoverChips(field){
+      const chips = document.querySelectorAll('#chipPopover .optchip');
+      let allowed = null;
+
+      if (field === 'convStatus') {
+        const ss = document.getElementById('salesStage').value;
+        allowed = allowedConvByStage(ss);
+      } else if (field === 'customOrder') {
+        const ss = document.getElementById('salesStage').value;
+        const cs = document.getElementById('convStatus').value;
+        allowed = allowedCOSByStageConv(ss, cs);
+      } else if (field === 'centerStone') {
+        const ss = document.getElementById('salesStage').value;
+        const cs = document.getElementById('convStatus').value;
+        allowed = allowedCenterStone(ss, cs, daysUntilViewing());
+        // allowed === null → don't hide anything (not required)
+      } else if (field === 'inProduction') {
+        // Only meaningful when Custom Order = In Production
+        const show = requiresIPS(document.getElementById('customOrder').value);
+        allowed = show ? null : []; // empty → hide all
+      }
+
+      chips.forEach(ch => {
+        if (!allowed) { ch.style.display = ''; return; }               // null → show all
+        const val = ch.getAttribute('data-value') || '';
+        ch.style.display = allowed.includes(val) ? '' : 'none';
+      });
+    }
+
+    // Enforce cascades after a selection
+    function enforceCascadeAfterStageOrConv(){
+      const ss = document.getElementById('salesStage').value;
+      const cs = document.getElementById('convStatus').value;
+
+      // conv must be allowed by stage
+      clearIfNotAllowed('convStatus', allowedConvByStage(ss));
+
+      // custom order must be allowed by Stage+Conv (or be cleared if not allowed)
+      const cosAllowed = allowedCOSByStageConv(ss, cs);
+      clearIfNotAllowed('customOrder', cosAllowed);
+
+
+      // center stone warnings and requirement hint
+      updateCSWarning();
+    }
+
+    // Handle visibility/requirements for IPS + deadlines
+    function syncConditionalBlocks(){
+      const cos = document.getElementById('customOrder').value;
+      const showIPS = requiresIPS(cos);
+      const banIPS  = prohibitsIPS(cos);
+
+      const rowOD = document.getElementById('row-orderDate');
+      if (rowOD) rowOD.style.display = requiresOrderDate(cos) ? '' : 'none';
+
+      // Show/hide IPS row
+      const rowIPS = document.getElementById('row-inProduction');
+      if (rowIPS) rowIPS.style.display = showIPS ? '' : 'none';
+      if (!showIPS || banIPS) {
+        const ip = document.getElementById('inProduction');
+        if (ip) { ip.value = ''; renderColorSelectFace('inProduction'); }
+      }
+
+      // Production Deadline only when COS = In Production
+      const rowPD = document.getElementById('row-prodDeadline');
+      if (rowPD) rowPD.style.display = showIPS ? '' : 'none';
+
+      // 3D Deadline only when COS = 3D Requested / 3D Revision Requested
+      const row3D = document.getElementById('row-3dDeadline');
+      const need3D = /^(3D Requested|3D Revision Requested)$/.test(cos);
+      if (row3D) row3D.style.display = need3D ? '' : 'none';
+    }
+
+    function requiresOrderDate(cos){
+      const s = String(cos||'').trim();
+      if (!s) return false;
+      return /^(Approved for Production|Waiting Production Timeline|In Production|Final Photos\s*[–-]\s*Waiting Approval|Warehouse|Ship to US|In US Store|Ship to Customer|Order Completed)$/i.test(s);
+    }
+
+
+  </script>
+</body>
+</html>

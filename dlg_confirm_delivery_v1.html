@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font: 13px/1.35 Arial, Helvetica, sans-serif; margin: 0; color: #222; }
+    header { padding: 14px 18px; border-bottom: 1px solid #e5e5e5; background: #fafafa; }
+    h1 { font-size: 16px; margin: 0 0 6px; }
+    .chip { display:inline-flex; align-items:center; padding:3px 8px; border-radius:12px; background:#f0f3f7; border:1px solid #e3e8ee; font-size:12px; margin-left:6px; }
+    .sticky { position: sticky; top: 0; background: #fafafa; z-index: 3; border-bottom: 1px solid #eee; padding: 10px 18px; }
+    .topbar { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
+    .col-3 { grid-column: span 3; } .col-2 { grid-column: span 2; } .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; }
+    .btn { border: 1px solid #d0d7de; background: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+    .btn.primary { background: #0b5cff; border-color: #0b5cff; color: #fff; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    input[type="text"], input[type="date"] { padding: 5px 6px; border: 1px solid #d0d7de; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #f0f0f0; padding: 6px; vertical-align: top; }
+    th { background: #fafafa; position: sticky; top: 86px; z-index: 2; }
+    .wrap { padding: 0 18px 18px; }
+    .msg { margin: 12px 18px; padding: 10px; border: 1px solid #e5e5e5; background: #f8f9fb; border-radius: 6px; }
+    .warn { background: #fff7e6; border-color: #ffd591; }
+    .success { background: #f6ffed; border-color: #b7eb8f; }
+    .muted { color: #666; }
+    .group { background: #f7f9fc; font-weight: 600; }
+    .right { text-align:right; }
+    .small { font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>💎 Confirm Delivery</h1>
+  <div class="chip">Source: <b id="meta-file">…</b> <span class="muted" id="meta-tab" style="margin-left:6px;"></span></div>
+</header>
+
+<div class="sticky">
+  <div class="topbar">
+    <div class="col-3">
+      <div class="small muted">Default Memo / Invoice Date</div>
+      <input type="date" id="defMemo">
+    </div>
+    <div class="col-4" style="display:flex; align-items:flex-end; gap:8px;">
+      <label><input type="checkbox" id="applyDefault" checked> Apply default date to all selected</label>
+    </div>
+    <div class="col-5 right">
+      <button class="btn primary" id="btnSave" onclick="save()" disabled>Mark In Stock (0)</button>
+    </div>
+  </div>
+</div>
+
+<div id="msg" class="msg warn" style="display:none;"></div>
+
+<div class="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:28px;"><input type="checkbox" id="selAll" onclick="toggleAll(this)"></th>
+        <th>Vendor</th>
+        <th>Type</th>
+        <th>Shape</th>
+        <th>Carat</th>
+        <th>Color</th>
+        <th>Clarity</th>
+        <th>LAB</th>
+        <th>Cert #</th>
+        <th>Customer</th>
+        <th>Appt Date/Time</th>
+        <th>Assigned Rep</th>
+        <th>Company</th>
+        <th style="width:140px;">Memo / Invoice Date</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div id="result" class="msg success" style="display:none;"></div>
+</div>
+
+<script>
+  const BOOTSTRAP = <?!= JSON.stringify(bootstrap) ?>;
+  const META = BOOTSTRAP.meta || {};
+  let ITEMS = BOOTSTRAP.items || [];   // each: { rowIndex, rootApptId, ... }
+  let EDITS = new Map();               // rowIndex -> { selected: true, memoDate?: 'YYYY-MM-DD' }
+
+  function showMsg(t, cls){ const m=document.getElementById('msg'); m.className='msg '+(cls||''); m.textContent=t; m.style.display='block'; }
+  function hideMsg(){ document.getElementById('msg').style.display='none'; }
+
+  function init() {
+    document.getElementById('meta-file').innerHTML =
+      '<a href="'+(META.spreadsheetUrl||'#')+'" target="_blank">200_ workbook</a>';
+    document.getElementById('meta-tab').textContent = '(Tab: ' + (META.tab||'') + ')';
+    document.getElementById('defMemo').value = BOOTSTRAP.defaults.memoDateDefault || '';
+
+    render();
+  }
+
+  function toggleAll(cb) {
+    const checked = !!cb.checked;
+    const tb = document.getElementById('rows');
+    [...tb.querySelectorAll('input[type="checkbox"][data-row]')].forEach(ch => {
+      ch.checked = checked;
+      setSelected(Number(ch.dataset.row), checked);
+    });
+  }
+
+  function setSelected(rowIndex, selected) {
+    const cur = EDITS.get(rowIndex) || {};
+    cur.selected = !!selected;
+    EDITS.set(rowIndex, cur);
+    syncSaveState();
+  }
+  function setMemo(rowIndex, ymd) {
+    const cur = EDITS.get(rowIndex) || {};
+    cur.memoDate = ymd;
+    EDITS.set(rowIndex, cur);
+  }
+
+  function render() {
+    const tb = document.getElementById('rows'); tb.innerHTML = '';
+    if (!ITEMS.length) {
+      showMsg('No stones with Order Status = "On the Way" (excluding those already In Stock).', 'warn');
+      document.getElementById('btnSave').disabled = true;
+      return;
+    }
+
+    let lastGroup = '';
+    ITEMS.forEach(it => {
+      const groupKey = (it.customerName || '') + ' — ' + (it.rootApptId || '');
+      if (groupKey !== lastGroup) {
+        const trg = document.createElement('tr'); trg.className = 'group';
+        const tdg = document.createElement('td'); tdg.colSpan = 15;
+        tdg.textContent = groupKey + (it.apptTimeDate ? '  •  ' + it.apptTimeDate : '');
+        trg.appendChild(tdg);
+        tb.appendChild(trg);
+        lastGroup = groupKey;
+      }
+
+      const tr = document.createElement('tr');
+      tr.dataset.rowIndex = it.rowIndex;
+
+      // Select
+      const tdSel = document.createElement('td');
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.row = it.rowIndex;
+      cb.onchange = () => setSelected(it.rowIndex, cb.checked);
+      tdSel.appendChild(cb); tr.appendChild(tdSel);
+
+      // Data cols
+      tr.appendChild(td(it.vendor));
+      tr.appendChild(td(it.stoneType));
+      tr.appendChild(td(it.shape));
+      tr.appendChild(td(it.carat));
+      tr.appendChild(td(it.color));
+      tr.appendChild(td(it.clarity));
+      tr.appendChild(td(it.lab));
+      tr.appendChild(td(it.certNo));
+      tr.appendChild(td(it.customerName));
+      tr.appendChild(td(it.apptTimeDate));
+      tr.appendChild(td(it.assignedRep));
+      tr.appendChild(td(it.company));
+
+      // Memo / Invoice Date (per row)
+      const tdMemo = document.createElement('td');
+      const inp = document.createElement('input'); inp.type = 'date';
+      inp.value = (document.getElementById('applyDefault').checked ? document.getElementById('defMemo').value : '');
+      inp.onchange = () => setMemo(it.rowIndex, inp.value);
+      if (document.getElementById('applyDefault').checked) {
+        inp.disabled = true;
+        inp.title = 'Apply default date is ON';
+      }
+      tdMemo.appendChild(inp);
+      tr.appendChild(tdMemo);
+
+      document.getElementById('applyDefault').addEventListener('change', () => {
+        const apply = document.getElementById('applyDefault').checked;
+        inp.disabled = apply;
+        if (apply) {
+          inp.value = document.getElementById('defMemo').value;
+        } else {
+          // keep explicit per-row value
+        }
+        tdDue.textContent = previewDue(inp.value || document.getElementById('defMemo').value);
+      });
+
+      tb.appendChild(tr);
+    });
+
+    syncSaveState();
+  }
+
+  function td(text){ const el=document.createElement('td'); el.textContent = text || ''; return el; }
+
+  function syncSaveState() {
+    let n = 0; EDITS.forEach(v => { if (v && v.selected) n++; });
+    const btn = document.getElementById('btnSave');
+    btn.textContent = 'Mark In Stock (' + n + ')';
+    btn.disabled = (n === 0);
+  }
+
+  function payloadForSubmit() {
+    const applyDefault = !!document.getElementById('applyDefault').checked;
+    const defMemo = document.getElementById('defMemo').value || '';
+    const items = [];
+    EDITS.forEach((v, rowIndex) => {
+      if (!v || !v.selected) return;
+      const itm = ITEMS.find(x => x.rowIndex === rowIndex);
+      if (!itm) return;
+      items.push({
+        rowIndex: rowIndex,
+        rootApptId: itm.rootApptId,
+        memoDate: v.memoDate || '',
+        selected: true
+      });
+    });
+    return { defaultMemoDate: defMemo, applyDefaultToAll: applyDefault, items: items };
+  }
+
+  function save() {
+    hideMsg();
+    const btn = document.getElementById('btnSave');
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    const payload = payloadForSubmit();
+    if (!payload.items.length) { showMsg('Nothing selected.', 'warn'); btn.disabled=false; btn.textContent='Mark In Stock (0)'; return; }
+
+    google.script.run
+      .withSuccessHandler(function(res){
+        btn.disabled = false; btn.textContent = 'Mark In Stock (0)';
+        const s = document.getElementById('result');
+        s.style.display = 'block';
+        const updated = res.updatedCount || 0;
+        const apps = (res.appointments||[]).map(a => a.rootApptId + ' ✔︎').join(', ');
+        s.innerHTML = '<b>Saved.</b> Marked '+updated+' stone(s) In Stock. ' +
+          (META.spreadsheetUrl ? (' <a href="'+META.spreadsheetUrl+'" target="_blank">Open 200_ workbook</a> (Tab: '+(META.tab||'')+')') : '') +
+          (apps ? ('<br><span class="muted">Appointments refreshed: '+apps+'</span>') : '');
+
+        // Remove updated rows from view
+        if (Array.isArray(res.updatedRows)) {
+          const done = new Set(res.updatedRows.map(x => x.rowIndex));
+          ITEMS = ITEMS.filter(x => !done.has(x.rowIndex));
+        }
+        EDITS.clear();
+        // uncheck Select All if present
+        const sa = document.getElementById('selAll'); if (sa) sa.checked = false;
+        render();
+
+        if (res.skipped && res.skipped.length) {
+          showMsg('Some rows were skipped: ' + JSON.stringify(res.skipped), 'warn');
+        }
+      })
+      .withFailureHandler(function(err){
+        btn.disabled = false; btn.textContent = 'Mark In Stock (0)';
+        showMsg((err && err.message) ? err.message : String(err), 'error');
+      })
+      .dp_submitConfirmDelivery(payload);
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

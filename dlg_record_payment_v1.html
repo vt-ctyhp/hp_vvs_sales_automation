@@ -1,0 +1,1030 @@
+<!doctype html>
+<!-- 2.1 - dlg_record_payment_v1.html — FINAL v6.2 (2025‑09-04)
+   Change scope (UI‑only; no server/data‑flow changes):
+     • Prevent double‑submit: disable Submit and freeze all inputs after first click.
+     • While frozen, all fields are disabled/greyed so users can’t keep typing.
+     • If any server step fails, UI is automatically unfrozen.
+     • Success overlay shows only a single “Close” button (removed “Continue”).
+   Pairs with the current Payments_v1.gs.
+-->
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<title>Record Payment</title>
+<style>
+  :root { --font: system-ui,-apple-system,Segoe UI,Roboto,Arial; }
+  body { margin: 0; padding: 16px; font: 13px/1.48 var(--font); color:#111; }
+  h2 { margin: 0 0 12px; font-size: 20px; }
+  .wrap { display: grid; grid-template-columns: 1fr 3fr; gap: 16px; }
+  fieldset { border:1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; }
+  legend { padding: 0 6px; font-weight: 600; color:#222; }
+  .row { display:grid; grid-template-columns: 140px 1fr; gap:10px; align-items:center; }
+  label { font-weight: 600; }
+  input[type="text"], input[type="number"], input[type="datetime-local"], select, textarea {
+    width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px;
+  }
+  input[type="datetime-local"] { font-size: 12.5px; }
+  textarea { resize: vertical; white-space: pre-wrap; }
+  .muted { color:#6a737d; font-size:12px; }
+  .btns { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }
+  button { padding: 8px 12px; border: 0; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .primary { background:#1f6feb; color:#fff; }
+  .ghost { background:#f6f8fa; }
+  .card { border:1px solid #e5e7eb; background:#f9fafb; border-radius:8px; padding:10px; }
+  .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px; }
+  .kv div { min-height: 20px; }
+  .table-head { display:grid; grid-template-columns: minmax(240px,0.5fr) 90px 120px 36px; gap:8px; align-items:center; font-weight:600; margin-bottom:6px; }
+  .xbtn { width:32px; height:32px; border-radius:6px; border:0; background:#f3f4f6; cursor:pointer; }
+  .note { font-size:12px; color:#6a737d; }
+  .err { color:#b91c1c; font-size:12px; margin-top:6px; display:none; }
+  .warn { color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; padding:8px; border-radius:8px; margin-top:8px; display:none; }
+
+
+  /* Success overlay */
+  #successPanel { display:none; position:fixed; inset:0; background:rgba(17,24,39,.55); z-index:9999; align-items:center; justify-content:center; }
+  #successCard { background:#fff; border-radius:12px; padding:16px; width:720px; max-width:92vw; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  #successCard h3 { margin:0 0 8px; }
+  #successCard .grid { display:grid; grid-template-columns: 160px 1fr; gap:6px 12px; }
+  #successCard .btns { justify-content:flex-end; margin-top:12px; }
+  a[target="_blank"] { color:#1f6feb; text-decoration:none; }
+
+
+  /* Freeze/disable visuals (no behavior changes) */
+  input:disabled, select:disabled, textarea:disabled, button:disabled { opacity:.6; background:#f3f4f6 !important; color:#6b7280 !important; cursor:not-allowed !important; }
+  body.isFrozen { cursor: wait; }
+</style>
+</head>
+
+
+<body>
+
+
+<div class="wrap">
+  <!-- LEFT: Prefill + Order Details -->
+  <section>
+    <fieldset>
+      <legend>Prefill</legend>
+      <div id="prefillBox" class="card">
+        <div class="muted">Loading active row…</div>
+      </div>
+    </fieldset>
+
+
+    <fieldset style="margin-top:12px">
+      <legend>Order Details (for Invoice/Receipt)</legend>
+
+
+      <div class="left-actions" style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
+        <button type="button" class="ghost" id="btnBuildFrom3D">Build line from 3D</button>
+        <span class="note">Pulls latest specs from the 3D Revision Log (skips blanks).</span>
+      </div>
+
+
+      <!-- Line items repeater -->
+      <div id="orderBox" class="card">
+        <div class="table-head">
+          <div>Description</div><div style="text-align:right;">Qty</div><div style="text-align:right;">Amount</div><div></div>
+        </div>
+        <div id="lineItems"></div>
+
+
+        <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button type="button" class="ghost" id="btnAddLine">+ Add line</button>
+            <label class="note" style="display:flex; align-items:center; gap:8px; font-weight:500;">
+              <input id="chkAssignOT" type="checkbox" />
+              Assign “Order Total” from Lines Subtotal (write to sheets)
+            </label>
+          </div>
+          <div style="font-weight:600;">Lines Subtotal: <span id="linesSubtotal">$0.00</span></div>
+        </div>
+        <div class="muted" style="margin-top:6px;">These descriptions print on the Invoice/Receipt.</div>
+      </div>
+    </fieldset>
+  </section>
+
+
+
+
+  <!-- RIGHT: Payment + Docs + Financial Summary -->
+  <section>
+    <form id="f" novalidate>
+      <script>
+        // Prevent Enter from submitting the form, which would freeze the UI
+        (function preventEnterSubmit(){
+          try {
+            var form = document.getElementById('f');
+            form.addEventListener('keydown', function(e){
+              if (e.key === 'Enter') e.preventDefault();
+            });
+          } catch(_) {}
+        })();
+      </script>
+      <fieldset>
+        <legend>Payment</legend>
+        <div class="row">
+          <label id="lblAmount" for="amount">Amount</label>
+          <input id="amount" name="amount" type="number" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="row">
+          <label for="date">Payment Date/Time</label>
+          <input id="date" name="date" type="datetime-local" />
+        </div>
+        <div class="row" style="align-items:start;">
+          <label for="method">Method</label>
+          <div>
+            <select id="method" name="method">
+              <option value="" disabled selected>Select…</option>
+              <option>Card</option>
+              <option>Wire</option>
+              <option>Zelle</option>
+              <option>Cash</option>
+              <option>Check</option>
+              <option>Other</option>
+            </select>
+            <div id="methodErr" class="err">Please select a payment method.</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="reference">Reference</label>
+          <input id="reference" name="reference" type="text" placeholder="Auth code / Ref / Check #" />
+        </div>
+        <div class="row">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="3" placeholder="Optional note on this payment"></textarea>
+        </div>
+      </fieldset>
+
+
+
+
+
+
+
+
+      <fieldset style="margin-top:12px">
+        <legend>Documents</legend>
+         <!-- Status first, no default -->
+         <div class="row">
+           <label for="docStatus">Status</label>
+           <select id="docStatus" name="docStatus">
+             <option value="" selected disabled>— Select —</option>
+             <option value="DRAFT">Draft</option>
+             <option value="ISSUED">Issue now</option>
+           </select>
+         </div>
+
+
+         <!-- Then Doc Type -->
+         <div class="row">
+           <label for="docType">Doc Type</label>
+           <select id="docType" name="docType">
+             <option value="Deposit Receipt">Deposit Receipt</option>
+             <option value="Deposit Invoice">Deposit Invoice</option>
+             <option value="Sales Invoice">Sales Invoice</option>
+             <option value="Sales Receipt">Sales Receipt</option>
+           </select>
+         </div>
+         <div id="roleTag" class="muted" style="margin:6px 0 0 0;"></div>
+        <details style="margin-top:8px;">
+           <summary>Advanced</summary>
+           <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;margin-top:10px">
+             <label for="docRole" style="font-weight:600;">Role</label>
+             <select id="docRole">
+               <option value="">(auto)</option>
+               <option value="DEPOSIT">Deposit (Invoice)</option>
+               <option value="PROGRESS">Progress (Invoice)</option>
+               <option value="FINAL">Final (Invoice)</option>
+               <option value="CREDIT">Credit (Invoice)</option>
+               <option value="PAYMENT_RECEIPT">Payment Receipt</option>
+               <option value="SALES_RECEIPT">Sales Receipt</option>
+             </select>
+
+
+             <label for="supersedes" style="font-weight:600;">Supersedes Doc#</label>
+             <select id="supersedes"><option value="">(none)</option></select>
+
+
+             <label for="appliesTo" style="font-weight:600;">Applies To Doc#</label>
+             <select id="appliesTo"><option value="">(none)</option></select>
+           </div>
+         </details>
+      </fieldset>
+
+
+      <fieldset style="margin-top:12px">
+        <legend>Financial Summary</legend>
+        <div class="card" id="finSum">
+          <div class="kv">
+            <div><b>Lines Subtotal</b></div><div id="fs_lines">$0.00</div>
+            <div><b id="fs_payment_label">Payment</b></div><div id="fs_payment">$0.00</div>
+            <div><b>Remaining Balance</b></div><div id="fs_remain">$0.00</div>
+          </div>
+          <div id="overpayWarn" class="warn"></div>
+          <div id="srErr" class="err" style="display:none;">Sales Receipt must cover the full remaining balance.</div>
+          <div id="docTypeHint" class="warn" style="display:none;"></div>
+        </div>
+        <div class="muted" style="margin-top:6px;">Initialized from current balance; updates when you edit amount/lines.</div>
+      </fieldset>
+
+
+
+
+      <div class="btns">
+        <button id="btnClose" type="button" class="ghost" onclick="google.script.host.close()">Close</button>
+        <button id="btnSubmit" type="button" class="primary">Submit</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+
+<!-- Success overlay -->
+<div id="successPanel">
+  <div id="successCard">
+    <h3>Saved ✓</h3>
+    <div class="grid" id="successGrid"></div>
+    <div class="btns">
+      <!-- Continue removed per request -->
+      <button id="btnSuccessClose" class="primary" onclick="google.script.host.close()">Close</button>
+    </div>
+  </div>
+</div>
+
+
+<script id="early-boot">
+ (function(){
+   var box = null;
+   function set(msg){ try{ (box|| (box=document.getElementById('prefillBox'))).innerHTML =
+     '<div class="muted">'+msg+'</div>'; }catch(_){} }
+
+
+   // Show any runtime/parse errors in the Prefill card (so it never looks stuck)
+   window.addEventListener('error', function(e){
+     try{
+       (box|| (box=document.getElementById('prefillBox'))).innerHTML =
+         '<div class="card" style="background:#fff7ed;border-color:#fed7aa;">'
+       + '<div style="font-weight:600;color:#9a3412;">Client JS error</div>'
+       + '<div class="muted">'+ (e && e.message ? e.message : e) +'</div>'
+       + '</div>';
+     }catch(_){}
+   });
+
+
+   function start(){
+     if (window.__rp_booted) return;
+     window.__rp_booted = true;
+     set('Loading prefill…');
+
+
+     // Optional trace to Executions for heartbeat
+     try { if (google && google.script && google.script.run) google.script.run.rp_trace('earlyBoot start'); } catch(_){}
+
+
+     // Call rp_init (no DOM dependencies). If the later renderer isn't loaded,
+     // show a minimal card so the user still sees data.
+     function renderFallback(p){
+       try{
+         var b = (box|| (box=document.getElementById('prefillBox')));
+         var so  = (p && (p.soNumber||'')) || '';
+         var cust= (p && (p.customerName||'')) || '';
+         var br  = (p && (p.brand||'')) || '';
+         var ot  = (p && p.orderTotal) ? p.orderTotal : '';
+         var ptd = (p && p.paidToDate) ? p.paidToDate : '';
+         b.innerHTML =
+           '<div class="kv"><div><b>Anchor</b></div><div>'+(p&&p.anchorType||'')+'</div>'
+         + '<div><b>Brand</b></div><div>'+br+'</div>'
+         + '<div><b>Customer</b></div><div>'+cust+'</div>'
+         + '<div><b>SO#</b></div><div>'+so+'</div>'
+         + '<div><b>Order Total</b></div><div>'+ot+'</div>'
+         + '<div><b>Paid-To-Date</b></div><div>'+ptd+'</div></div>';
+       }catch(_){}
+     }
+
+
+     google.script.run
+       .withSuccessHandler(function(p){
+         window.__rp_prefill = p;
+         // Prefer your full renderer if it exists; otherwise fallback.
+         if (typeof renderPrefill === 'function') { try { renderPrefill(p); } catch(e){ renderFallback(p); } }
+         else { renderFallback(p); }
+       })
+       .withFailureHandler(function(err){
+         set('Prefill error: ' + (err && err.message ? err.message : err));
+       })
+       .rp_init();
+   }
+
+
+   // Run now if ready; otherwise wait. Also poll in case Apps Script runtime injects late.
+   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+   var tries = 0, t = setInterval(function(){
+     if (window.google && google.script && google.script.run){ clearInterval(t); start(); }
+     else if (++tries > 50){ clearInterval(t); set('Failed to initialize (runtime not ready).'); }
+   }, 100);
+ })();
+</script>
+
+
+
+
+<script>
+  // ---------- sizing helper ----------
+  function fitDialogToContent(widthPx){
+    try {
+      var W = widthPx || 980;
+      google.script.host.setWidth(W);
+      requestAnimationFrame(function(){
+        var computed = document.body.scrollHeight + 24;
+        var h = Math.max(420, Math.min(1000, computed));
+        google.script.host.setHeight(h);
+      });
+    } catch(_) {}
+  }
+  fitDialogToContent(980);
+
+
+  // Coalesce multiple height updates triggered in the same frame
+ let __fitScheduled = false;
+ function scheduleFitDialog(){
+   if (__fitScheduled) return;
+   __fitScheduled = true;
+   requestAnimationFrame(function(){
+     __fitScheduled = false;
+     fitDialogToContent(980);
+   });
+ }
+
+
+  function html(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  const fmtCurrency = (n) => '$' + (isFinite(n) ? Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '0.00');
+  // Element cache used by updateFinancialSummary() and others.
+  // MUST be defined before the repeater calls updateSubtotal() → updateFinancialSummary().
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    amount: $('amount'),
+    fs_lines: $('fs_lines'),
+    fs_payment: $('fs_payment'),
+    fs_remain: $('fs_remain'),
+    docType: $('docType')
+  };
+
+  const num = (v) => { const n = parseFloat(String(v||'').replace(/[^\d.\-]/g,'')); return isFinite(n) ? n : 0; };
+
+
+  // Freeze / unfreeze entire dialog (except Close buttons)
+  const _SKIP_FREEZE_IDS = new Set(['btnClose','btnSuccessClose']);
+  function freezeUI(on){
+    try{
+      document.body.classList.toggle('isFrozen', !!on);
+      document.querySelectorAll('input, select, textarea, button').forEach(el => {
+        if (_SKIP_FREEZE_IDS.has(el.id)) return;
+        if (on) {
+          el.dataset.prevDisabled = el.disabled ? '1' : '0';
+          el.disabled = true;
+        } else {
+          if (el.dataset.prevDisabled === '0') el.disabled = false;
+          delete el.dataset.prevDisabled;
+        }
+      });
+    } catch(_) {}
+  }
+
+  window.__rp_context = { orderTotal: 0, paidToDate: 0, balance: 0, anchorType: 'APPT' };
+  window.__rp_prefill = null;
+
+
+  // ---------- line items repeater (CLEAN) ----------
+  const elLines = document.getElementById('lineItems');
+  const elSubtotal = document.getElementById('linesSubtotal');
+
+  function makeLine({desc='', qty=1, amt=''} = {}) {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'grid';
+    wrap.style.gridTemplateColumns = 'minmax(240px,0.5fr) 90px 120px 36px';
+    wrap.style.gap = '8px';
+    wrap.style.alignItems = 'center';
+    wrap.style.margin = '4px 0';
+
+    const d = document.createElement('textarea');
+    d.rows = 4; d.style.minHeight = '96px';
+    d.placeholder = 'e.g., Custom Ring Setting — details…';
+    d.value = desc;
+
+    const q = document.createElement('input');
+    q.type = 'number'; q.step = '1'; q.min = '1'; q.value = qty;
+
+    const a = document.createElement('input');
+    a.type = 'number'; a.step = '0.01'; a.placeholder = '0.00';
+    a.value = (amt === '' ? '' : amt);
+
+    const rm = document.createElement('button');
+    rm.type = 'button'; rm.textContent = '×'; rm.title = 'Remove line'; rm.className = 'xbtn';
+
+    wrap.appendChild(d); wrap.appendChild(q); wrap.appendChild(a); wrap.appendChild(rm);
+    return wrap;
+  }
+
+  function readLines(){
+    return Array.from(elLines.children).map(row => {
+      const [d,q,a] = row.querySelectorAll('textarea, input');
+      return { desc: d.value.trim(), qty: Math.max(1, parseInt(q.value,10) || 1), amt: parseFloat(a.value) || 0 };
+    }).filter(r => r.desc || r.amt);
+  }
+
+  function linesSubtotalFast(){
+    let sum = 0;
+    for (const row of elLines.children) {
+      const parts = row.querySelectorAll('textarea, input');
+      const qty = Math.max(1, parseInt(parts[1].value, 10) || 1);
+      const amt = parseFloat(parts[2].value) || 0;
+      sum += qty * amt;
+    }
+    return sum;
+  }
+  const linesSubtotalNow = () => readLines().reduce((t,r)=>t+(r.qty*r.amt),0);
+
+  function updateSubtotal(){
+    const sum = linesSubtotalFast();
+    elSubtotal.textContent = fmtCurrency(sum);
+    document.getElementById('fs_lines').textContent = fmtCurrency(sum);
+    updateFinancialSummary();
+    scheduleFitDialog();
+  }
+
+  // first row + listeners
+  if (!elLines.firstElementChild) elLines.appendChild(makeLine({}));
+  try { updateSubtotal(); } catch(_) { setTimeout(()=>{ try{ updateSubtotal(); } catch(_){} }, 0); }
+
+  document.getElementById('btnAddLine').addEventListener('click', () => {
+    elLines.appendChild(makeLine({}));
+    updateSubtotal();
+  });
+
+  elLines.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.matches('textarea') || (t.matches('input') && (t.type === 'number' || t.type === 'text'))) updateSubtotal();
+  });
+
+  elLines.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.classList && t.classList.contains('xbtn')) { t.parentElement?.remove(); updateSubtotal(); }
+  });
+  // ---------- end repeater ----------
+
+  // ---------- Build line from 3D ----------
+  function format3DToDescription(spec) {
+    if (!spec) return '';
+    const bullet = '✧';
+    const lines = [];
+    const ringStyle = (spec.ringStyle || spec.style || '').trim();
+    const metalType = (spec.metalType || spec.metal || '').trim();
+    const accent    = (spec.accentType || '').trim();
+    const ringSize  = (spec.ringSize || spec.usSize || '').trim();
+    const haveSetting = !!(ringStyle || metalType || accent || ringSize);
+    if (haveSetting) {
+      const header = (ringStyle ? `${ringStyle} ` : '') + 'Custom Ring Setting:';
+      lines.push(header);
+      if (metalType) lines.push(`${bullet} Metal Type: ${metalType}`);
+      if (accent)    lines.push(`${bullet} Accent Diamond Type: ${accent}`);
+      if (ringSize)  lines.push(`${bullet} Ring Size: ${ringSize}`);
+    }
+    const centerType = (spec.centerType || spec.centerStoneType || '').trim();
+    const dims       = (spec.dimensions || '').trim();
+    if (haveSetting && (centerType || dims)) lines.push('');
+    if (centerType) lines.push(`${centerType} Details:`);
+    if (dims)       lines.push(`${bullet} Dimensions: ${dims}`);
+    return lines.join('\n');
+  }
+  function buildFrom3D() {
+    if (!(window.google && google.script && google.script.run)) {
+      showToast('Apps Script runtime not ready yet. Try again in a second.');
+      return;
+    }
+    const p = window.__rp_prefill || {};
+    const preBtn = document.getElementById('btnBuildFrom3D');
+    preBtn.disabled = true; preBtn.textContent = 'Building…';
+    google.script.run
+      .withSuccessHandler(function(res){
+        preBtn.disabled = false; preBtn.textContent = 'Build line from 3D';
+        if (!res || !res.ok || !res.spec) { showToast('No 3D details found on the Log for this anchor.'); return; }
+        const desc = format3DToDescription(res.spec);
+        if (!desc) { showToast('3D Log found, but no usable fields.'); return; }
+        if (!elLines.firstElementChild) document.getElementById('btnAddLine').click();
+        const first = elLines.firstElementChild;
+        const ta = first.querySelector('textarea'); if (ta) { ta.value = desc; ta.dispatchEvent(new Event('input')); }
+        updateSubtotal();
+      })
+      .withFailureHandler(function(err){
+        preBtn.disabled = false; preBtn.textContent = 'Build line from 3D';
+        showToast('Error reading 3D Log: ' + (err && err.message ? err.message : err));
+      })
+      .rp_getLatest3DFields({ soNumber: p.soNumber || '', rootApptId: p.rootApptId || p.rootApptID || '', trackerUrl: p.trackerUrl || '', forceRefresh: true });
+  }
+  document.getElementById('btnBuildFrom3D').addEventListener('click', buildFrom3D);
+
+
+
+
+  // ---------- financial summary ----------
+  function computeCurrentBalance() {
+    const ctx = window.__rp_context || {};
+    return Math.max(0, num(ctx.orderTotal) - num(ctx.paidToDate));
+  }
+  function updateFinancialSummary(){
+    const amount = num(els.amount.value);
+    els.fs_payment.textContent = fmtCurrency(amount);
+
+
+    const docType         = document.getElementById('docType').value || '';
+    const isInvoice       = /Invoice/i.test(docType);
+    const isReceipt       = /Receipt/i.test(docType);
+    const isSalesInvoice  = /Sales Invoice/i.test(docType);
+    const isSalesReceipt  = /Sales Receipt/i.test(docType);
+
+
+     const subtotal   = linesSubtotalFast();                    // Lines Subtotal
+     const ctx        = window.__rp_context || {};
+     const paidToDate = num(ctx.paidToDate);                    // PTD from Prefill
+
+
+     // If Order Total is blank/zero, fall back to Lines Subtotal for balance math
+     const baseOT = num(ctx.orderTotal) > 0 ? num(ctx.orderTotal) : subtotal;
+
+
+     // Current balance before this doc
+     const currentBal = Math.max(0, baseOT - paidToDate);
+
+
+     // RB in UI:
+     // • Invoice  → fixed (current)
+     // • Receipt  → Current Balance − Payment (can be < 0 to show overpay)
+     const remain = isInvoice ? currentBal : (currentBal - amount);
+     // Show a tiny tag to set expectations for reps
+     const tag = document.getElementById('roleTag');
+     if (tag) {
+       const isInvoice = /Invoice/i.test(docType);
+       const ctx = window.__rp_context || {};
+       const currentBal = Math.max(0, num(ctx.orderTotal) - num(ctx.paidToDate));
+       let text = '';
+       if (isInvoice) {
+         const req = num(document.getElementById('amount').value);
+         text = (Math.abs((currentBal - req)) < 0.005) ? 'Tagged as: Final Invoice' : 'Tagged as: Progress Invoice';
+       } else if (isSalesReceipt) {
+         text = 'Tagged as: Sales Receipt';
+       } else if (isReceipt) {
+         text = 'Tagged as: Payment Receipt';
+       } else {
+         text = 'Tagged as: Deposit Invoice';
+       }
+       tag.textContent = text;
+     }
+
+
+    els.fs_remain.textContent  = fmtCurrency(remain);
+
+
+    // Reset warnings/hints
+    const warn = document.getElementById('overpayWarn');
+    const srErr = document.getElementById('srErr');
+    const hint = document.getElementById('docTypeHint');
+    if (warn) warn.style.display = 'none';
+    if (srErr) srErr.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+
+
+    const EPS = 0.005;
+
+
+    // Overpayment note only for receipts
+    if (!isInvoice && remain < -EPS && warn) {
+      warn.textContent = `Heads up: this overpays by ${fmtCurrency(Math.abs(remain))}. Overpayment is allowed.`;
+      warn.style.display = 'block';
+    }
+    // Sales Receipt must fully cover remaining balance
+    if (isSalesReceipt && remain > EPS && srErr) {
+      srErr.textContent = 'Sales Receipt must cover the full remaining balance.';
+      srErr.style.display = 'block';
+    }
+    // Gentle doc‑type hints
+    if (isReceipt && Math.abs(remain) < EPS && !isSalesReceipt && hint) {
+      hint.textContent = 'Tip: Remaining Balance will be $0 after this payment — use “Sales Receipt”.';
+      hint.style.display = 'block';
+    }
+    const remainIfInvoicePaid = currentBal - amount;
+    if (isInvoice && Math.abs(remainIfInvoicePaid) < EPS && !isSalesInvoice && hint) {
+      hint.textContent = 'Tip: If the requested amount is paid, Remaining Balance will be $0 — use “Sales Invoice”.';
+      hint.style.display = 'block';
+    }
+  }
+  document.getElementById('amount').addEventListener('input', updateFinancialSummary);
+
+
+
+
+
+
+
+
+  // ---------- prefill ----------
+  function seedFirstLineAmountFromContext() {
+    try {
+      const first = elLines.firstElementChild; if (!first) return;
+      const amtInput = first.querySelectorAll('textarea, input')[2];
+      if (num(amtInput.value) > 0) return;
+      const ctx = window.__rp_context || {};
+      const currentBal = Math.max(0, num(ctx.orderTotal) - num(ctx.paidToDate));
+      if (currentBal > 0) { amtInput.value = currentBal; amtInput.dispatchEvent(new Event('input')); }
+    } catch(_) {}
+  }
+
+
+ function renderPrefill(p){
+   // ensure global state
+   window.__rp_prefill = p || {};
+
+
+   const box = document.getElementById('prefillBox');
+   try {
+     if (!p) {
+       box.innerHTML = '<div class="muted">No active row.</div>';
+       fitDialogToContent(980);
+       return;
+     }
+     if (p && p.error) {
+       box.innerHTML =
+         '<div class="card" style="background:#fff7ed;border-color:#fed7aa;">' +
+         '<div style="font-weight:600;color:#9a3412;">Prefill error</div>' +
+         '<div class="muted">' + html(p.error) + '</div>' +
+         '</div>';
+       fitDialogToContent(980);
+       return;
+     }
+
+
+     // Parse numbers defensively (handles "", null → 0)
+     const num = (v) => { const n = parseFloat(String(v||'').replace(/[^\d.\-]/g,'')); return isFinite(n) ? n : 0; };
+     const fmtCurrency = (n) => '$' + Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+
+
+     const brand       = p.brand || p.Brand || '';
+     const so          = (p.soNumber || p.so || p.SO || p['SO#'] || '').toString();
+     const cust        = p.customerName || p.customer || p.Customer || p['Customer Name'] || '';
+     const orderTotal  = num(p.orderTotal ?? p.OrderTotal ?? p.order_total ?? 0);
+     const paidToDate  = num(p.paidToDate ?? p.paid_to_date ?? p.paid ?? 0);
+     const balanceInit = Math.max(0, orderTotal - paidToDate);
+     const lastPayDate = p.lastPaymentDate || p.LastPaymentDate || '';
+     const payFolderURL= p.paymentsFolderURL || '';
+
+
+     // Render prefill card (left panel)
+     const rows = [
+       ['Anchor', p.anchorType || (brand ? 'SO' : 'APPT')],
+       ['Brand', brand],
+       ['Customer', cust],
+       ['SO#', so],
+       ['Order Total', orderTotal ? fmtCurrency(orderTotal) : ''],
+       ['Paid-To-Date', paidToDate ? fmtCurrency(paidToDate) : ''],
+       ['Remaining Balance', fmtCurrency(balanceInit)],
+       ['Last Payment Date', lastPayDate || ''],
+       ['Payments Folder', payFolderURL ? `<a target="_blank" href="${html(payFolderURL)}">Open</a>` : '']
+     ];
+     box.innerHTML = '<div class="kv">' + rows.map(r => `<div><b>${html(r[0])}</b></div><div>${r[1]}</div>`).join('') + '</div>';
+
+
+     // Share context for Financial Summary & line seeding
+     window.__rp_context = { orderTotal, paidToDate, balance: balanceInit, anchorType: p.anchorType || 'APPT' };
+
+
+     // Rehydrate saved lines (if any)
+     try {
+       if (Array.isArray(p.savedLines) && p.savedLines.length) {
+         const elLines = document.getElementById('lineItems');
+         elLines.innerHTML = '';
+         p.savedLines.forEach(ln => {
+           // makeLine() already exists in your file
+           elLines.appendChild(makeLine({
+             desc: (ln && ln.desc) || '',
+             qty:  Math.max(1, parseInt((ln && ln.qty) || 1, 10) || 1),
+             amt:  num((ln && ln.amt) || 0)
+           }));
+         });
+         if (typeof updateSubtotal === 'function') updateSubtotal();
+       }
+     } catch(_){ /* non-fatal */ }
+
+
+     // Update right-side Financial Summary now that context is known
+     try {
+       const sum = (typeof linesSubtotalFast === 'function') ? linesSubtotalFast() : 0;
+       document.getElementById('fs_lines').textContent   = fmtCurrency(sum);
+       document.getElementById('fs_payment').textContent = fmtCurrency(num(document.getElementById('amount').value));
+       if (typeof updateFinancialSummary === 'function') updateFinancialSummary();
+     } catch(_){ /* non-fatal */ }
+
+
+     // Fill Supersedes/AppliesTo from 400_ for this anchor (safe if service is present)
+     try {
+       const a = {
+         anchorType: p.anchorType || 'APPT',
+         rootApptId: p.rootApptId || p.rootApptID || '',
+         soNumber:   p.soNumber   || '',
+         limit: 20
+       };
+       google.script.run
+         .withSuccessHandler(function(list){
+           const arr = Array.isArray(list) ? list : (list && list.items) || [];
+           const sup = document.getElementById('supersedes');
+           const app = document.getElementById('appliesTo');
+           const fill = (el, values) => el.innerHTML = '<option value="">(none)</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+           fill(sup, arr); fill(app, arr);
+         })
+         .withFailureHandler(function(){ /* silent */ })
+         .rp_listDocNumbersForAnchor(a);
+     } catch(_){ /* optional */ }
+
+
+     fitDialogToContent(980);
+
+
+   } catch (e) {
+     // Visible fallback so the dialog never looks "stuck"
+     box.innerHTML =
+       '<div class="card" style="background:#fff7ed;border-color:#fed7aa;">' +
+       '<div style="font-weight:600;color:#9a3412;">Client JS error</div>' +
+       '<div class="muted">' + html(e && e.message ? e.message : e) + '</div>' +
+       '</div>';
+     fitDialogToContent(980);
+   }
+ }
+
+
+ // --- Canonical bootstrap for Prefill (single path; works even if DOMContentLoaded already fired) ---
+ (function bootPrefill(){
+   if (window.__rp_booted) return;
+   window.__rp_booted = true;
+
+
+   var box = document.getElementById('prefillBox');
+   function set(msg){ try { box.innerHTML = '<div class="muted">'+msg+'</div>'; } catch(_){} }
+
+
+   function start(){
+     if (window.__rp_prefill_started) return;
+     window.__rp_prefill_started = true;
+     set('Loading prefill…');
+
+
+     // 1) Handshake (shows as rp_ping in Executions)
+     google.script.run
+       .withSuccessHandler(function(){
+         // 2) Fetch prefill
+         google.script.run
+           .withSuccessHandler(function(p){
+             try { window.__rp_prefill = p; } catch(_){}
+             renderPrefill(p);
+           })
+           .withFailureHandler(function(err){
+             var msg = (err && err.message) ? err.message : String(err || 'Unknown error');
+             box.innerHTML =
+               '<div class="card" style="background:#fff7ed;border-color:#fed7aa;">'
+             + '<div style="font-weight:600;color:#9a3412;">Prefill error</div>'
+             + '<div class="muted">' + msg + '</div>'
+             + '</div>';
+             fitDialogToContent(980);
+           })
+           .rp_init();
+       })
+       .withFailureHandler(function(e){
+         set('Ping failed: ' + (e && e.message ? e.message : e));
+       })
+       .rp_ping();
+   }
+
+
+   // Run NOW if DOM is already parsed; otherwise wait for DOMContentLoaded
+   if (document.readyState === 'loading') {
+     document.addEventListener('DOMContentLoaded', start);
+   } else {
+     start();
+   }
+
+
+   // Extra failsafe: if Apps Script runtime isn’t injected yet, poll briefly
+   var tries = 0;
+   var timer = setInterval(function(){
+     if (window.google && google.script && google.script.run) {
+       clearInterval(timer);
+       start();
+     } else if (++tries > 50) { // ~5s
+       clearInterval(timer);
+       set('Failed to initialize (Apps Script runtime not ready).');
+     }
+   }, 100);
+ })();
+
+
+
+
+  // ---------- small inits ----------
+  (function initDateNow(){
+    try {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      document.getElementById('date').value = d.toISOString().slice(0,16);
+    } catch(_) {}
+  })();
+  try { document.getElementById('docType').value = 'Deposit Receipt'; } catch(_){}
+
+
+
+
+
+
+
+
+  // ---------- doc type behavior ----------
+function applyDocTypeBehavior(){
+ const val = document.getElementById('docType').value || '';
+ const isInvoice = /Invoice/i.test(val);
+ const isReceipt = /Receipt/i.test(val);
+
+
+ const lbl = document.getElementById('lblAmount');
+ const method = document.getElementById('method');
+ const reference = document.getElementById('reference');
+ const methodErr = document.getElementById('methodErr');
+
+
+ if (isInvoice) {
+   lbl.textContent = 'Requested Amount';
+   method.disabled = true; method.classList.remove('invalid'); methodErr.style.display='none'; method.value = '';
+   reference.disabled = true; reference.value = '';
+ } else {
+   lbl.textContent = 'Amount';
+   method.disabled = false;
+   reference.disabled = false;
+ }
+ document.getElementById('fs_payment_label').textContent = isInvoice ? 'Requested Payment' : 'Payment';
+
+
+ // NEW: status rules — receipts are always issued (and locked)
+ const st = document.getElementById('docStatus');
+ if (isReceipt) {
+   st.value = 'ISSUED';
+   st.disabled = true;              // gray out for receipts
+ } else {
+   st.disabled = false;             // allow choice on invoices
+ }
+
+
+ updateFinancialSummary();
+ if (isInvoice) seedFirstLineAmountFromContext();
+}
+
+
+  document.getElementById('docType').addEventListener('change', applyDocTypeBehavior);
+  applyDocTypeBehavior();
+
+
+  function showToast(msg){
+    const n = document.createElement('div');
+    n.textContent = msg;
+    n.style.cssText='position:fixed;bottom:16px;left:16px;background:#111;color:#fff;padding:10px 12px;border-radius:8px;z-index:99999;opacity:.95';
+    document.body.appendChild(n);
+    setTimeout(()=>{ n.remove(); }, 3000);
+  }
+
+
+  // ---------- submit ----------
+  // ---------- submit ----------
+  document.getElementById('btnSubmit').addEventListener('click', function () {
+    try {
+      // ---- gather & validate ----
+      const lines = readLines();
+      if (!lines.length) { showToast('Add at least one line.'); return; }
+
+      const docType = document.getElementById('docType').value || '';
+      const isReceipt = /Receipt/i.test(docType);
+      const isSalesReceipt = /Sales Receipt/i.test(docType);
+
+      // Method required on receipts
+      const methodSel = document.getElementById('method');
+      const methodErr = document.getElementById('methodErr');
+      if (isReceipt && !methodSel.value) {
+        methodSel.classList.add('invalid');
+        methodErr.style.display = 'block';
+        methodSel.focus();
+        return;
+      } else {
+        methodSel.classList.remove('invalid');
+        methodErr.style.display = 'none';
+      }
+
+      const amount = num(document.getElementById('amount').value);
+      if (isReceipt && !(amount > 0)) { showToast('Enter a payment amount for receipts.'); return; }
+
+      // Sales Receipt must fully cover balance
+      const subtotal = linesSubtotalNow();
+      const ctx2 = window.__rp_context || {};
+      const baseOT2 = num(ctx2.orderTotal) > 0 ? num(ctx2.orderTotal) : subtotal;
+      const currentBal2 = Math.max(0, baseOT2 - num(ctx2.paidToDate));
+      const EPS = 0.005;
+      if (isSalesReceipt && amount + EPS < currentBal2) {
+        const srEl = document.getElementById('srErr');
+        if (srEl) { srEl.textContent = 'Sales Receipt must cover the full remaining balance.'; srEl.style.display = 'block'; }
+        showToast('Sales Receipt must cover the full remaining balance.');
+        return;
+      }
+
+      const p = window.__rp_prefill || {};
+      const anchorType = (p.anchorType || 'APPT');
+      const allocatedToSO = (anchorType === 'SO' && isReceipt) ? amount : 0;
+
+      // Require Status for invoices
+      const statusSel = document.getElementById('docStatus');
+      if (!isReceipt && !(statusSel && statusSel.value)) {
+        showToast('Pick a Status (Draft or Issue now).');
+        return;
+      }
+
+      // ---- build payload ----
+      const payload = {
+        anchorType,
+        brand: p.brand || '',
+        rootApptId: p.rootApptId || p.rootApptID || '',
+        soNumber: p.soNumber || '',
+        customerName: p.customerName || '',
+        docType,
+        lines,
+        pmt: {
+          amount,
+          dateTime: document.getElementById('date').value || '',
+          method: methodSel.value || '',
+          reference: document.getElementById('reference').value || '',
+          notes: document.getElementById('notes').value || '',
+          allocatedToSO
+        },
+        flags: { setOrderTotal: !!document.getElementById('chkAssignOT')?.checked },
+        snapshots: {
+          orderTotal: window.__rp_context.orderTotal || 0,
+          paidToDate: window.__rp_context.paidToDate || 0,
+          balance: window.__rp_context.balance || 0
+        },
+        // Phase 2 additions
+        docStatus: document.getElementById('docStatus')?.value || '',
+        docRole: (document.getElementById('docRole')?.value || '').toUpperCase(),
+        supersedes: document.getElementById('supersedes')?.value.trim() || '',
+        appliesTo: document.getElementById('appliesTo')?.value.trim() || '',
+        masterRowIndex: p.masterRowIndex || 0,
+        trackerUrl: p.trackerUrl || '',
+        paymentsFolderURL: p.paymentsFolderURL || ''
+      };
+
+      // ---- only now: freeze UI + disable button, then submit ----
+      const btn = document.getElementById('btnSubmit');
+      btn.disabled = true; btn.textContent = 'Submitting…';
+      freezeUI(true);
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.ok) {
+            freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+            showToast('Save failed.'); return;
+          }
+          google.script.run
+            .withSuccessHandler(function (out) {
+              const ok = !!(out && out.ok !== false);
+              if (!ok) showToast('Doc/PDF generation was skipped: ' + (out && out.hint ? out.hint : 'check template/brand or folder settings'));
+              renderSuccess({
+                docNumber: ok && out.docNumber ? out.docNumber : '(auto)',
+                pdfUrl: ok ? (out.pdfUrl || '') : '',
+                docUrl: ok ? (out.docUrl || '') : '',
+                paymentsFolderURL: (ok && out.paymentsFolderURL) || window.__rp_prefill?.paymentsFolderURL || '',
+                arShortcutURL: ok ? (out.arShortcutURL || '') : ''
+              });
+            })
+            .withFailureHandler(function (err) {
+              freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+              showToast('Doc/PDF generation failed: ' + (err && err.message ? err.message : err));
+            })
+            .rp_makeDocForPayment(res.row, payload);
+        })
+        .withFailureHandler(function (err) {
+          freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+          showToast('Error: ' + (err && err.message ? err.message : err));
+        })
+        .rp_submit(payload);
+    } catch (e) {
+      freezeUI(false);
+      showToast('Unexpected error before submit: ' + (e && e.message ? e.message : e));
+    }
+  });
+  </script>
+
+
+
+</body>
+</html>
+

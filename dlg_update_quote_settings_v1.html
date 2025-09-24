@@ -1,0 +1,356 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Update Quotation — Ring Settings</title>
+  <style>
+    :root{ --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#1f6feb; --panel:#f9fafb; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial; color:var(--fg); background:#fff; }
+    header{ padding:12px 16px; border-bottom:1px solid #eee; background:#fafafa; display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+    h1{ margin:0; font-size:16px; }
+    .wrap{ padding:12px 16px 18px; }
+    .toolbar{ display:flex; gap:8px; align-items:center; margin:8px 0 10px; flex-wrap:wrap; }
+    .muted{ color:var(--muted); }
+    .chip{ display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border:1px solid #d0d7de; border-radius:999px; background:#fff; font-size:12px; }
+    .btn{ border:1px solid #d0d7de; background:#fff; padding:7px 10px; border-radius:8px; cursor:pointer; }
+    .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+    .btn:disabled{ opacity:.6; cursor:not-allowed; }
+    .msg{ border:1px solid #e5e5e5; background:#f8f9fb; border-radius:8px; padding:10px; margin:10px 0; display:none; }
+    .msg.warn{ background:#fff7e6; border-color:#ffd591; display:block; }
+    .msg.error{ background:#fff1f0; border-color:#ffa39e; display:block; }
+    .msg.ok{ background:#f6ffed; border-color:#b7eb8f; display:block; }
+
+    table{ width:100%; border-collapse:collapse; font-size:12px; }
+    th, td{ border-bottom:1px solid #f0f0f0; padding:6px; vertical-align:top; }
+    th{ position:sticky; top:0; background:#fafafa; z-index:1; }
+    input[type="text"]{ width:100%; padding:6px; border:1px solid #d0d7de; border-radius:6px; }
+    .right{ text-align:right; }
+    .col-small{ width:120px; }
+    .col-mini{ width:90px; }
+    .rm{ width:34px; }
+
+    #verBar { position: relative; }
+    #verBar select { max-width: 520px; display: inline-block; min-width: 340px; }
+    #verBar .btn { position: relative; z-index: 2; }
+  </style>
+</head>
+<body>
+<header>
+  <!-- The **only** Quotation URL surface -->
+  <span id="qchip" class="chip muted" style="display:none;">
+    Quotation: <a id="qurl" href="#" target="_blank" rel="noopener">open</a>
+  </span>
+</header>
+
+<div class="wrap">
+  <div class="toolbar" id="verBar">
+    <label class="muted">Design version:</label>
+    <select id="verSel"><option value="">(loading…)</option></select>
+    <button class="btn" id="btnLoad" title="Load selected version from 3D Tracker">Load from tracker</button>
+    <button class="btn" id="btnDup" title="Duplicate the first row as a baseline">Duplicate baseline</button>
+
+    <span style="flex:1;"></span>
+
+    <button class="btn" id="btnAdd">+ Add row</button>
+    <button class="btn" id="btnPaste">Paste rows</button>
+    <button class="btn primary" id="btnSave" disabled>Save (0)</button>
+  </div>
+
+  <div id="msg" class="msg"></div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th>Product<span class="muted"> (key)</span></th>
+        <th>Style Detail</th>
+        <th class="col-small">Metal</th>
+        <th class="col-mini">Band&nbsp;Width</th>
+        <th class="col-mini">Ring&nbsp;Size</th>
+        <th>Free Upgrade</th>
+        <th class="col-small right">Online Retailer</th>
+        <th class="col-small right">BE After Tax</th>
+        <th class="col-small right">VVS Price</th>
+        <th class="col-mini right">Savings</th>
+        <th>Link</th>
+        <th class="rm"></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+  // Keep logs quiet in production; still available in console if turned on
+  const DEBUG = false;
+  const log = (...a)=>{ if (DEBUG) try{ console.log('[UQ-Settings]', ...a);}catch(_){} };
+
+  // Chip only (no extra inline URLs anywhere)
+  function showQuotationChip(url) {
+    try {
+      if (!url) return;
+      const qc = document.getElementById('qchip');
+      const qa = document.getElementById('qurl');
+      if (qc && qa) { qa.href = url; qc.style.display = 'inline-flex'; }
+    } catch (e) { log('chip failed:', e); }
+  }
+
+  let __ctx = null;     // bootstrap context (includes quotationUrl)
+  let __rows = [];      // editor rows
+  let __versions = [];  // tracker versions
+
+  const $ = sel => document.querySelector(sel);
+
+  function fitDialog(w){
+    try{
+      google.script.host.setWidth(w || 1040);
+      requestAnimationFrame(()=> {
+        const h = Math.max(560, Math.min(900, document.body.scrollHeight + 24));
+        google.script.host.setHeight(h);
+      });
+    }catch(_){}
+  }
+
+  function showMsg(text, cls){
+    const m = $('#msg');
+    m.className = 'msg ' + (cls || '');
+    m.textContent = text || '';
+    m.style.display = 'block';
+    fitDialog();
+  }
+  function hideMsg(){ const m=$('#msg'); m.style.display='none'; }
+
+  // --- Data helpers
+  function addRow(patch){
+    __rows.push(Object.assign({
+      product:'', styleDetail:'', metal:'', bandWidth:'', ringSize:'',
+      freeUpgrade:'', onlineRetailerPrice:'', brilliantEarthPriceAfterTax:'',
+      vvsPrice:'', yourSavings:'', link:''
+    }, patch || {}));
+    render();
+  }
+  function removeRow(idx){ __rows.splice(idx,1); render(); }
+
+  function syncSaveButton(){
+    const hasAny = __rows.some(r => (String(r.product||'').trim() || String(r.styleDetail||'').trim()));
+    const btn = $('#btnSave');
+    btn.disabled = !hasAny;
+    btn.textContent = 'Save (' + (__rows.length) + ')';
+  }
+
+  function buildPayload(){
+    const records = __rows
+      .map(r => {
+        const o = Object.assign({}, r);
+        Object.keys(o).forEach(k => { if (o[k] != null) o[k] = String(o[k]).trim(); });
+        return o;
+      })
+      .filter(r => r.product || r.styleDetail);
+    if (!records.length) throw new Error('Add at least one row with Product or Style Detail.');
+    if (!__ctx || !__ctx.quotationUrl) throw new Error('Quotation URL is missing on 100_.');
+    return { quotationUrl: __ctx.quotationUrl, records };
+  }
+
+  // --- Render (batched DOM writes + delegated input)
+  const FIELDS = [
+    'product','styleDetail','metal','bandWidth','ringSize',
+    'freeUpgrade','onlineRetailerPrice','brilliantEarthPriceAfterTax',
+    'vvsPrice','yourSavings','link'
+  ];
+  const RIGHT = new Set(['onlineRetailerPrice','brilliantEarthPriceAfterTax','vvsPrice','yourSavings']);
+
+  function render(){
+    const tb = $('#rows');
+    const frag = document.createDocumentFragment();
+
+    if (!__rows.length) {
+      __rows.push({product:'', styleDetail:'', metal:'', bandWidth:'', ringSize:'',
+        freeUpgrade:'', onlineRetailerPrice:'', brilliantEarthPriceAfterTax:'',
+        vvsPrice:'', yourSavings:'', link:''});
+    }
+
+    __rows.forEach((r, i) => {
+      const tr = document.createElement('tr');
+
+      FIELDS.forEach(field => {
+        const td = document.createElement('td');
+        if (RIGHT.has(field)) td.classList.add('right');
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = String(r[field] ?? '');
+        inp.dataset.row = String(i);
+        inp.dataset.field = field;
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+
+      const tdRm = document.createElement('td');
+      const rm = document.createElement('button');
+      rm.className = 'btn'; rm.textContent = '×'; rm.title = 'Remove';
+      rm.addEventListener('click', () => removeRow(i));
+      tdRm.appendChild(rm); tr.appendChild(tdRm);
+
+      frag.appendChild(tr);
+    });
+
+    tb.replaceChildren(frag);
+    syncSaveButton();
+    fitDialog();
+  }
+
+  // Delegate *all* cell edits to a single listener (fast + minimal memory)
+  $('#rows').addEventListener('input', (e) => {
+    const inp = e.target.closest('input[data-field]');
+    if (!inp) return;
+    const idx = +inp.dataset.row;
+    const field = inp.dataset.field;
+    if (Number.isInteger(idx) && field) {
+      __rows[idx][field] = inp.value;
+      syncSaveButton();
+    }
+  });
+
+  // --- Paste rows (single render)
+  function pasteRows(){
+    const raw = prompt('Paste rows (Product | Style Detail | Metal | Band Width | Ring Size | Free Upgrade | Online Retailer | BE After Tax | VVS Price | Savings | Link):','');
+    if (!raw) return;
+    const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const news = lines.map(line => {
+      const c = line.split(/\t|,/);
+      return {
+        product: c[0]||'', styleDetail:c[1]||'', metal:c[2]||'', bandWidth:c[3]||'',
+        ringSize: c[4]||'', freeUpgrade:c[5]||'',
+        onlineRetailerPrice:c[6]||'', brilliantEarthPriceAfterTax:c[7]||'',
+        vvsPrice:c[8]||'', yourSavings:c[9]||'', link:c[10]||''
+      };
+    });
+    __rows.push(...news);
+    render();
+  }
+
+  // -------- Tracker version support --------
+  function loadVersions(){
+    const sel = $('#verSel');
+    sel.innerHTML = '<option value="">(loading…)</option>';
+    google.script.run
+      .withSuccessHandler(list => {
+        __versions = Array.isArray(list) ? list : [];
+        sel.innerHTML = '';
+        if (!__versions.length) {
+          sel.innerHTML = '<option value="">(no entries found in Log)</option>';
+          showMsg('No entries found in the 3D Tracker “Log” sheet for this client.', 'warn');
+          return;
+        }
+        const frag = document.createDocumentFragment();
+        __versions.forEach(v => {
+          const o = document.createElement('option');
+          o.value = v.id; o.textContent = v.label || ('Row ' + v.rowIndex);
+          frag.appendChild(o);
+        });
+        sel.appendChild(frag);
+      })
+      .withFailureHandler(err => {
+        const m = (err && err.message) ? err.message : String(err);
+        sel.innerHTML = '<option value="">(failed to load)</option>';
+        showMsg('Could not read Tracker Log: ' + m, 'error');
+      })
+      .uq_getTrackerVersions();
+  }
+
+  function loadBaseline(){
+    hideMsg();
+    const sel = document.getElementById('verSel');
+    const id  = sel ? String(sel.value || '').trim() : '';
+    if (!id) { showMsg('Pick a design version first.', 'warn'); return; }
+    showMsg('Loading design from tracker…', 'warn');
+
+    google.script.run
+      .withSuccessHandler(function(baseline){
+        if (!baseline || typeof baseline !== 'object') {
+          showMsg('Tracker returned no data for this version.', 'warn');
+          return;
+        }
+        if (!__rows.length || (__rows.length === 1 && !(__rows[0].product || __rows[0].styleDetail))) {
+          __rows = [baseline];
+        } else {
+          __rows.unshift(baseline);
+        }
+        hideMsg();
+        render();
+      })
+      .withFailureHandler(function(err){
+        const m = (err && err.message) ? err.message : String(err);
+        showMsg('Could not load version: ' + m, 'error');
+      })
+      .uq_getSettingFromTrackerRow(id);
+  }
+  window.__loadFromTracker = loadBaseline;
+
+  // --- Bootstrap
+  function boot(){
+    try {
+      google.script.run
+        .withSuccessHandler(function(ctx){
+          __ctx = ctx || {};
+          if (__ctx.quotationUrl) {
+            showQuotationChip(__ctx.quotationUrl); // chip only
+          } else {
+            showMsg('Quotation URL not resolved from 100_.', 'warn');
+          }
+          fitDialog();
+        })
+        .withFailureHandler(function(err){
+          showMsg('Bootstrap error: ' + (err && err.message ? err.message : err), 'error');
+        })
+        .uq_bootstrapSettings();
+    } catch(e) {
+      showMsg('Bootstrap error: ' + e, 'error');
+    }
+    loadVersions();
+    render();
+  }
+
+  // --- Wire UI
+  document.addEventListener('DOMContentLoaded', () => {
+    $('#btnAdd').addEventListener('click', () => addRow());
+    $('#btnPaste').addEventListener('click', pasteRows);
+    $('#btnLoad').addEventListener('click', loadBaseline);
+
+    $('#btnDup').addEventListener('click', () => {
+      if (__rows.length) {
+        __rows.push(Object.assign({}, __rows[0]));
+        render();
+      } else {
+        showMsg('No baseline to duplicate. Load from tracker first.', 'warn');
+      }
+    });
+
+    $('#btnSave').addEventListener('click', () => {
+      hideMsg();
+      let payload;
+      try { payload = buildPayload(); }
+      catch (e) { showMsg(e.message || String(e), 'error'); return; }
+
+      const b = $('#btnSave');
+      b.disabled = true; b.textContent = 'Saving…';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          showMsg(res && res.message ? res.message : 'Saved.', 'ok');
+          b.disabled = false; b.textContent = 'Save (' + (__rows.length) + ')';
+        })
+        .withFailureHandler(err => {
+          showMsg('Save failed: ' + (err && err.message ? err.message : err), 'error');
+          b.disabled = false; b.textContent = 'Save (' + (__rows.length) + ')';
+        })
+        .uq_submitUpdateQuotationSettings(payload);
+    });
+
+    boot();
+    fitDialog();
+  });
+</script>
+</body>
+</html>

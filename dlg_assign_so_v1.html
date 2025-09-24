@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Assign SO</title>
+<style>
+  :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  body { margin: 0; padding: 16px; }
+  h2 { margin: 0 0 12px 0; font-size: 18px; }
+  h3 { margin: 0 0 12px 0; font-size: 16px; font-weight: 700; }
+  form { display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 10px; }
+  label { font-weight: 600; }
+  input[type="text"], input[type="url"], select {
+    padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; width: 100%;
+    font-size: 14px;
+  }
+  .hint { color:#6a737d; font-size: 12px; margin-top: -6px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+  button { padding: 8px 12px; border: 0; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .primary { background:#1f6feb; color:#fff; }
+  .ghost { background:#f6f8fa; }
+  .error { color:#b3261e; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<script>
+  // If the server injected a preview (via openAssignSOWithPreview),
+  // it will be compiled into this variable; otherwise it's null.
+  window.__ASSIGN_PREVIEW__ = <?!= JSON.stringify(typeof preview === 'undefined' ? null : (preview || null)) ?>;
+</script>
+
+<h3>Already created SO #? Link it to the customer. Otherwise, go "Start 3D"</h3>
+
+<div id="previewBox" style="border:1px solid #e5e7eb; background:#f9fafb; padding:10px; border-radius:8px; margin:12px 0;">
+  Loading customer preview…
+</div>
+
+<label style="display:flex; align-items:center; gap:8px; margin:6px 0 6px 0;">
+  <input id="chkMatch" type="checkbox"> This matches the customer
+</label>
+<div id="matchErr" style="color:#b3261e; font-size:12px; display:none;">
+  Please confirm this matches the customer.
+</div>
+
+<form id="f">
+  <div class="row">
+    <label for="brand">Brand</label>
+    <select id="brand" name="brand" required>
+      <option value="" disabled selected>Select brand…</option>
+      <option value="VVS">VVS</option>
+      <option value="HPUSA">HPUSA</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="so">SO#</label>
+    <input
+      id="so"
+      name="so"
+      type="text"
+      inputmode="numeric"
+      autocomplete="off"
+      placeholder="12.3456"
+      pattern="^\d{2}\.\d{4}$"
+      required
+      aria-describedby="so-hint so-err"
+    />
+  </div>
+  <div class="row" style="grid-template-columns: 140px 1fr;">
+    <div></div>
+    <div class="hint" id="so-hint">Format: two digits, dot, four digits (e.g., 12.3456)</div>
+  </div>
+  <div class="row" style="grid-template-columns: 140px 1fr;">
+    <div></div>
+    <div class="error" id="so-err" hidden>SO# must match NN.NNNN (example: 12.3456)</div>
+  </div>
+
+  <div class="row">
+    <label for="odoo">Odoo SO URL</label>
+    <input id="odoo" name="odoo" type="text" placeholder="example.com/web#id=..." required aria-describedby="odoo-hint odoo-err" />
+  </div>
+  <div class="row" style="grid-template-columns: 140px 1fr;">
+    <div></div>
+    <div class="hint" id="odoo-hint">Paste the Sales Order page URL from Odoo.</div>
+  </div>
+  <div class="row" style="grid-template-columns: 140px 1fr;">
+    <div></div>
+    <div class="error" id="odoo-err" hidden>Please paste a valid URL ending with .com</div>
+  </div>
+
+  <div class="row">
+    <label for="shortTag">Short Tag (optional)</label>
+    <input id="shortTag" name="shortTag" type="text" maxlength="24" placeholder="e.g., Oval Solitaire" />
+  </div>
+
+  <!-- keep server-templated design request hidden (unchanged behavior) -->
+  <textarea id="designReq" style="display:none"><?!= designRequest || '' ?></textarea>
+
+  <!-- ACTIONS: reversed to Cancel / Save per your spec -->
+  <div class="actions">
+    <button id="cancel" type="button" class="ghost">Cancel</button>
+    <button id="btnSave" type="submit" class="primary">Save</button>
+  </div>
+</form>
+
+<script>
+  // ---- sizing helper (shared pattern with Start 3D) ----
+  function fitDialogToContent(widthPx){
+    if (!(google && google.script && google.script.host)) return;
+    var W = widthPx || 520;
+    google.script.host.setWidth(W);
+    requestAnimationFrame(function(){
+      var h = Math.max(260, Math.min(580, document.body.scrollHeight + 24));
+      google.script.host.setHeight(h);
+    });
+  }
+
+  // initial compact size
+  fitDialogToContent(520);
+
+  function $(sel){ return document.querySelector(sel); }
+  function on(el,ev,fn){ if(el) el.addEventListener(ev,fn); }
+
+  const so       = $('#so');
+  const odoo     = $('#odoo');
+  const soErr    = $('#so-err');
+  const odooErr  = $('#odoo-err');
+  const btnSave  = $('#btnSave');
+  const btnCancel= $('#cancel');
+  const chkMatch = $('#chkMatch');
+
+  let previewData = null;
+
+  // validators (same rules as Start 3D)
+  function validateSO(){
+    const ok = /^\d{2}\.\d{4}$/.test((so.value||'').trim());
+    soErr.hidden = ok; return ok;
+  }
+  function validateOdoo(){
+    const v = (odoo.value||'').trim();
+    const ok = /^(https?:\/\/)?[^\s]+\.com(\/|\?|#|$)/i.test(v);
+    odooErr.hidden = ok; return ok;
+  }
+
+  // keep Save clickable; we gate in submit with an inline error
+  function updateSaveEnabled(){ btnSave.disabled = false; }
+
+  function showMatchError(show){
+    const el = document.getElementById('matchErr');
+    if (el) el.style.display = show ? 'block' : 'none';
+  }
+  on(chkMatch,'change',function(){ showMatchError(false); updateSaveEnabled(); });
+
+  // live mask for NN.NNNN
+  on(so,'input',function(){
+    let v = so.value.replace(/[^\d.]/g,'');
+    const parts = v.split('.');
+    const left  = (parts[0]||'').slice(0,2).replace(/\D/g,'');
+    const right = (parts[1]||'').slice(0,4).replace(/\D/g,'');
+    so.value = left + (right.length || parts.length>1 ? '.'+right : '');
+    validateSO();
+  });
+  on(odoo,'input', validateOdoo);
+
+  // Load 100_Master preview (HYBRID):
+  // - If opener injected preview, use it immediately (no round-trip).
+  // - Otherwise, fetch from server like before.
+  (function(){
+    const injected = (typeof window !== 'undefined') ? window.__ASSIGN_PREVIEW__ : null;
+    const use = function(p){
+      previewData = p || {};
+      const warn = p && p.hasLinkedSO
+        ? '<div style="background:#fff7ed;border:1px solid #fed7aa;padding:8px;border-radius:6px;margin-bottom:8px;">'
+          + '<strong>Re-link warning:</strong> This row already has '
+          + (p.existingBrand||'') + ' · ' + (p.existingSo||'')
+          + (p.existingLinkedAtDisplay ? (' (linked ' + p.existingLinkedAtDisplay + ')') : '')
+          + '.</div>'
+        : '';
+      $('#previewBox').innerHTML =
+        warn
+        + '<div><strong>Customer:</strong> ' + ((p && p.customer) || '') + '</div>'
+        + '<div><strong>Contact:</strong> ' + ((p && p.email) || '') + (((p && p.email) && (p && p.phone) ? ' | ' : '')) + ((p && p.phone) || '') + '</div>'
+        + ((p && p.rootApptId) ? ('<div><strong>RootApptID:</strong> ' + p.rootApptId + '</div>') : '')
+        + ((p && p.masterLink) ? ('<div style="margin-top:6px;"><a href="'+p.masterLink+'" target="_blank">Open 100_Master row</a></div>') : '');
+      updateSaveEnabled();
+      fitDialogToContent(520);
+    };
+
+    if (injected) {
+      // Instant paint, no server call
+      use(injected);
+    } else {
+      // Fall back to server fetch
+      google.script.run
+        .withSuccessHandler(use)
+        .withFailureHandler(function(err){
+          $('#previewBox').innerHTML = '<span style="color:#b3261e;">Could not load preview: ' + (err && err.message ? err.message : err) + '</span>';
+          updateSaveEnabled();
+          fitDialogToContent(520);
+        })
+        .getActiveMasterPreview();
+    }
+  })();
+
+
+  function setSubmitting(state){
+    if (state){
+      btnSave.dataset.label = btnSave.textContent;
+      btnSave.textContent = 'Submitting…';
+      btnSave.disabled = true; btnCancel.disabled = true; chkMatch.disabled = true;
+    } else {
+      btnSave.textContent = btnSave.dataset.label || 'Save';
+      btnSave.disabled = false; btnCancel.disabled = false; chkMatch.disabled = false;
+    }
+  }
+
+  // unified success screen (identical to Start 3D)
+  function renderSuccess(summary){
+    function draw(s, p){
+      s = s || {}; p = p || {};
+      const hasSO = !!s.so;
+      const title = hasSO ? '✅ SO linked' : '✅ Start 3D ready';
+      const masterLink       = s.masterLink || p.masterLink || '';
+      const ordersLink       = s.ordersLink || '';
+      const ordersLabel      = s.ordersLabel || (hasSO ? 'Orders sheet' : '');
+      const orderFolderLink  = s.orderFolderLink || '';
+      const threeDFolderLink = s.threeDFolderLink || '';
+
+      document.body.innerHTML = `
+        <div style="padding:12px 16px; font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial; max-width:520px;">
+          <h2 style="margin:0 0 8px 0; font-size:16px; font-weight:700;">${title}</h2>
+          <div style="line-height:1.5">
+            ${hasSO ? `<div><strong>Brand / SO:</strong> ${s.brand||''} · ${s.so||''}</div>` : ''}
+            ${(s.customer || p.customer) ? `<div><strong>Customer:</strong> ${s.customer || p.customer}</div>` : ''}
+            ${(s.email||p.email||s.phone||p.phone)
+              ? `<div><strong>Contact:</strong> ${(s.email||p.email)||''}${((s.email||p.email)&&(s.phone||p.phone)?' | ':'')}${(s.phone||p.phone)||''}</div>` : ''}
+            ${s.apptId ? `<div><strong>Appt ID:</strong> ${s.apptId}</div>` : ''}
+            ${masterLink ? `<div style="margin-top:6px;"><strong>100_Master row:</strong> <a href="${masterLink}" target="_blank">Open</a></div>` : ''}
+            ${hasSO && ordersLink ? `<div><strong>${ordersLabel}:</strong> <a href="${ordersLink}" target="_blank">Open</a></div>` : ''}
+            ${orderFolderLink  ? `<div><strong>Order Folder:</strong> <a href="${orderFolderLink}" target="_blank">Open</a></div>` : ''}
+            ${threeDFolderLink ? `<div><strong>05-3D Folder:</strong> <a href="${threeDFolderLink}" target="_blank">Open</a></div>` : ''}
+            ${summary.intakeFolderLink ? `<div><strong>00-Intake:</strong> <a href="${summary.intakeFolderLink}" target="_blank">Open</a></div>` : ''}
+            ${s.linkedAt ? `<div style="margin-top:6px;"><strong>SO Linked At:</strong> ${s.linkedAt}</div>` : ''}
+            ${s.shortTag ? `<div><strong>Short Tag:</strong> ${s.shortTag}</div>` : ''}
+          </div>
+          <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+            <button type="button" onclick="google.script.host.close()"
+                    style="padding:6px 12px; border:0; border-radius:6px; background:#1f6feb; color:#fff; font-size:13px;">
+              Close
+            </button>
+          </div>
+        </div>`;
+      fitDialogToContent(520);
+    }
+    // Assign SO path already passes the summary
+    draw(summary, null);
+  }
+
+  on($('#f'),'submit',function(e){
+    e.preventDefault();
+
+    // Same gating as Start 3D
+    if (!chkMatch.checked){
+      showMatchError(true);
+      chkMatch.focus();
+      return;
+    }
+
+    const payload = {
+      brand: $('#brand').value,
+      so:    ($('#so').value||'').trim(),
+      odooUrl: ($('#odoo').value||'').trim(),
+      designRequest: ($('#designReq') ? $('#designReq').value.trim() : ''),
+      shortTag: (document.getElementById('shortTag')?.value || '').trim(),
+    };
+    const ok = validateSO() & validateOdoo();
+    if (!ok) return;
+
+    // If preview shows an existing link, require confirm + reason (same as Start 3D)
+    if (previewData && previewData.hasLinkedSO){
+      const proceed = confirm('Re-link SO?\nThis row already has '
+        + (previewData.existingBrand||'') + ' · ' + (previewData.existingSo||'')
+        + '.\nProceed to overwrite?');
+      if (!proceed) return;
+      const why = prompt('Enter reason for re-link (required):','');
+      if (!why || !why.trim()){ alert('Reason is required.'); return; }
+      payload.forceRelink = true;
+      payload.relinkReason = why.trim();
+    }
+
+    setSubmitting(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        setSubmitting(false);
+        if (res && res.ok && res.summary) renderSuccess(res.summary);
+        else { alert('Saved, but no summary returned.'); google.script.host.close(); }
+      })
+      .withFailureHandler(function(err){
+        setSubmitting(false);
+        const msg = (err && err.message) ? err.message : String(err);
+
+        // Server demanded re-link (race condition) — ask now and retry once
+        if (msg.indexOf('RELINK_REQUIRED|') === 0){
+          try {
+            const info = JSON.parse(msg.split('|')[1] || '{}');
+            const ok2 = confirm('Re-link SO?\nExisting: ' + (info.existingBrand||'') + ' · ' + (info.existingSo||'') + '\nProceed to overwrite?');
+            if (!ok2) return;
+            const why2 = prompt('Enter reason for re-link (required):','');
+            if (!why2 || !why2.trim()){ alert('Reason is required.'); return; }
+            payload.forceRelink = true; payload.relinkReason = why2.trim();
+
+            setSubmitting(true);
+            google.script.run
+              .withSuccessHandler(function(res2){
+                setSubmitting(false);
+                if (res2 && res2.ok && res2.summary) renderSuccess(res2.summary);
+                else { alert('Saved, but no summary returned.'); google.script.host.close(); }
+              })
+              .withFailureHandler(function(er2){
+                setSubmitting(false);
+                alert('Failed to save: ' + (er2 && er2.message ? er2.message : er2));
+              })
+              .saveAssignedSO(payload);
+            return;
+          } catch(_) {}
+        }
+
+        alert('Failed to save: ' + msg);
+      })
+      .saveAssignedSO(payload);
+  });
+
+  on(btnCancel,'click',function(){ google.script.host.close(); });
+
+  // start enabled behavior
+  updateSaveEnabled();
+</script>
+</body>
+</html>

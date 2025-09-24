@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font: 13px/1.4 Arial, sans-serif; padding: 16px 18px; }
+      h2 { margin: 0 0 8px; font-size: 20px; }
+      .muted { color: #666; margin: 4px 0 10px; }
+      label { display:block; margin: 10px 0 6px; }
+      select, textarea { width: 100%; box-sizing: border-box; }
+      textarea { height: 90px; }
+      .row { margin-top: 12px; }
+      button { margin-right: 8px; padding: 6px 10px; }
+    </style>
+  </head>
+  <body>
+    <h2>Cancel</h2>
+
+    <!-- Active summary -->
+    <? var a = (payload.active || []); ?>
+    <div style="margin:8px 0;">
+      <div><b>Active reminders for <?= payload.label ?>:</b>
+        <? if (!a.length) { ?>
+          <span style="color:#b00020;">None</span>
+        <? } else { ?>
+          <? for (var i=0;i<a.length;i++) { ?>
+            <span style="border:1px solid #ddd;padding:2px 6px;border-radius:10px;margin-right:6px;">
+              <?= a[i].type ?>
+            </span>
+          <? } ?>
+        <? } ?>
+      </div>
+    </div>
+    <? var activeTypes = a.map(function(x){ return String(x.type||'').toUpperCase(); }); ?>
+    <? var hasAny = activeTypes.length > 0; ?>
+    <? if (!hasAny) { ?>
+      <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:8px;border-radius:6px;margin:8px 0;">
+        No active reminders exist for this order/customer. Nothing to cancel.
+      </div>
+    <? } ?>
+
+    <script>
+      const DATA = <?!= JSON.stringify(payload) ?>;
+    </script>
+
+    <div class="muted" id="who"></div>
+
+    <label for="typeSel">Which reminders to cancel?</label>
+    <select id="typeSel">
+      <option value="BOTH" selected>Both (COS + Follow‑Up)</option>
+      <option value="COS">COS only</option>
+      <option value="FOLLOWUP">Follow‑Up only</option>
+    </select>
+
+    <label for="reason">Reason (required):</label>
+    <textarea id="reason" placeholder="e.g., Merged duplicate order"></textarea>
+
+    <div class="row">
+      <button id="btnGo">Cancel reminders</button>
+      <button id="btnClose">Close</button>
+    </div>
+
+    <script>
+      (function(){
+        const active = <?= JSON.stringify(activeTypes) ?>; // e.g., ["COS","FOLLOWUP"]
+        window.__verifyCancelChoice = function(){
+          var dd = document.getElementById('typeSel');   // <-- correct id
+          var choice = (dd ? dd.value : '').toUpperCase();
+          if (!active.length) {
+            alert('There are no active reminders to cancel for this order/customer.');
+            return false;
+          }
+          if (choice !== 'BOTH' && active.indexOf(choice) === -1) {
+            alert('No "'+choice+'" reminder exists for this target. Active: ' + active.join(', '));
+            return false;
+          }
+          return true;
+        };
+      })();
+    </script>
+
+
+
+    <script>
+      const whoText = DATA.label || ((DATA.so && DATA.cust) ? `SO#${DATA.so} — ${DATA.cust}` : (DATA.so ? `SO#${DATA.so}` : (DATA.cust || '(unknown)')));
+      document.getElementById('who').textContent = whoText;
+
+      const btn = document.getElementById('btnGo');
+
+      document.getElementById('btnGo').addEventListener('click', () => {
+        if (typeof window.__verifyCancelChoice === 'function' && !window.__verifyCancelChoice()) return;
+        
+        const t  = document.getElementById('typeSel').value;
+        const rs = (document.getElementById('reason').value || '').trim();
+        if (!rs) { alert('Please provide a reason.'); return; }
+
+        btn.disabled = true; btn.textContent = 'Cancelling…';
+        google.script.run
+          .withSuccessHandler(res => {
+            const typeLabel = (t === 'COS') ? 'COS' : (t === 'FOLLOWUP' ? 'Follow‑Up' : 'Both');
+            const msg = (res && res.ok)
+              ? `Cancelled ${typeLabel} (${res.changed || 0} row(s)) for ${whoText}.`
+              : `Cancelled ${typeLabel} for ${whoText}.`;
+            alert(msg);
+            google.script.host.close();
+          })
+          .withFailureHandler(err => {
+            alert(err && err.message ? err.message : err);
+            btn.disabled = false; btn.textContent = 'Cancel reminders';
+          })
+          .remind__cancelTarget_do(DATA.so, DATA.cust, t, rs);
+      });
+
+      document.getElementById('btnClose').addEventListener('click', () => google.script.host.close());
+    </script>
+
+  </body>
+</html>

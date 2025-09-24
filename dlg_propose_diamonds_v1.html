@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <style>
+      body { font: 13px/1.35 Arial, Helvetica, sans-serif; margin: 0; color: #222; }
+      header { padding: 14px 18px; border-bottom: 1px solid #e5e5e5; background: #fafafa; }
+      h1 { font-size: 16px; margin: 0 0 6px; }
+      .ctx { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+      .chip { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 12px; background: #f0f3f7; border: 1px solid #e3e8ee; font-size: 12px; }
+      .chip.warn { background: #fff7e6; border-color: #ffd591; }
+      .wrap { padding: 14px 18px 18px; }
+      .toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+      .btn { border: 1px solid #d0d7de; background: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+      .btn.primary { background: #0b5cff; border-color: #0b5cff; color: #fff; }
+      .btn:disabled { opacity: .6; cursor: not-allowed; }
+      table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+      th, td { border-bottom: 1px solid #f0f0f0; padding: 6px; vertical-align: top; }
+      th { background: #fafafa; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+      input[type="text"], input[type="number"], select { width: 100%; padding: 5px 6px; border: 1px solid #d0d7de; border-radius: 4px; }
+      details { margin-top: 4px; }
+      summary { cursor: pointer; color: #0b5cff; }
+      /* --- Make core columns readable (min widths + no wrap) --- */
+      th, td { vertical-align: top; }
+      thead th, tbody td { white-space: nowrap; }
+      .col-stoneType { min-width: 160px; }
+      .col-shape     { min-width: 120px; }
+      .col-carat     { min-width: 100px; }
+      .col-color     { min-width: 120px; }
+      .col-clarity   { min-width: 120px; }
+      .col-lab       { min-width: 120px; }
+      .col-cert      { min-width: 160px; }
+      .col-vendor    { min-width: 150px; }
+
+      /* Keep inputs usable inside narrow cells */
+      input[type="text"], input[type="number"], select { min-width: 100%; }
+
+      /* Advanced grid helpers */
+      .adv-cell { min-width: 560px; } /* keeps adv column from collapsing */
+      .adv { margin-top: 6px; }
+      .adv details { border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+      .adv summary{ list-style: none; cursor: pointer; padding: 8px 10px; font-weight:600; color:#0b5cff; border-bottom:1px solid #ececec; display:flex; align-items:center; gap:8px; }
+      .adv summary::before { content:"▸"; transform: translateY(1px); }
+      .adv details[open] summary::before { content:"▾"; }
+      .adv-body{ padding:10px; background:#fff; border-radius:0 0 8px 8px; }
+      .adv-grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
+      .adv-field .small { margin-bottom: 4px; }
+      .adv-col-2  { grid-column: span 2; }
+      .adv-col-3  { grid-column: span 3; }
+      .adv-col-4  { grid-column: span 4; }
+      .adv-col-6  { grid-column: span 6; }
+      .adv-col-8  { grid-column: span 8; }
+      .adv-col-12 { grid-column: span 12; }
+
+      /* Slightly tighter padding inside the adv card */
+      .adv input[type="text"], .adv input[type="number"], .adv select { padding: 6px 7px; }
+      /* read-only look */
+      .adv input[readonly]{
+        background:#f3f4f6;
+        color:#475569;
+        cursor: default;
+      }
+      .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
+      .col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
+      .msg { margin-top: 10px; padding: 10px; border: 1px solid #e5e5e5; background: #f8f9fb; border-radius: 6px; }
+      .warn { background: #fff7e6; border-color: #ffd591; }
+      .success { background: #f6ffed; border-color: #b7eb8f; }
+      .error { background: #fff1f0; border-color: #ffa39e; }
+      .row-actions { display: flex; gap: 6px; align-items: center; }
+      .small { font-size: 12px; color: #666; }
+      .right { float: right; }
+      .muted { color: #666; }
+      /* Advanced panel layout */
+      .adv-cell { min-width: 560px; }            /* prevents the cell from collapsing */
+      .adv { margin-top: 6px; }
+      .adv details { border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+      .adv summary {
+        list-style: none; cursor: pointer; padding: 8px 10px; font-weight: 600;
+        color: #0b5cff; border-bottom: 1px solid #ececec; display: flex; align-items: center; gap: 8px;
+      }
+      .adv summary::before {
+        content: "▸"; display: inline-block; transform: translateY(1px);
+      }
+      .adv details[open] summary::before { content: "▾"; }
+      .adv-body { padding: 10px; background: #fff; border-radius: 0 0 8px 8px; }
+
+      .adv-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 10px;
+      }
+
+      .adv-field .small { margin-bottom: 4px; }
+      .adv-col-3 { grid-column: span 3; }
+      .adv-col-4 { grid-column: span 4; }
+      .adv-col-6 { grid-column: span 6; }
+      .adv-col-12 { grid-column: span 12; }
+
+      /* Tighten inputs a bit inside advanced card */
+      .adv input[type="text"], .adv input[type="number"], .adv select {
+        padding: 6px 7px;
+      }
+
+      /* Keep table header height tidy even when Advanced grows */
+      td .adv details[open] { box-shadow: 0 1px 0 #f3f4f6 inset; }
+
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>💎 Propose Diamonds</h1>
+      <div id="ctx" class="ctx">
+        <span class="chip" id="ctx-cust">Customer: …</span>
+        <span class="chip" id="ctx-date">Visit: …</span>
+        <span class="chip" id="ctx-rep">Assigned Rep: …</span>
+        <span class="chip" id="ctx-brand">Company: …</span>
+        <span class="chip">RootApptID: <span id="ctx-root" style="margin-left:4px;">…</span></span>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="toolbar">
+        <button class="btn" onclick="addRow()">+ Add stone</button>
+        <button id="btnSubmit" class="btn primary" onclick="submitAll()" disabled>Submit (0)</button>
+        <span class="small muted">Carat & L/W Ratio accept decimals to 2 places.</span>
+      </div>
+
+      <div id="msg" class="msg warn" style="display:none;"></div>
+
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th style="width:26px;">#</th>
+            <th class="col-stoneType">Stone Type*</th>
+            <th class="col-shape">Shape*</th>
+            <th class="col-carat">Carat*</th>
+            <th class="col-color">Color*</th>
+            <th class="col-clarity">Clarity*</th>
+            <th class="col-lab">LAB*</th>
+            <th class="col-cert">Certificate No*</th>
+            <th class="col-vendor">Vendor*</th>
+            <th>Optional / Advanced</th>
+            <th style="width:70px;">&nbsp;</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+
+      <div id="result" class="msg success" style="display:none;"></div>
+    </div>
+
+    <script>
+      // Server-injected bootstrap payload (context + dropdowns)
+      const BOOTSTRAP = <?!= JSON.stringify(bootstrap) ?>;
+
+      // Initialize state from server data
+      let DROPS = BOOTSTRAP.dropdowns;
+      let CTX = BOOTSTRAP.context;
+      let ROWS = [];
+
+      function init() {
+        // Use the already-injected BOOTSTRAP (no client/server roundtrip)
+        document.getElementById('ctx-cust').textContent = 'Customer: ' + (CTX.customerName || '—');
+        document.getElementById('ctx-date').textContent = 'Visit: ' + (CTX.visitDateStr || '—') + ' ' + (CTX.visitTimeStr || '');
+        document.getElementById('ctx-rep').textContent = 'Assigned Rep: ' + (CTX.assignedRep || '—');
+
+        const brandChip = document.getElementById('ctx-brand');
+        if (CTX.companyBrand) {
+          brandChip.textContent = 'Company: ' + CTX.companyBrand;
+        } else {
+          brandChip.textContent = 'Company: N/A (Brand missing on 100_)';
+          brandChip.classList.add('warn');
+          showMsg('Brand is missing on the selected 100_ row. Company will be saved as "N/A" in 200_.', 'warn');
+        }
+        document.getElementById('ctx-root').textContent = CTX.rootApptId;
+
+        addRow();
+      }
+      // Fire reliably in Apps Script iframe:
+      document.addEventListener('DOMContentLoaded', init);
+
+
+      function addRow() {
+        const idx = ROWS.length;
+        const row = {
+          stoneType: '', shape: '', carat: '', color: '', clarity: '',
+          lab: '', certNo: '', vendor: '',
+          measurements: '', lwRatio: '',
+          // fancy fields (when Color=Fancy)
+          fancyColor: '', fancyIntensity: '',
+          // advanced:
+          cut: '', pol: '', sym: '', fluorIntensity: '', fluorColor: ''
+        };
+        ROWS.push(row);
+        renderRows();
+      }
+
+      function removeRow(i) {
+        ROWS.splice(i,1);
+        renderRows();
+      }
+
+      function onChange(i, field, value) {
+        ROWS[i][field] = value;
+        validate();
+      }
+
+      function renderRows() {
+        const tb = document.getElementById('rows');
+        tb.innerHTML = '';
+        ROWS.forEach((r, i) => {
+          const tr = document.createElement('tr');
+
+          // #
+          let td0 = document.createElement('td');
+          td0.textContent = (i+1);
+          tr.appendChild(td0);
+
+          // Stone Type
+          tr.appendChild(tplSelect(i, 'stoneType', DROPS.stoneTypes, true));
+
+          // Shape
+          tr.appendChild(tplSelect(i, 'shape', DROPS.shapes, true));
+
+          // Carat
+          tr.appendChild(tplNumber(i, 'carat', true, '0.01'));
+
+          // Color (with Fancy extras)
+          tr.appendChild(tplColor(i));
+
+          // Clarity
+          tr.appendChild(tplSelect(i, 'clarity', DROPS.clarities, true));
+
+          // LAB
+          tr.appendChild(tplSelect(i, 'lab', DROPS.labs, true));
+
+          // Cert No
+          tr.appendChild(tplText(i, 'certNo', true));
+
+          // Vendor
+          tr.appendChild(tplSelect(i, 'vendor', DROPS.vendors, true));
+
+          // Optional / Advanced
+          tr.appendChild(tplAdvanced(i));
+
+          // Actions
+          let tda = document.createElement('td');
+          tda.className = 'row-actions';
+          const bDel = document.createElement('button');
+          bDel.className = 'btn';
+          bDel.textContent = 'Remove';
+          bDel.onclick = () => removeRow(i);
+          tda.appendChild(bDel);
+          tr.appendChild(tda);
+
+          tb.appendChild(tr);
+        });
+        validate();
+          // Auto-open the first row's advanced section (once per render)
+          try {
+            const firstAdv = document.querySelector('#rows tr details');
+            if (firstAdv) firstAdv.open = true;
+          } catch(_) {}
+      }
+
+      function tplSelect(i, field, options, required) {
+        const td = document.createElement('td');
+        const sel = document.createElement('select');
+        sel.onchange = (e) => onChange(i, field, e.target.value);
+        const def = document.createElement('option');
+        def.value = ''; def.textContent = required ? '— select —' : '(none)';
+        sel.appendChild(def);
+        options.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o; opt.textContent = o;
+          if (ROWS[i][field] === o) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        td.appendChild(sel);
+        return td;
+      }
+
+      function tplNumber(i, field, required, step) {
+        const td = document.createElement('td');
+        const inp = document.createElement('input');
+        inp.type = 'number'; inp.step = step || '0.01';
+        inp.value = ROWS[i][field] !== undefined ? ROWS[i][field] : '';
+        inp.oninput = (e) => onChange(i, field, e.target.value);
+        td.appendChild(inp);
+        return td;
+      }
+
+      function tplText(i, field, required) {
+        const td = document.createElement('td');
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.value = ROWS[i][field] || '';
+        inp.oninput = (e) => onChange(i, field, e.target.value);
+        td.appendChild(inp);
+        return td;
+      }
+
+      function tplColor(i) {
+        const td = document.createElement('td');
+        const sel = document.createElement('select');
+        sel.onchange = (e) => { onChange(i, 'color', e.target.value); renderRows(); };
+        const def = document.createElement('option'); def.value = ''; def.textContent = '— select —';
+        sel.appendChild(def);
+        DROPS.colorsMain.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o; opt.textContent = o;
+          if (ROWS[i].color === o) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        td.appendChild(sel);
+
+        if (ROWS[i].color === 'Fancy') {
+          const w = document.createElement('div'); w.className = 'grid';
+          // Fancy Color
+          const s1 = document.createElement('select'); s1.onchange = e => onChange(i, 'fancyColor', e.target.value);
+          const d1 = document.createElement('div'); d1.className = 'col-6'; d1.appendChild(lbl('Fancy Color')); d1.appendChild(s1);
+          const def1 = document.createElement('option'); def1.value=''; def1.textContent='— select —'; s1.appendChild(def1);
+          DROPS.fancyColors.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].fancyColor===v) o.selected=true; s1.appendChild(o); });
+          // Fancy Intensity
+          const s2 = document.createElement('select'); s2.onchange = e => onChange(i, 'fancyIntensity', e.target.value);
+          const d2 = document.createElement('div'); d2.className = 'col-6'; d2.appendChild(lbl('Fancy Intensity')); d2.appendChild(s2);
+          const def2 = document.createElement('option'); def2.value=''; def2.textContent='— select —'; s2.appendChild(def2);
+          DROPS.fancyIntensity.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].fancyIntensity===v) o.selected=true; s2.appendChild(o); });
+          td.appendChild(w); w.appendChild(d1); w.appendChild(d2);
+        }
+        return td;
+      }
+
+      function lbl(text) { const l=document.createElement('div'); l.className='small muted'; l.textContent=text; return l; }
+
+      function tplAdvanced(i) {
+        const td = document.createElement('td');
+        td.className = 'adv-cell';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'adv';
+        td.appendChild(wrap);
+
+        const det = document.createElement('details');
+        wrap.appendChild(det);
+
+        const sum = document.createElement('summary');
+        sum.textContent = 'Show advanced details';
+        det.appendChild(sum);
+
+        const body = document.createElement('div');
+        body.className = 'adv-body';
+        det.appendChild(body);
+
+        const grid = document.createElement('div');
+        grid.className = 'adv-grid';
+        body.appendChild(grid);
+
+        // --- Measurements: L / W / D (stacked) ---
+        // Keep internal state split; we still write the combined "Measurements" text back.
+        const ms = parseMeasurements_(ROWS[i].measurements || '');
+        const inpL = document.createElement('input'); inpL.type='number'; inpL.step='0.01'; inpL.placeholder='e.g., 10.02'; inpL.value = ms.L || '';
+        const inpW = document.createElement('input'); inpW.type='number'; inpW.step='0.01'; inpW.placeholder='e.g., 7.27';  inpW.value = ms.W || '';
+        const inpD = document.createElement('input'); inpD.type='number'; inpD.step='0.01'; inpD.placeholder='e.g., 4.55'; inpD.value = ms.D || '';
+
+        const dL = document.createElement('div'); dL.className='adv-field adv-col-3';
+        dL.appendChild(lbl('L (mm)')); dL.appendChild(inpL);
+        const dW = document.createElement('div'); dW.className='adv-field adv-col-3';
+        dW.appendChild(lbl('W (mm)')); dW.appendChild(inpW);
+        const dD = document.createElement('div'); dD.className='adv-field adv-col-3';
+        dD.appendChild(lbl('D (mm)')); dD.appendChild(inpD);
+
+        // L/W Ratio (auto-calc from L, W; read-only; half-width)
+        const lw = document.createElement('input');
+        lw.type='number'; lw.step='0.01';
+        lw.value = ROWS[i].lwRatio || '';
+        lw.readOnly = true;                 // <-- make it read-only
+
+        const dLW = document.createElement('div');
+        dLW.className='adv-field adv-col-2'; // <-- half the width (was adv-col-3)
+        dLW.appendChild(lbl('L/W Ratio'));
+        dLW.appendChild(lw);
+
+        function recomputeRatioAndMeasurements() {
+          const L = parseFloat(inpL.value), W = parseFloat(inpW.value), D = parseFloat(inpD.value);
+          // update ratio if L&W are valid
+          if (isFinite(L) && isFinite(W) && W > 0) {
+            const r = Math.round((L / W) * 100) / 100;
+            lw.value = r.toFixed(2);    // still updates programmatically
+            ROWS[i].lwRatio = lw.value;
+          }
+          // update combined Measurements text for 200_
+          const parts = [];
+          if (isFinite(L)) parts.push(`L: ${L}mm`);
+          if (isFinite(W)) parts.push(`W: ${W}mm`);
+          if (isFinite(D)) parts.push(`D: ${D}mm`);
+          onChange(i, 'measurements', parts.join('\n'));
+        }
+        inpL.oninput = recomputeRatioAndMeasurements;
+        inpW.oninput = recomputeRatioAndMeasurements;
+        inpD.oninput = recomputeRatioAndMeasurements;
+        lw.oninput   = e => onChange(i, 'lwRatio', e.target.value);
+
+        // --- Cut / Pol. / Sym. (half-size) ---
+        const sCut = document.createElement('select'); sCut.onchange=e=>onChange(i,'cut',e.target.value);
+        sCut.appendChild(optDefault()); DROPS.grades.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].cut===v) o.selected=true; sCut.appendChild(o); });
+        const sPol = document.createElement('select'); sPol.onchange=e=>onChange(i,'pol',e.target.value);
+        sPol.appendChild(optDefault()); DROPS.grades.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].pol===v) o.selected=true; sPol.appendChild(o); });
+        const sSym = document.createElement('select'); sSym.onchange=e=>onChange(i,'sym',e.target.value);
+        sSym.appendChild(optDefault()); DROPS.grades.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].sym===v) o.selected=true; sSym.appendChild(o); });
+
+        const dCut = document.createElement('div'); dCut.className='adv-field adv-col-2'; dCut.appendChild(lbl('Cut')); dCut.appendChild(sCut);
+        const dPol = document.createElement('div'); dPol.className='adv-field adv-col-2'; dPol.appendChild(lbl('Pol.')); dPol.appendChild(sPol);
+        const dSym = document.createElement('div'); dSym.className='adv-field adv-col-2'; dSym.appendChild(lbl('Sym.')); dSym.appendChild(sSym);
+
+        // --- Fluorescence (2/3 width each) ---
+        const fInt = document.createElement('select'); fInt.onchange=e=>onChange(i,'fluorIntensity',e.target.value);
+        fInt.appendChild(optDefault()); DROPS.fluorIntensity.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].fluorIntensity===v) o.selected=true; fInt.appendChild(o); });
+        const fCol = document.createElement('select'); fCol.onchange=e=>onChange(i,'fluorColor',e.target.value);
+        fCol.appendChild(optDefault()); DROPS.fluorColor.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; if (ROWS[i].fluorColor===v) o.selected=true; fCol.appendChild(o); });
+        
+        // Fluor.Intensity
+        const dFInt = document.createElement('div');
+        dFInt.className='adv-field adv-col-2';   // <-- half width (was adv-col-4)
+        dFInt.appendChild(lbl('Fluor. Intensity'));
+        dFInt.appendChild(fInt);
+
+        // Fluor.Color
+        const dFCol = document.createElement('div');
+        dFCol.className='adv-field adv-col-2';   // <-- half width (was adv-col-4)
+        dFCol.appendChild(lbl('Fluor. Color'));
+        dFCol.appendChild(fCol);
+
+        // Assemble grid
+        grid.appendChild(dL);
+        grid.appendChild(dW);
+        grid.appendChild(dD);
+        grid.appendChild(dLW);
+        grid.appendChild(dCut);
+        grid.appendChild(dPol);
+        grid.appendChild(dSym);
+        grid.appendChild(dFInt);
+        grid.appendChild(dFCol);
+
+        return td;
+      }
+
+      // Helper to parse existing Measurements "L: ...\nW: ...\nD: ..." into numbers
+      function parseMeasurements_(txt) {
+        const out = { L:'', W:'', D:'' };
+        const s = String(txt || '');
+        const mL = s.match(/L:\s*([\d.]+)/i); if (mL) out.L = mL[1];
+        const mW = s.match(/W:\s*([\d.]+)/i); if (mW) out.W = mW[1];
+        const mD = s.match(/D:\s*([\d.]+)/i); if (mD) out.D = mD[1];
+        return out;
+      }
+
+
+
+      function optDefault(){ const o=document.createElement('option'); o.value=''; o.textContent='(none)'; return o; }
+
+      function validate() {
+        let ok = true;
+        for (const r of ROWS) {
+          if (!r.stoneType || !r.shape || !r.carat || Number(r.carat) <= 0 ||
+              !r.color || !r.clarity || !r.lab || !r.certNo || !r.vendor) { ok = false; break; }
+          if (r.color === 'Fancy' && (!r.fancyColor || !r.fancyIntensity)) { ok = false; break; }
+        }
+        const btn = document.getElementById('btnSubmit');
+        btn.disabled = !ok || ROWS.length === 0;
+        btn.textContent = 'Submit (' + ROWS.length + ')';
+        return ok;
+      }
+
+      function showMsg(text, cls) {
+        const m = document.getElementById('msg');
+        m.className = 'msg ' + (cls || '');
+        m.style.display = 'block';
+        m.textContent = text;
+      }
+
+      function hideMsg() {
+        const m = document.getElementById('msg');
+        m.style.display = 'none';
+      }
+
+      function submitAll() {
+        hideMsg();
+        if (!validate()) {
+          showMsg('Please complete all required fields (and Fancy sub-fields when applicable).', 'error');
+          return;
+        }
+        const payload = { stones: ROWS };
+        const btn = document.getElementById('btnSubmit');
+        btn.disabled = true; btn.textContent = 'Submitting…';
+
+        google.script.run.withSuccessHandler(function(res){
+          btn.disabled = false; btn.textContent = 'Submit (' + ROWS.length + ')';
+          if (!res || !res.ok) {
+            showMsg('An unknown error occurred. Please try again.', 'error');
+            return;
+          }
+          const dup = (res.duplicates && res.duplicates.length) ? (' Duplicate Certificate Nos found in 200_: ' + res.duplicates.join(', ') + ' (not blocked).') : '';
+          const s = document.getElementById('result');
+          s.style.display = 'block';
+          const link = (res.targetSpreadsheetUrl
+            ? (' <a href="' + res.targetSpreadsheetUrl + '" target="_blank">Open 200_ workbook</a> ' +
+              '(Tab: <b>' + (res.targetTabName || '') + '</b>, Rows: ' + (res.appendedFirstRow || '?') + '–' + (res.appendedLastRow || '?') + ')')
+            : '');
+          s.innerHTML =
+            '<b>Success.</b> ' + res.message + link + '<br>' +
+            'Summary → Proposed: ' + res.counts.proposing + ' • On the Way: ' + res.counts.onTheWay +
+            ' • Not Approved: ' + res.counts.notApproved + ' • In Stock: ' + res.counts.inStock +
+            ' • Total: ' + res.counts.total + '<br>' +
+            (dup ? ('<span class="warn">' + dup + '</span>') : '');
+
+          // Optionally clear rows after submit:
+          ROWS = [];
+          renderRows();
+        }).withFailureHandler(function(err){
+          btn.disabled = false; btn.textContent = 'Submit (' + ROWS.length + ')';
+          const msg = (err && err.message) ? err.message : String(err);
+          showMsg(msg, 'error');
+        }).dp_submitProposals(payload);
+      }
+
+      window.addEventListener('load', init);
+    </script>
+  </body>
+</html>
