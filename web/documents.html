@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Documents · VVS Local App</title>
+    <link rel="stylesheet" href="/web/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Documents</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/web/customers.html">Customers</a>
+        <a href="/web/orders.html">Orders</a>
+        <a href="/web/revisions.html">Revisions</a>
+        <a href="/web/payments.html">Payments</a>
+        <a href="/web/documents.html" class="active">Documents</a>
+        <a href="/web/reports.html">Reports</a>
+      </nav>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Generate Document</h2>
+        <form id="document-form" class="form-grid">
+          <label>
+            Sales Order ID
+            <input type="number" id="doc-sales-order" min="1" required />
+          </label>
+          <label>
+            Document Type
+            <select id="doc-type" required>
+              <option value="Deposit Invoice">Deposit Invoice</option>
+              <option value="Deposit Receipt">Deposit Receipt</option>
+              <option value="Sales Invoice">Sales Invoice</option>
+              <option value="Sales Receipt">Sales Receipt</option>
+              <option value="Credit">Credit</option>
+            </select>
+          </label>
+          <label>
+            Amount
+            <input type="number" id="doc-amount" step="0.01" min="0" required />
+          </label>
+          <div>
+            <button type="submit">Generate Document</button>
+          </div>
+        </form>
+        <p id="document-status" class="status-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Generated Documents</h2>
+        <p class="help-text">
+          Recently generated documents appear below. Download links open the rendered HTML file saved to storage.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Sales Order</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Download</th>
+            </tr>
+          </thead>
+          <tbody id="documents-body"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          vvsapp.requireAuth();
+        } catch (err) {
+          return;
+        }
+
+        const form = document.getElementById('document-form');
+        const salesOrderInput = document.getElementById('doc-sales-order');
+        const typeSelect = document.getElementById('doc-type');
+        const amountInput = document.getElementById('doc-amount');
+        const statusEl = document.getElementById('document-status');
+        const tableBody = document.getElementById('documents-body');
+        const generatedDocs = [];
+
+        renderDocuments();
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          statusEl.textContent = '';
+          statusEl.classList.remove('error', 'success');
+
+          const salesOrderId = Number.parseInt(salesOrderInput.value, 10);
+          const docType = typeSelect.value;
+          const amount = Number(amountInput.value);
+
+          if (!Number.isInteger(salesOrderId) || salesOrderId <= 0) {
+            statusEl.textContent = 'Enter a valid sales order ID.';
+            statusEl.classList.add('error');
+            return;
+          }
+          if (!docType) {
+            statusEl.textContent = 'Choose a document type.';
+            statusEl.classList.add('error');
+            return;
+          }
+          if (!Number.isFinite(amount) || amount < 0) {
+            statusEl.textContent = 'Amount must be zero or greater.';
+            statusEl.classList.add('error');
+            return;
+          }
+
+          try {
+            const response = await vvsapp.apiFetch('/api/documents', {
+              method: 'POST',
+              body: JSON.stringify({
+                sales_order_id: salesOrderId,
+                doc_type: docType,
+                amount,
+              }),
+            });
+            const doc = response.document;
+            if (doc) {
+              generatedDocs.unshift(doc);
+              if (generatedDocs.length > 20) {
+                generatedDocs.length = 20;
+              }
+              renderDocuments();
+            }
+            statusEl.textContent = 'Document generated successfully.';
+            statusEl.classList.remove('error');
+            statusEl.classList.add('success');
+            form.reset();
+            typeSelect.value = 'Deposit Invoice';
+          } catch (err) {
+            statusEl.textContent = err.message || 'Failed to generate document.';
+            statusEl.classList.remove('success');
+            statusEl.classList.add('error');
+          }
+        });
+
+        function renderDocuments() {
+          tableBody.innerHTML = '';
+          if (generatedDocs.length === 0) {
+            const emptyRow = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 5;
+            cell.textContent = 'No documents generated yet.';
+            cell.className = 'muted';
+            emptyRow.appendChild(cell);
+            tableBody.appendChild(emptyRow);
+            return;
+          }
+
+          generatedDocs.forEach((doc) => {
+            const row = document.createElement('tr');
+            row.appendChild(createCell(formatTimestamp(doc.created_at)));
+            row.appendChild(createCell(doc.sales_order_id ?? ''));
+            row.appendChild(createCell(doc.doc_type || ''));
+            row.appendChild(createCell(formatCurrency(doc.amount)));
+
+            const downloadCell = document.createElement('td');
+            if (doc.url) {
+              const link = document.createElement('a');
+              link.href = doc.url;
+              link.target = '_blank';
+              link.rel = 'noopener';
+              link.textContent = 'Download';
+              downloadCell.appendChild(link);
+            } else if (doc.file_path) {
+              downloadCell.textContent = doc.file_path;
+              downloadCell.className = 'muted';
+            } else {
+              downloadCell.textContent = 'Stored';
+              downloadCell.className = 'muted';
+            }
+            row.appendChild(downloadCell);
+
+            tableBody.appendChild(row);
+          });
+        }
+
+        function createCell(value) {
+          const cell = document.createElement('td');
+          cell.textContent = value == null ? '' : value;
+          return cell;
+        }
+
+        function formatTimestamp(value) {
+          if (!value) return '';
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) {
+            return value;
+          }
+          return date.toLocaleString();
+        }
+
+        function formatCurrency(value) {
+          const num = Number(value);
+          if (!Number.isFinite(num)) {
+            return '$0.00';
+          }
+          return `$${num.toFixed(2)}`;
+        }
+      });
+    </script>
+  </body>
+</html>
