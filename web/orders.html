@@ -111,6 +111,8 @@
               <th>Priority</th>
               <th>Lead Time</th>
               <th>Started</th>
+              <th>3D Due</th>
+              <th>3D Flagged</th>
               <th>Created</th>
             </tr>
           </thead>
@@ -191,13 +193,18 @@
             const tr = document.createElement('tr');
             tr.dataset.id = order.id;
             const customer = customersById.get(order.customer_id);
+            const started = order.started_at ? new Date(order.started_at).toLocaleString() : '';
+            const start3dDue = order.start3d_due_at ? new Date(order.start3d_due_at).toLocaleString() : '';
+            const start3dFlagged = order.start3d_flagged_at ? new Date(order.start3d_flagged_at).toLocaleString() : '';
             tr.innerHTML = `
               <td>${order.so_code}</td>
               <td>${customer ? customer.business_name : order.customer_id}</td>
               <td>${order.status}</td>
               <td>${order.priority}</td>
               <td>${order.lead_time_days}</td>
-              <td>${order.started_at ? new Date(order.started_at).toLocaleString() : ''}</td>
+              <td>${started}</td>
+              <td>${start3dDue}</td>
+              <td>${start3dFlagged}</td>
               <td>${new Date(order.created_at).toLocaleString()}</td>
             `;
             tr.addEventListener('click', () => selectOrder(order));
@@ -208,7 +215,9 @@
         function selectOrder(order) {
           selectedOrder = order;
           updateButton.disabled = false;
-          selectedOrderEl.textContent = `Editing ${order.so_code}`;
+          const dueText = order.start3d_due_at ? new Date(order.start3d_due_at).toLocaleDateString() : 'n/a';
+          const flaggedText = order.start3d_flagged_at ? new Date(order.start3d_flagged_at).toLocaleDateString() : 'not flagged';
+          selectedOrderEl.textContent = `Editing ${order.so_code} (3D Due: ${dueText}, Flagged: ${flaggedText})`;
           updateStatus.value = order.status || '';
           updatePriority.value = order.priority || '';
           updateLeadTime.value = order.lead_time_days ?? '';

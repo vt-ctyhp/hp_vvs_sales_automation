@@ -18,8 +18,10 @@ import (
 	"github.com/example/vvsapp/internal/customers"
 	"github.com/example/vvsapp/internal/db"
 	"github.com/example/vvsapp/internal/documents"
+	"github.com/example/vvsapp/internal/jobs"
 	"github.com/example/vvsapp/internal/logging"
 	"github.com/example/vvsapp/internal/payments"
+	"github.com/example/vvsapp/internal/reports"
 	"github.com/example/vvsapp/internal/revisions"
 	"github.com/example/vvsapp/internal/salesorders"
 	"github.com/example/vvsapp/internal/storage"
@@ -42,6 +44,8 @@ type Server struct {
 	revisionSvc  *revisions.Service
 	paymentSvc   *payments.Service
 	documentSvc  *documents.Service
+	jobsSvc      *jobs.Service
+	reportsSvc   *reports.Service
 	storage      storage.Adapter
 	staticServer http.Handler
 	filesServer  http.Handler
@@ -49,7 +53,7 @@ type Server struct {
 }
 
 // New constructs a server with routes and middleware applied.
-func New(cfg *config.Config, logger *logging.Logger, database *sql.DB, authSvc *auth.Service, storageAdapter storage.Adapter) *Server {
+func New(cfg *config.Config, logger *logging.Logger, database *sql.DB, authSvc *auth.Service, storageAdapter storage.Adapter, jobsSvc *jobs.Service, reportsSvc *reports.Service) *Server {
 	srv := &Server{
 		cfg:          cfg,
 		logger:       logger,
@@ -60,6 +64,8 @@ func New(cfg *config.Config, logger *logging.Logger, database *sql.DB, authSvc *
 		revisionSvc:  revisions.NewService(database),
 		paymentSvc:   payments.NewService(database),
 		documentSvc:  documents.NewService(database, storageAdapter),
+		jobsSvc:      jobsSvc,
+		reportsSvc:   reportsSvc,
 		storage:      storageAdapter,
 		staticServer: http.StripPrefix("/web/", http.FileServer(http.Dir("web"))),
 	}
@@ -80,6 +86,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/revisions/upload", s.handleRevisionsUpload)
 	mux.HandleFunc("/api/payments", s.handlePayments)
 	mux.HandleFunc("/api/documents", s.handleDocuments)
+	mux.HandleFunc("/api/jobs/run", s.handleJobsRun)
+	mux.HandleFunc("/api/reports/kpis", s.handleReportsKPIs)
+	mux.HandleFunc("/api/reports/export/customers", s.handleReportsExportCustomers)
+	mux.HandleFunc("/api/reports/export/orders", s.handleReportsExportOrders)
+	mux.HandleFunc("/api/reports/export/payments", s.handleReportsExportPayments)
 	mux.Handle("/web/", s.staticServer)
 	if s.filesPrefix != "" && s.filesServer != nil {
 		mux.Handle(s.filesPrefix, s.filesServer)
@@ -504,6 +515,90 @@ func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusCreated, map[string]any{"document": doc})
 }
 
+func (s *Server) handleJobsRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	if s.jobsSvc == nil {
+		s.writeError(w, http.StatusServiceUnavailable, errors.New("job service unavailable"))
+		return
+	}
+	claims := s.claimsFromContext(r.Context())
+	if claims == nil || !strings.EqualFold(claims.Role, "admin") {
+		s.writeError(w, http.StatusForbidden, errors.New("admin access required"))
+		return
+	}
+	result, err := s.jobsSvc.Run(r.Context())
+	if err != nil {
+		s.writeServerError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"result": result})
+}
+
+func (s *Server) handleReportsKPIs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	if s.reportsSvc == nil {
+		s.writeError(w, http.StatusServiceUnavailable, errors.New("reports unavailable"))
+		return
+	}
+	start, err := parseOptionalTime(r.URL.Query().Get("start"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, errors.New("invalid start date"))
+		return
+	}
+	end, err := parseOptionalTime(r.URL.Query().Get("end"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, errors.New("invalid end date"))
+		return
+	}
+	kpi, err := s.reportsSvc.KPIs(r.Context(), start, end)
+	if err != nil {
+		s.writeServerError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"kpis": kpi})
+}
+
+func (s *Server) handleReportsExportCustomers(w http.ResponseWriter, r *http.Request) {
+	s.handleReportsExport(w, r, "customers.csv", func(ctx context.Context) ([]byte, error) {
+		return s.reportsSvc.CustomersCSV(ctx)
+	})
+}
+
+func (s *Server) handleReportsExportOrders(w http.ResponseWriter, r *http.Request) {
+	s.handleReportsExport(w, r, "orders.csv", func(ctx context.Context) ([]byte, error) {
+		return s.reportsSvc.OrdersCSV(ctx)
+	})
+}
+
+func (s *Server) handleReportsExportPayments(w http.ResponseWriter, r *http.Request) {
+	s.handleReportsExport(w, r, "payments.csv", func(ctx context.Context) ([]byte, error) {
+		return s.reportsSvc.PaymentsCSV(ctx)
+	})
+}
+
+func (s *Server) handleReportsExport(w http.ResponseWriter, r *http.Request, filename string, fetch func(context.Context) ([]byte, error)) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	if s.reportsSvc == nil {
+		s.writeError(w, http.StatusServiceUnavailable, errors.New("reports unavailable"))
+		return
+	}
+	data, err := fetch(r.Context())
+	if err != nil {
+		s.writeServerError(w, err)
+		return
+	}
+	s.writeCSVResponse(w, filename, data)
+}
+
 func (s *Server) listSalesOrders(w http.ResponseWriter, r *http.Request) {
 	var customerID int64
 	if cid := strings.TrimSpace(r.URL.Query().Get("customer_id")); cid != "" {
@@ -599,6 +694,16 @@ func (s *Server) authorizeRequest(r *http.Request) (*auth.Claims, error) {
 	return claims, nil
 }
 
+func (s *Server) claimsFromContext(ctx context.Context) *auth.Claims {
+	if ctx == nil {
+		return nil
+	}
+	if claims, ok := ctx.Value(contextKeyClaims).(*auth.Claims); ok {
+		return claims
+	}
+	return nil
+}
+
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -616,6 +721,14 @@ func (s *Server) writeServerError(w http.ResponseWriter, err error) {
 	s.writeError(w, http.StatusInternalServerError, fmt.Errorf("internal server error"))
 }
 
+func (s *Server) writeCSVResponse(w http.ResponseWriter, filename string, data []byte) {
+	w.Header().Set("Content-Type", "text/csv")
+	if filename != "" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
 func isValidationError(err error) bool {
 	if err == nil {
 		return false
@@ -648,6 +761,18 @@ func parseDate(value string) (time.Time, error) {
 		return time.Time{}, lastErr
 	}
 	return time.Time{}, fmt.Errorf("invalid date")
+}
+
+func parseOptionalTime(raw string) (*time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	parsed, err := parseDate(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 type revisionResponse struct {

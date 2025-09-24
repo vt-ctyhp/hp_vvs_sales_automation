@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/vvsapp/internal/rules"
 	"github.com/example/vvsapp/internal/storage"
 )
 
@@ -151,7 +152,7 @@ func renderHTML(input CreateInput, meta salesOrderMeta) ([]byte, error) {
 		SOCode:    meta.SOCode,
 		Customer:  meta.CustomerName,
 		Amount:    input.Amount,
-		Shipping:  shippingForSubtotal(input.Amount, input.DocType),
+		Shipping:  shippingForDocument(input.DocType, input.Amount),
 		Generated: time.Now().UTC().Format(time.RFC1123),
 	}
 	data.Total = data.Amount + data.Shipping
@@ -211,16 +212,10 @@ var docTemplate = template.Must(template.New("document").Parse(`<!DOCTYPE html>
   </body>
 </html>`))
 
-func shippingForSubtotal(subtotal float64, docType string) float64 {
-	if subtotal < 0 {
-		return 0
-	}
+func shippingForDocument(docType string, subtotal float64) float64 {
 	switch docType {
 	case "Deposit Invoice", "Sales Invoice":
-		if subtotal < 2000 {
-			return 50
-		}
-		return 0
+		return rules.ShippingForSubtotal(subtotal)
 	default:
 		return 0
 	}

@@ -125,6 +125,28 @@ var migrations = []Migration{
         CREATE INDEX IF NOT EXISTS idx_documents_sales_order ON documents(sales_order_id, created_at DESC);
         `,
 	},
+
+	{
+		Version: 6,
+		Name:    "create_jobs_and_start3d_columns",
+		Up: `ALTER TABLE sales_orders ADD COLUMN start3d_due_at DATETIME;
+        ALTER TABLE sales_orders ADD COLUMN start3d_flagged_at DATETIME;
+
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            payload_json TEXT,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            run_at DATETIME NOT NULL,
+            last_error TEXT,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sales_orders_start3d_flagged ON sales_orders(start3d_flagged_at);
+        CREATE INDEX IF NOT EXISTS idx_jobs_status_run_at ON jobs(status, run_at);
+        `,
+	},
 }
 
 // RunMigrations applies pending migrations and returns the versions that were newly applied.

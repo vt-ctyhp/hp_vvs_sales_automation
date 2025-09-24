@@ -14,7 +14,10 @@ import (
 	"github.com/example/vvsapp/internal/auth"
 	"github.com/example/vvsapp/internal/config"
 	"github.com/example/vvsapp/internal/db"
+	"github.com/example/vvsapp/internal/jobs"
 	"github.com/example/vvsapp/internal/logging"
+	"github.com/example/vvsapp/internal/reports"
+	"github.com/example/vvsapp/internal/scheduler"
 	"github.com/example/vvsapp/internal/server"
 	"github.com/example/vvsapp/internal/storage"
 )
@@ -63,11 +66,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := server.New(cfg, logger, database, authSvc, storageAdapter)
+	jobsSvc := jobs.NewService(database)
+	reportsSvc := reports.NewService(database)
+
+	srv := server.New(cfg, logger, database, authSvc, storageAdapter, jobsSvc, reportsSvc)
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Address,
 		Handler: srv,
 	}
+
+	interval, err := time.ParseDuration(cfg.Scheduler.Interval)
+	if err != nil || interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	sched := scheduler.New(interval, jobsSvc, logger)
+	sched.Start(ctx)
 
 	serverErr := make(chan error, 1)
 	go func() {

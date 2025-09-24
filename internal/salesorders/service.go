@@ -27,14 +27,16 @@ func NewService(db *sql.DB) *Service {
 
 // SalesOrder represents a persisted order.
 type SalesOrder struct {
-	ID           int64      `json:"id"`
-	CustomerID   int64      `json:"customer_id"`
-	SOCode       string     `json:"so_code"`
-	Status       string     `json:"status"`
-	Priority     string     `json:"priority"`
-	LeadTimeDays int        `json:"lead_time_days"`
-	StartedAt    *time.Time `json:"started_at,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID               int64      `json:"id"`
+	CustomerID       int64      `json:"customer_id"`
+	SOCode           string     `json:"so_code"`
+	Status           string     `json:"status"`
+	Priority         string     `json:"priority"`
+	LeadTimeDays     int        `json:"lead_time_days"`
+	StartedAt        *time.Time `json:"started_at,omitempty"`
+	Start3DDueAt     *time.Time `json:"start3d_due_at,omitempty"`
+	Start3DFlaggedAt *time.Time `json:"start3d_flagged_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 // Input represents user-provided fields.
@@ -57,7 +59,7 @@ type UpdateInput struct {
 
 // List returns sales orders filtered by customer or status.
 func (s *Service) List(ctx context.Context, customerID int64, status string) ([]SalesOrder, error) {
-	base := `SELECT id, customer_id, so_code, status, priority, lead_time_days, started_at, created_at FROM sales_orders`
+	base := `SELECT id, customer_id, so_code, status, priority, lead_time_days, started_at, start3d_due_at, start3d_flagged_at, created_at FROM sales_orders`
 	var clauses []string
 	var args []any
 	if customerID > 0 {
@@ -82,12 +84,18 @@ func (s *Service) List(ctx context.Context, customerID int64, status string) ([]
 	var results []SalesOrder
 	for rows.Next() {
 		var so SalesOrder
-		var started sql.NullTime
-		if err := rows.Scan(&so.ID, &so.CustomerID, &so.SOCode, &so.Status, &so.Priority, &so.LeadTimeDays, &started, &so.CreatedAt); err != nil {
+		var started, due, flagged sql.NullTime
+		if err := rows.Scan(&so.ID, &so.CustomerID, &so.SOCode, &so.Status, &so.Priority, &so.LeadTimeDays, &started, &due, &flagged, &so.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan sales order: %w", err)
 		}
 		if started.Valid {
 			so.StartedAt = &started.Time
+		}
+		if due.Valid {
+			so.Start3DDueAt = &due.Time
+		}
+		if flagged.Valid {
+			so.Start3DFlaggedAt = &flagged.Time
 		}
 		results = append(results, so)
 	}
@@ -151,9 +159,9 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*Sal
 // Get fetches a single sales order.
 func (s *Service) Get(ctx context.Context, id int64) (*SalesOrder, error) {
 	var so SalesOrder
-	var started sql.NullTime
-	row := s.db.QueryRowContext(ctx, `SELECT id, customer_id, so_code, status, priority, lead_time_days, started_at, created_at FROM sales_orders WHERE id = ?`, id)
-	if err := row.Scan(&so.ID, &so.CustomerID, &so.SOCode, &so.Status, &so.Priority, &so.LeadTimeDays, &started, &so.CreatedAt); err != nil {
+	var started, due, flagged sql.NullTime
+	row := s.db.QueryRowContext(ctx, `SELECT id, customer_id, so_code, status, priority, lead_time_days, started_at, start3d_due_at, start3d_flagged_at, created_at FROM sales_orders WHERE id = ?`, id)
+	if err := row.Scan(&so.ID, &so.CustomerID, &so.SOCode, &so.Status, &so.Priority, &so.LeadTimeDays, &started, &due, &flagged, &so.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -161,6 +169,12 @@ func (s *Service) Get(ctx context.Context, id int64) (*SalesOrder, error) {
 	}
 	if started.Valid {
 		so.StartedAt = &started.Time
+	}
+	if due.Valid {
+		so.Start3DDueAt = &due.Time
+	}
+	if flagged.Valid {
+		so.Start3DFlaggedAt = &flagged.Time
 	}
 	return &so, nil
 }

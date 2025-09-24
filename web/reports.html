@@ -15,15 +15,175 @@
         <a href="/web/orders.html">Orders</a>
         <a href="/web/revisions.html">Revisions</a>
         <a href="/web/payments.html">Payments</a>
+        <a href="/web/reports.html" class="active">Reports</a>
       </nav>
     </header>
     <main>
       <section class="card">
-        <h2>Dashboard Placeholder</h2>
-        <p>Reporting widgets and CSV export hooks will be wired here in the dedicated reporting phase.</p>
-        <p>Use the navigation links to explore the implemented modules.</p>
+        <h2>Key Performance Indicators</h2>
+        <form id="kpi-form" class="form-grid">
+          <label>
+            Start Date
+            <input type="date" id="kpi-start" />
+          </label>
+          <label>
+            End Date
+            <input type="date" id="kpi-end" />
+          </label>
+          <div>
+            <button type="submit">Refresh</button>
+            <button type="button" class="secondary" id="kpi-reset">Clear</button>
+          </div>
+        </form>
+        <div id="kpi-summary" class="kpi-grid">
+          <div>
+            <h3>Total Customers</h3>
+            <p id="kpi-total-customers" class="kpi-value">0</p>
+          </div>
+          <div>
+            <h3>New Customers</h3>
+            <p id="kpi-new-customers" class="kpi-value">0</p>
+          </div>
+          <div>
+            <h3>Total Orders</h3>
+            <p id="kpi-total-orders" class="kpi-value">0</p>
+          </div>
+          <div>
+            <h3>Orders Started</h3>
+            <p id="kpi-orders-started" class="kpi-value">0</p>
+          </div>
+          <div>
+            <h3>Payments Collected</h3>
+            <p id="kpi-payments-total" class="kpi-value">$0.00</p>
+          </div>
+          <div>
+            <h3>3D Checks Due</h3>
+            <p id="kpi-start3d-due" class="kpi-value">0</p>
+          </div>
+          <div>
+            <h3>3D Checks Flagged</h3>
+            <p id="kpi-start3d-flagged" class="kpi-value">0</p>
+          </div>
+        </div>
+        <p id="kpi-status" class="status-message"></p>
+      </section>
+      <section class="card">
+        <h2>CSV Exports</h2>
+        <p>Download data snapshots for offline analysis.</p>
+        <div class="button-row">
+          <button type="button" data-export="customers">Customers CSV</button>
+          <button type="button" data-export="orders">Orders CSV</button>
+          <button type="button" data-export="payments">Payments CSV</button>
+        </div>
+        <p id="export-status" class="status-message"></p>
       </section>
     </main>
     <script src="/web/assets/app.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          vvsapp.requireAuth();
+        } catch (err) {
+          return;
+        }
+
+        const form = document.getElementById('kpi-form');
+        const startInput = document.getElementById('kpi-start');
+        const endInput = document.getElementById('kpi-end');
+        const resetButton = document.getElementById('kpi-reset');
+        const statusEl = document.getElementById('kpi-status');
+        const exportStatus = document.getElementById('export-status');
+        const exportButtons = document.querySelectorAll('[data-export]');
+
+        const fields = {
+          total_customers: document.getElementById('kpi-total-customers'),
+          new_customers: document.getElementById('kpi-new-customers'),
+          total_sales_orders: document.getElementById('kpi-total-orders'),
+          orders_started: document.getElementById('kpi-orders-started'),
+          payments_total: document.getElementById('kpi-payments-total'),
+          start3d_due: document.getElementById('kpi-start3d-due'),
+          start3d_flagged: document.getElementById('kpi-start3d-flagged'),
+        };
+
+        async function loadKPIs() {
+          const params = new URLSearchParams();
+          if (startInput.value) params.set('start', startInput.value);
+          if (endInput.value) params.set('end', endInput.value);
+          const query = params.toString() ? `?${params.toString()}` : '';
+          statusEl.textContent = 'Loading…';
+          try {
+            const data = await vvsapp.apiFetch(`/api/reports/kpis${query}`);
+            renderKPIs(data.kpis || {});
+            statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+          } catch (err) {
+            statusEl.textContent = err.message;
+          }
+        }
+
+        function renderKPIs(kpis) {
+          fields.total_customers.textContent = kpis.total_customers ?? 0;
+          fields.new_customers.textContent = kpis.new_customers ?? 0;
+          fields.total_sales_orders.textContent = kpis.total_sales_orders ?? 0;
+          fields.orders_started.textContent = kpis.orders_started ?? 0;
+          const paymentsTotal = Number(kpis.payments_total || 0);
+          fields.payments_total.textContent = `$${paymentsTotal.toFixed(2)}`;
+          fields.start3d_due.textContent = kpis.start3d_due ?? 0;
+          fields.start3d_flagged.textContent = kpis.start3d_flagged ?? 0;
+        }
+
+        form.addEventListener('submit', (event) => {
+          event.preventDefault();
+          loadKPIs();
+        });
+
+        resetButton.addEventListener('click', () => {
+          startInput.value = '';
+          endInput.value = '';
+          loadKPIs();
+        });
+
+        exportButtons.forEach((button) => {
+          button.addEventListener('click', async () => {
+            const type = button.dataset.export;
+            if (!type) return;
+            const params = new URLSearchParams();
+            if (startInput.value) params.set('start', startInput.value);
+            if (endInput.value) params.set('end', endInput.value);
+            const query = params.toString() ? `?${params.toString()}` : '';
+            exportStatus.textContent = `Preparing ${type} export…`;
+            try {
+              const token = vvsapp.getToken();
+              const response = await fetch(`/api/reports/export/${type}${query}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (!response.ok) {
+                let message = 'Download failed';
+                try {
+                  const error = await response.json();
+                  message = error.error || message;
+                } catch (err) {
+                  // ignore JSON parse errors
+                }
+                throw new Error(message);
+              }
+              const blob = await response.blob();
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `${type}-${Date.now()}.csv`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              URL.revokeObjectURL(url);
+              exportStatus.textContent = `Downloaded ${type} export.`;
+            } catch (err) {
+              exportStatus.textContent = err.message;
+            }
+          });
+        });
+
+        loadKPIs();
+      });
+    </script>
   </body>
 </html>

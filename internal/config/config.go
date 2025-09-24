@@ -10,12 +10,13 @@ import (
 
 // Config holds the full application configuration.
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Seed     SeedConfig     `yaml:"seed"`
-	Storage  StorageConfig  `yaml:"storage"`
+        Server   ServerConfig   `yaml:"server"`
+        Database DatabaseConfig `yaml:"database"`
+        Logging  LoggingConfig  `yaml:"logging"`
+        Auth     AuthConfig     `yaml:"auth"`
+        Seed     SeedConfig     `yaml:"seed"`
+        Storage  StorageConfig  `yaml:"storage"`
+        Scheduler SchedulerConfig `yaml:"scheduler"`
 }
 
 // ServerConfig defines HTTP server settings.
@@ -35,8 +36,13 @@ type LoggingConfig struct {
 
 // StorageConfig controls file persistence defaults.
 type StorageConfig struct {
-	LocalPath string `yaml:"local_path"`
-	URLPrefix string `yaml:"url_prefix"`
+        LocalPath string `yaml:"local_path"`
+        URLPrefix string `yaml:"url_prefix"`
+}
+
+// SchedulerConfig controls background job execution cadence.
+type SchedulerConfig struct {
+        Interval string `yaml:"interval"`
 }
 
 // AuthConfig controls JWT and session behavior.
@@ -76,10 +82,10 @@ func Load(path string) (*Config, error) {
 }
 
 func defaultConfig() Config {
-	return Config{
-		Server:   ServerConfig{Address: ":8080"},
-		Database: DatabaseConfig{Path: "./local.db"},
-		Logging:  LoggingConfig{Level: "info"},
+        return Config{
+                Server:   ServerConfig{Address: ":8080"},
+                Database: DatabaseConfig{Path: "./local.db"},
+                Logging:  LoggingConfig{Level: "info"},
 		Storage: StorageConfig{
 			LocalPath: "./files",
 			URLPrefix: "/files/",
@@ -88,12 +94,15 @@ func defaultConfig() Config {
 			JWTSecret:       "local-dev-secret-please-change",
 			TokenTTLMinutes: 15,
 		},
-		Seed: SeedConfig{
-			AdminEmail:    "admin@example.com",
-			AdminPassword: "changeme123",
-			AdminRole:     "admin",
-		},
-	}
+                Seed: SeedConfig{
+                        AdminEmail:    "admin@example.com",
+                        AdminPassword: "changeme123",
+                        AdminRole:     "admin",
+                },
+                Scheduler: SchedulerConfig{
+                        Interval: "5m",
+                },
+        }
 }
 
 func (c *Config) applyEnvOverrides() {
@@ -126,9 +135,12 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("VVSAPP_STORAGE_LOCAL_PATH"); v != "" {
 		c.Storage.LocalPath = v
 	}
-	if v := os.Getenv("VVSAPP_STORAGE_URL_PREFIX"); v != "" {
-		c.Storage.URLPrefix = v
-	}
+        if v := os.Getenv("VVSAPP_STORAGE_URL_PREFIX"); v != "" {
+                c.Storage.URLPrefix = v
+        }
+        if v := os.Getenv("VVSAPP_SCHEDULER_INTERVAL"); v != "" {
+                c.Scheduler.Interval = v
+        }
 }
 
 func parseIntEnv(raw string) (int, error) {
@@ -149,13 +161,16 @@ func (c *Config) Summary() map[string]any {
 		"logging": map[string]any{
 			"level": c.Logging.Level,
 		},
-		"storage": map[string]any{
-			"local_path": c.Storage.LocalPath,
-			"url_prefix": c.Storage.URLPrefix,
-		},
-		"auth": map[string]any{
-			"token_ttl_minutes": c.Auth.TokenTTLMinutes,
-		},
+                "storage": map[string]any{
+                        "local_path": c.Storage.LocalPath,
+                        "url_prefix": c.Storage.URLPrefix,
+                },
+                "scheduler": map[string]any{
+                        "interval": c.Scheduler.Interval,
+                },
+                "auth": map[string]any{
+                        "token_ttl_minutes": c.Auth.TokenTTLMinutes,
+                },
 		"seed": map[string]any{
 			"admin_email": c.Seed.AdminEmail,
 			"admin_role":  c.Seed.AdminRole,

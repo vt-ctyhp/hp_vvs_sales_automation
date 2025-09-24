@@ -2,14 +2,14 @@ package documents
 
 import "testing"
 
-func TestShippingForSubtotal(t *testing.T) {
-	if got := shippingForSubtotal(1500, "Sales Invoice"); got != 50 {
-		t.Fatalf("expected shipping 50 got %v", got)
-	}
-	if got := shippingForSubtotal(2500, "Sales Invoice"); got != 0 {
-		t.Fatalf("expected shipping 0 got %v", got)
-	}
-	if got := shippingForSubtotal(500, "Sales Receipt"); got != 0 {
-		t.Fatalf("expected shipping 0 for receipts got %v", got)
-	}
+func TestShippingForDocument(t *testing.T) {
+        if got := shippingForDocument("Sales Invoice", 1500); got != 50 {
+                t.Fatalf("expected shipping 50 got %v", got)
+        }
+        if got := shippingForDocument("Sales Invoice", 2500); got != 0 {
+                t.Fatalf("expected shipping 0 got %v", got)
+        }
+        if got := shippingForDocument("Sales Receipt", 500); got != 0 {
+                t.Fatalf("expected shipping 0 for receipts got %v", got)
+        }
 }
