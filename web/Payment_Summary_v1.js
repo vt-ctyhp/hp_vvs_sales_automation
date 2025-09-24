@@ -66,6 +66,8 @@ function ps_fetchHistoryForAnchor_(anchor) {
   var cGross     = ps_pick_(H, ['AmountGross','Payment Amount','Amount','Total Paid']);       // rp_submit → "AmountGross"
   var cPayDT     = ps_pick_(H, ['PaymentDateTime','Payment Date/Time','Payment Date','Payment Timestamp']); // rp_submit → "PaymentDateTime"
   var cSubmitted = ps_pick_(H, ['Submitted Date/Time','Submitted At','Submitted','Date/Time','Date','Timestamp','Created At','CreatedAt']); // rp_submit → "Submitted Date/Time"
+  var cDueDate   = ps_pick_(H, ['DueDate','Due Date','InvoiceDueDate','Invoice Due Date','DocDueDate','Doc Due Date']);
+  var cGroupId   = ps_pick_(H, ['InvoiceGroupID','InvoiceGroup','Invoice Group ID','Invoice Group','GroupID','Group ID','BasketID']);
 
   // Read all data
   var vals = sh.getRange(2,1,lr-1,lc).getValues();
@@ -128,6 +130,8 @@ function ps_fetchHistoryForAnchor_(anchor) {
     var supersedes = cSupersedes ? String(r[cSupersedes-1] || '').trim()               : '';
     var appliesTo  = cAppliesTo  ? String(r[cAppliesTo-1]  || '').trim()               : '';
 
+    var due = cDueDate ? ps_parseDate_(r[cDueDate-1]) : null;
+    var grpId = cGroupId ? String(r[cGroupId-1] || '').trim() : '';
     entries.push({
       when: when ? when.toISOString() : '',
       dateDisplay: when ? Utilities.formatDate(when, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : '',
@@ -146,7 +150,11 @@ function ps_fetchHistoryForAnchor_(anchor) {
       docStatus: docStatus,
       docRole:   docRole,
       supersedes: supersedes,
-      appliesTo:  appliesTo
+      appliesTo:  appliesTo,
+      dueDate: due ? due.toISOString() : '',
+      dueDateDisplay: due ? Utilities.formatDate(due, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+      invoiceGroupId: grpId,
+      soNumber: rSO ? String(rSO).trim() : ''
     });
 
   }

@@ -14,20 +14,43 @@
    legend{ padding:0 6px; font-weight:700; }
    .grid2{ display:grid; grid-template-columns: 320px 1fr; gap:14px; align-items:start; }
    .kv{ display:grid; grid-template-columns: 150px 1fr; gap:6px 10px; }
-   .muted{ color:var(--muted); font-size:12px;}
-   .btns{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-   button{ padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; cursor:pointer; }
-   .primary{ background:var(--brand); color:#fff; border-color:transparent; }
-   table{ width:100%; border-collapse:collapse; }
-   th{ position:sticky; top:0; background:#fff; border-bottom:1px solid #ddd; text-align:left; padding:6px 8px; }
-   td{ border-bottom:1px solid #f1f1f1; padding:6px 8px; vertical-align:top; }
-   details{ background:#fafafa; border:1px solid #eee; border-radius:8px; padding:8px; }
-   .chip{ display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; background:#fafafa; margin-right:6px; }
-   .doc-toolbar{
-     display:flex; justify-content:space-between; align-items:center;
-     gap:12px; margin:-4px 0 8px 0;
-   }
-   .doc-toolbar .left, .doc-toolbar .right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .muted{ color:var(--muted); font-size:12px;}
+  .btns{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button{ padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; cursor:pointer; }
+  .primary{ background:var(--brand); color:#fff; border-color:transparent; }
+  table{ width:100%; border-collapse:collapse; }
+  th{ position:sticky; top:0; background:#fff; border-bottom:1px solid #ddd; text-align:left; padding:6px 8px; }
+  td{ border-bottom:1px solid #f1f1f1; padding:6px 8px; vertical-align:top; }
+  details{ background:#fafafa; border:1px solid #eee; border-radius:8px; padding:8px; }
+  .chip{ display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; background:#fafafa; margin-right:6px; }
+  .doc-toolbar{
+    display:flex; justify-content:space-between; align-items:center;
+    gap:12px; margin:-4px 0 8px 0;
+  }
+  .doc-toolbar .left, .doc-toolbar .right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+  .warning-box{ border-left:4px solid #f97316; background:#fff7ed; padding:10px 12px; border-radius:10px; margin:16px 0; }
+  .warning-box strong{ display:block; margin-bottom:6px; }
+  .warn-list{ margin:0; padding-left:18px; }
+  .warn-list li{ margin:4px 0; }
+  .chip.warn{ border-color:#f97316; background:#fef3c7; color:#9a3412; }
+  .chip.good{ border-color:#0f766e; background:#ecfdf5; color:#0f766e; }
+  .invoice-groups{ display:grid; gap:10px; }
+  .group-card{ background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:0; overflow:hidden; }
+  .group-card summary{ cursor:pointer; list-style:none; padding:12px 14px; font-weight:600; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+  .group-card summary::-webkit-details-marker{ display:none; }
+  .group-card[open] summary{ border-bottom:1px solid #e2e8f0; background:#f8fafc; }
+  .group-card .summary-main{ flex:1 1 260px; min-width:220px; display:grid; gap:4px; }
+  .group-card .summary-main .meta{ font-weight:400; color:var(--muted); font-size:12px; }
+  .group-card .summary-main .pill-stack{ margin-top:2px; }
+  .group-card .stats{ margin-left:auto; display:flex; flex-wrap:wrap; gap:12px; font-weight:500; }
+  .group-card .stats span{ white-space:nowrap; }
+  .group-body{ padding:14px; display:grid; gap:12px; }
+  .subtable{ width:100%; border-collapse:collapse; }
+  .subtable th{ text-align:left; padding:6px 8px; font-weight:600; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
+  .subtable td{ padding:6px 8px; border-bottom:1px solid #f1f5f9; }
+  .section-title{ font-weight:600; margin-bottom:4px; }
+  .pill-stack{ display:flex; flex-wrap:wrap; gap:6px; }
 
 
  </style>
@@ -45,7 +68,16 @@
    function num(v){ const n = parseFloat(String(v||'').replace(/[^\d.\-]/g,'')); return isFinite(n)?n:0; }
 
 
-   let __state = { entries:[], totals:{}, prefill:null, filter:'ALL', sort:'ASC' };
+  let __state = {
+    entries: [],
+    totals: {},
+    prefill: null,
+    filter: 'ALL',
+    sort: 'ASC',
+    groups: [],
+    ungroupedReceipts: [],
+    warnings: []
+  };
 
 
    function renderPrefill(p){
@@ -59,14 +91,131 @@
        ['Remaining (OT − PTD)', fmt$(Math.max(0, num(p.orderTotal)-num(p.paidToDate)))],
        ['Payments Folder', p.paymentsFolderURL ? `<a target="_blank" href="${html(p.paymentsFolderURL)}">Open</a>` : '']
      ];
-     $id('prefillBox').innerHTML = '<div class="kv">' + kv.map(([k,v])=>`<div><b>${html(k)}</b></div><div>${v||''}</div>`).join('') + '</div>';
+   $id('prefillBox').innerHTML = '<div class="kv">' + kv.map(([k,v])=>`<div><b>${html(k)}</b></div><div>${v||''}</div>`).join('') + '</div>';
+  }
+
+
+   function parseISODate(s){
+     if (!s) return null;
+     const d = new Date(String(s));
+     return isNaN(d) ? null : d;
+   }
+
+   function computeDerivedState(){
+     const entries = Array.isArray(__state.entries) ? __state.entries : [];
+     const invoices = entries.filter(e => /invoice/i.test(String(e.docType||'')));
+     const receipts = entries.filter(e => /receipt/i.test(String(e.docType||'')));
+
+     const groups = [];
+     const groupMap = new Map();
+     let fallbackIdx = 1;
+
+     invoices.forEach(inv => {
+       const rawKey = String(inv.invoiceGroupId || inv.docNumber || '').trim();
+       const key = rawKey || `INV-${String(fallbackIdx++).padStart(3,'0')}`;
+       let group = groupMap.get(key);
+       if (!group) {
+         const labelParts = [];
+         if (inv.docRole) labelParts.push(String(inv.docRole));
+         if (inv.docNumber) labelParts.push('#' + String(inv.docNumber));
+         if (!labelParts.length && inv.docType) labelParts.push(String(inv.docType));
+         group = {
+           key,
+           label: labelParts.join(' ').trim() || key,
+           invoices: [],
+           receipts: [],
+           statuses: new Set(),
+           roles: new Set(),
+           totalInvoiced: 0,
+           totalPaid: 0,
+           dueDate: null,
+           dueDisplay: '',
+           soNumber: inv.soNumber || ''
+         };
+         groupMap.set(key, group);
+         groups.push(group);
+       }
+       group.invoices.push(inv);
+       group.totalInvoiced += Number(inv.linesSubtotal || 0);
+       if (inv.docRole) group.roles.add(String(inv.docRole || '').toUpperCase());
+       if (inv.docStatus) group.statuses.add(String(inv.docStatus || '').toUpperCase());
+       const due = parseISODate(inv.dueDate);
+       if (due && (!group.dueDate || due < group.dueDate)) {
+         group.dueDate = due;
+         group.dueDisplay = inv.dueDateDisplay || due.toISOString().slice(0,10);
+       }
+     });
+
+     const ungroupedReceipts = [];
+     receipts.forEach(rcpt => {
+       const candidates = [rcpt.appliesTo, rcpt.invoiceGroupId, rcpt.docNumber].map(v => v ? String(v).trim() : '');
+       let assigned = false;
+       for (const candidate of candidates) {
+         if (!candidate) continue;
+         const group = groupMap.get(candidate);
+         if (group) {
+           group.receipts.push(rcpt);
+           group.totalPaid += Number(rcpt.payment || 0);
+           assigned = true;
+           break;
+         }
+       }
+       if (!assigned) {
+         ungroupedReceipts.push(rcpt);
+       }
+     });
+
+     const today = new Date();
+     today.setHours(0,0,0,0);
+
+     groups.forEach(group => {
+       group.roles = Array.from(group.roles).filter(Boolean);
+       group.statuses = Array.from(group.statuses).filter(Boolean);
+       group.balance = Math.max(0, +(Number(group.totalInvoiced || 0) - Number(group.totalPaid || 0)).toFixed(2));
+       if (group.dueDate) {
+         const dueCopy = new Date(group.dueDate.getTime());
+         dueCopy.setHours(0,0,0,0);
+         group.isOverdue = dueCopy < today && group.balance > 0;
+       } else {
+         group.isOverdue = false;
+       }
+     });
+
+     const warnings = [];
+     groups.filter(g => g.isOverdue).forEach(g => {
+       warnings.push(`${g.label || 'Invoice'} is overdue with ${fmt$(g.balance)} outstanding.`);
+     });
+
+     const activeInvoices = invoices.filter(inv => {
+       const status = String(inv.docStatus || '').toUpperCase();
+       return ['VOID','REPLACED','CANCELLED','DRAFT'].indexOf(status) === -1;
+     });
+     const byRole = new Map();
+     activeInvoices.forEach(inv => {
+       const role = (inv.docRole ? String(inv.docRole) : String(inv.docType || 'Invoice')).toUpperCase();
+       const arr = byRole.get(role) || [];
+       arr.push(inv);
+       byRole.set(role, arr);
+     });
+     byRole.forEach((arr, role) => {
+       const superseded = new Set(arr.map(inv => String(inv.supersedes || '').trim()).filter(Boolean));
+       const active = arr.filter(inv => !superseded.has(String(inv.docNumber || '').trim()));
+       if (active.length > 1) {
+         const docs = active.map(inv => inv.docNumber || inv.invoiceGroupId || inv.docType || 'Unknown').join(', ');
+         warnings.push(`Multiple active invoices detected for role ${role}: ${docs}.`);
+       }
+     });
+
+     __state.groups = groups;
+     __state.ungroupedReceipts = ungroupedReceipts;
+     __state.warnings = warnings;
    }
 
 
    function applyFilterAndSort(){
-     let rows = __state.entries.slice();
-     if (__state.filter === 'INV') rows = rows.filter(e=>/invoice/i.test(e.docType));
-     if (__state.filter === 'RCPT') rows = rows.filter(e=>/receipt/i.test(e.docType));
+     let rows = (__state.entries || []).slice();
+     if (__state.filter === 'INV') rows = rows.filter(e=>/invoice/i.test(String(e.docType||'')));
+     if (__state.filter === 'RCPT') rows = rows.filter(e=>/receipt/i.test(String(e.docType||'')));
      rows.sort((a,b)=> __state.sort==='ASC'
        ? String(a.when).localeCompare(String(b.when))
        : String(b.when).localeCompare(String(a.when)));
@@ -74,15 +223,15 @@
    }
 
 
-   function renderEntries(){
+   function renderAllDocuments(){
      const rows = applyFilterAndSort();
-     // Map docNumber → docUrl for inline linking
-    const docUrlByNo = {};
-    __state.entries.forEach(e => { if (e.docNumber && e.docUrl) docUrlByNo[e.docNumber] = e.docUrl; });
+     const docUrlByNo = {};
+     (__state.entries || []).forEach(e => { if (e.docNumber && e.docUrl) docUrlByNo[e.docNumber] = e.docUrl; });
 
      const wrap = $id('entriesWrap');
+     if (!wrap) return;
      if (!rows.length){ wrap.innerHTML = '<div class="muted">No documents for this anchor yet.</div>'; return; }
-     const head = ['Date/Time','Doc Type','Status','Role','Doc #','Lines Subtotal','Payment','Method','Reference','Links','PDF','Doc','Lines'];
+     const head = ['Date/Time','Doc Type','Status','Role','Doc #','Lines Subtotal','Payment','Method','Reference','Invoice Group','Due Date','Links','PDF','Doc','Lines'];
      const thead = '<thead><tr>'+head.map(h=>`<th>${html(h)}</th>`).join('')+'</tr></thead>';
      const trs = rows.map(e=>{
        const lines = (e.lines||[]);
@@ -99,7 +248,6 @@
         const statusHtml = e.docStatus ? `<span class="chip">${html(e.docStatus)}</span>` : '<span class="muted">—</span>';
         const roleHtml   = e.docRole   ? `<span class="chip">${html(e.docRole)}</span>`   : '<span class="muted">—</span>';
 
-        // Build relation links
         const relParts = [];
         if (e.supersedes) relParts.push('Replaces: ' + html(e.supersedes));
         if (e.appliesTo) {
@@ -112,6 +260,8 @@
        const pdf = e.pdfUrl ? `<a target="_blank" href="${html(e.pdfUrl)}">Open</a>` : '—';
        const doc = e.docUrl ? `<a target="_blank" href="${html(e.docUrl)}">Open</a>` : '—';
        const docNo = e.docNumber || '—';
+       const groupCell = e.invoiceGroupId ? html(e.invoiceGroupId) : '<span class="muted">—</span>';
+       const dueCell = e.dueDateDisplay ? html(e.dueDateDisplay) : '<span class="muted">—</span>';
         return `<tr>
           <td>${html(e.dateDisplay||'')}</td>
           <td>${html(e.docType||'')}</td>
@@ -122,6 +272,8 @@
           <td style="text-align:right;">${e.payment?fmt$(e.payment):'—'}</td>
           <td>${html(e.method||'')}</td>
           <td>${html(e.reference||'')}</td>
+          <td>${groupCell}</td>
+          <td>${dueCell}</td>
           <td>${relHtml}</td>
           <td>${pdf}</td>
           <td>${doc}</td>
@@ -136,44 +288,151 @@
      const t = __state.totals || {};
      const byMethod = t.byMethod || {};
      const chips = Object.keys(byMethod).sort().map(k=>`<span class="chip">${html(k)}: ${fmt$(byMethod[k])}</span>`).join(' ');
+     const netVal = Number(t.netLinesMinusPayments || 0);
+     const netDisplay = netVal > 0 ? `<span class="chip warn">${fmt$(netVal)}</span>` : fmt$(netVal);
      $id('totalsBox').innerHTML =
        `<div class="kv">
           <div><b>Invoice Lines Subtotal</b></div><div>${fmt$(t.invoicesLinesSubtotal||0)}</div>
           <div><b>Total Payments</b></div><div>${fmt$(t.totalPayments||0)}</div>
-          <div><b>Net (Lines − Payments)</b></div><div>${fmt$(t.netLinesMinusPayments||0)}</div>
+          <div><b>Net (Lines − Payments)</b></div><div>${netDisplay}</div>
         </div>
         <div style="margin-top:8px;"><b>Payments by Method:</b> ${chips || '<span class="muted">—</span>'}</div>`;
    }
 
 
-   function onFilter(btn, kind){
-     __state.filter = kind; renderEntries(); fitDialogToContent();
-     document.querySelectorAll('[data-filter]').forEach(b=>b.disabled = (b===btn));
+   function renderWarnings(){
+     const box = $id('warningsWrap');
+     if (!box) return;
+     const warnings = __state.warnings || [];
+     if (!warnings.length){
+       box.innerHTML = '';
+       box.style.display = 'none';
+       return;
+     }
+     box.style.display = 'block';
+     box.innerHTML = `<div class="warning-box"><strong>Warnings</strong><ul class="warn-list">${warnings.map(w=>`<li>${html(w)}</li>`).join('')}</ul></div>`;
    }
-   function onSort(btn, dir){
-     __state.sort = dir; renderEntries(); fitDialogToContent();
-     document.querySelectorAll('[data-sort]').forEach(b=>b.disabled = (b===btn));
+
+
+   function renderInvoiceGroups(){
+     const wrap = $id('invoiceGroupWrap');
+     if (!wrap) return;
+     const groups = __state.groups || [];
+     if (!groups.length){
+       wrap.innerHTML = '<div class="muted">No invoices issued for this anchor yet.</div>';
+       return;
+     }
+     wrap.innerHTML = groups.map((g, idx) => {
+       const metaParts = [];
+       if (g.soNumber) metaParts.push('SO# ' + html(g.soNumber));
+       if (g.dueDisplay) metaParts.push('Due ' + html(g.dueDisplay));
+       const meta = metaParts.join(' · ');
+       const overdueChip = g.isOverdue ? `<span class="chip warn">Overdue</span>` : '';
+       const roleChips = g.roles && g.roles.length ? g.roles.map(r=>`<span class="chip">${html(r)}</span>`).join('') : '';
+       const badgeLine = (overdueChip || roleChips) ? `<div class="pill-stack">${overdueChip}${roleChips}</div>` : '';
+       const statusesBlock = (g.statuses && g.statuses.length)
+         ? `<div><div class="section-title">Statuses</div><div class="pill-stack">${g.statuses.map(s=>`<span class="chip">${html(s)}</span>`).join('')}</div></div>`
+         : '';
+       const invoicesTable = g.invoices.length
+         ? `<table class="subtable"><thead><tr><th>Date</th><th>Doc #</th><th>Type</th><th>Status</th><th style="text-align:right;">Subtotal</th></tr></thead><tbody>${g.invoices.map(inv=>`<tr><td>${html(inv.dateDisplay||'')}</td><td>${html(inv.docNumber||'')}</td><td>${html(inv.docType||'')}</td><td>${html(inv.docStatus||'')}</td><td style="text-align:right;">${fmt$(inv.linesSubtotal||0)}</td></tr>`).join('')}</tbody></table>`
+         : '<div class="muted">No invoices recorded.</div>';
+       const receiptsTable = g.receipts.length
+         ? `<table class="subtable"><thead><tr><th>Date</th><th>Doc #</th><th>Method</th><th>Reference</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${g.receipts.map(rcpt=>`<tr><td>${html(rcpt.dateDisplay||'')}</td><td>${html(rcpt.docNumber||'')}</td><td>${html(rcpt.method||'')}</td><td>${html(rcpt.reference||'')}</td><td style="text-align:right;">${fmt$(rcpt.payment||0)}</td></tr>`).join('')}</tbody></table>`
+         : '<div class="muted">No receipts applied to this group yet.</div>';
+       const balanceDisplay = g.balance > 0 ? `<span class="chip warn">${fmt$(g.balance||0)}</span>` : fmt$(g.balance||0);
+       const openAttr = g.isOverdue || groups.length === 1 ? ' open' : '';
+       return `<details class="group-card"${openAttr}><summary><div class="summary-main"><div>${html(g.label||'Invoice Group')}</div>${meta ? `<div class="meta">${meta}</div>` : ''}${badgeLine}</div><div class="stats"><span>Total ${fmt$(g.totalInvoiced||0)}</span><span>Paid ${fmt$(g.totalPaid||0)}</span><span>Balance ${balanceDisplay}</span></div></summary><div class="group-body">${statusesBlock}<div><div class="section-title">Invoices</div>${invoicesTable}</div><div><div class="section-title">Receipts</div>${receiptsTable}</div></div></details>`;
+     }).join('');
+   }
+
+
+   function renderLooseReceipts(){
+     const wrap = $id('looseReceiptsWrap');
+     if (!wrap) return;
+     const receipts = __state.ungroupedReceipts || [];
+     if (!receipts.length){
+       wrap.innerHTML = '<div class="muted">All receipts are currently linked to invoice groups.</div>';
+       return;
+     }
+     const docUrlByNo = {};
+     (__state.entries || []).forEach(e => { if (e.docNumber && e.docUrl) docUrlByNo[e.docNumber] = e.docUrl; });
+     const rows = receipts.map(rcpt => {
+       const applies = rcpt.appliesTo ? String(rcpt.appliesTo) : '';
+       const appliesHtml = applies
+         ? (docUrlByNo[applies] ? `<a target="_blank" href="${html(docUrlByNo[applies])}">${html(applies)}</a>` : html(applies))
+         : '—';
+       const groupCell = rcpt.invoiceGroupId ? html(rcpt.invoiceGroupId) : '—';
+       return `<tr><td>${html(rcpt.dateDisplay||'')}</td><td>${html(rcpt.docNumber||'')}</td><td>${appliesHtml}</td><td>${groupCell}</td><td>${html(rcpt.method||'')}</td><td>${html(rcpt.reference||'')}</td><td style="text-align:right;">${fmt$(rcpt.payment||0)}</td></tr>`;
+     }).join('');
+     wrap.innerHTML = `<table class="subtable"><thead><tr><th>Date</th><th>Receipt #</th><th>Applies To</th><th>Invoice Group</th><th>Method</th><th>Reference</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${rows}</tbody></table>`;
+   }
+
+
+   function syncToolbarButtons(){
+     document.querySelectorAll('[data-filter]').forEach(btn => {
+       const kind = btn.getAttribute('data-filter');
+       btn.disabled = (kind === __state.filter);
+     });
+     document.querySelectorAll('[data-sort]').forEach(btn => {
+       const dir = btn.getAttribute('data-sort');
+       btn.disabled = (dir === __state.sort);
+     });
+   }
+
+
+   function onFilter(_btn, kind){
+     __state.filter = kind;
+     renderAllDocuments();
+     syncToolbarButtons();
+     fitDialogToContent();
+   }
+   function onSort(_btn, dir){
+     __state.sort = dir;
+     renderAllDocuments();
+     syncToolbarButtons();
+     fitDialogToContent();
    }
 
 
    function boot(){
      $id('entriesWrap').innerHTML = '<div class="muted">Loading…</div>';
+     const invWrap = $id('invoiceGroupWrap'); if (invWrap) invWrap.innerHTML = '<div class="muted">Loading…</div>';
+     const looseWrap = $id('looseReceiptsWrap'); if (looseWrap) looseWrap.innerHTML = '<div class="muted">Loading…</div>';
+     const warnWrap = $id('warningsWrap'); if (warnWrap) { warnWrap.innerHTML = ''; warnWrap.style.display = 'none'; }
+
      google.script.run
        .withSuccessHandler(function(res){
          if (!res || !res.ok) {
-           $id('entriesWrap').innerHTML = '<div class="muted">Server error: ' + html(res && res.error || 'Unknown') + '</div>';
+           const msg = 'Server error: ' + html(res && res.error || 'Unknown');
+           $id('entriesWrap').innerHTML = '<div class="muted">' + msg + '</div>';
+           if (invWrap) invWrap.innerHTML = '<div class="muted">' + msg + '</div>';
+           if (looseWrap) looseWrap.innerHTML = '<div class="muted">' + msg + '</div>';
+           if (warnWrap) { warnWrap.style.display = 'block'; warnWrap.innerHTML = `<div class="warning-box"><strong>Error</strong><ul class="warn-list"><li>${msg}</li></ul></div>`; }
+           syncToolbarButtons();
+           fitDialogToContent();
            return;
          }
          __state.prefill = res.prefill || null;
          __state.entries = (res.history && res.history.entries) || [];
          __state.totals  = (res.history && res.history.totals) || {};
+         computeDerivedState();
          renderPrefill(__state.prefill || {});
          renderTotals();
-         renderEntries();
+         renderWarnings();
+         renderInvoiceGroups();
+         renderLooseReceipts();
+         renderAllDocuments();
+         syncToolbarButtons();
          fitDialogToContent(1040);
        })
        .withFailureHandler(function(err){
-         $id('entriesWrap').innerHTML = '<div class="muted">Server error: ' + html(err && err.message || err) + '</div>';
+         const msg = 'Server error: ' + html(err && err.message || err);
+         $id('entriesWrap').innerHTML = '<div class="muted">' + msg + '</div>';
+         const inv = $id('invoiceGroupWrap'); if (inv) inv.innerHTML = '<div class="muted">' + msg + '</div>';
+         const loose = $id('looseReceiptsWrap'); if (loose) loose.innerHTML = '<div class="muted">' + msg + '</div>';
+         const warn = $id('warningsWrap'); if (warn) { warn.style.display = 'block'; warn.innerHTML = `<div class="warning-box"><strong>Error</strong><ul class="warn-list"><li>${msg}</li></ul></div>`; }
+         syncToolbarButtons();
+         fitDialogToContent();
        })
        .ps_init();
    }
@@ -211,6 +470,7 @@
 </head>
 <body>
  <div class="sub">Read‑only view of all Invoices & Receipts for the selected customer/anchor.</div>
+ <div id="warningsWrap"></div>
 
 
  <div class="grid2">
@@ -233,20 +493,32 @@
 
 
  <fieldset style="margin-top:14px;">
-   <legend>Documents</legend>
+   <legend>Invoice Overview</legend>
+   <div class="muted" style="margin-bottom:8px;">Expand a group to review invoice details and the receipts applied to it.</div>
+   <div id="invoiceGroupWrap" class="invoice-groups"><div class="muted">Loading…</div></div>
+ </fieldset>
 
 
-   <!-- NEW toolbar just under the legend -->
+ <fieldset style="margin-top:14px;">
+   <legend>Receipts without a linked invoice</legend>
+   <div id="looseReceiptsWrap"><div class="muted">Loading…</div></div>
+ </fieldset>
+
+
+ <fieldset style="margin-top:14px;">
+   <legend>All Documents</legend>
+
+
    <div class="doc-toolbar">
      <div class="left">
-       <button data-filter type="button" onclick="onFilter(this,'ALL')">All</button>
-       <button data-filter type="button" onclick="onFilter(this,'INV')">Invoices</button>
-       <button data-filter type="button" onclick="onFilter(this,'RCPT')">Receipts</button>
+       <button data-filter="ALL" type="button" onclick="onFilter(this,'ALL')">All</button>
+       <button data-filter="INV" type="button" onclick="onFilter(this,'INV')">Invoices</button>
+       <button data-filter="RCPT" type="button" onclick="onFilter(this,'RCPT')">Receipts</button>
      </div>
      <div class="right">
        <span class="muted">Sort:</span>
-       <button data-sort type="button" onclick="onSort(this,'ASC')">Oldest→Newest</button>
-       <button data-sort type="button" onclick="onSort(this,'DESC')">Newest→Oldest</button>
+       <button data-sort="ASC" type="button" onclick="onSort(this,'ASC')">Oldest→Newest</button>
+       <button data-sort="DESC" type="button" onclick="onSort(this,'DESC')">Newest→Oldest</button>
      </div>
    </div>
 
