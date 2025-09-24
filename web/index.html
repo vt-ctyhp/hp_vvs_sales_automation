@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VVS Sales Automation</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container">
+            <h1 class="site-title">VVS Sales Automation</h1>
+            <p class="site-subtitle">Operational dashboard and authentication portal</p>
+        </div>
+    </header>
+    <main class="container">
+        <section class="card" aria-labelledby="health-title">
+            <div class="card-header">
+                <h2 id="health-title">System health</h2>
+                <button id="refresh-health" type="button" class="ghost-button" aria-live="polite">Refresh</button>
+            </div>
+            <dl class="health-grid" id="health-status" aria-live="polite">
+                <div>
+                    <dt>Status</dt>
+                    <dd id="health-overall">Loading…</dd>
+                </div>
+                <div>
+                    <dt>Database</dt>
+                    <dd id="health-db">Loading…</dd>
+                </div>
+                <div>
+                    <dt>Server time</dt>
+                    <dd id="health-time">Loading…</dd>
+                </div>
+            </dl>
+            <p id="health-error" role="alert" class="error-message" hidden></p>
+        </section>
+
+        <section class="card" aria-labelledby="login-title">
+            <div class="card-header">
+                <h2 id="login-title">Administrator login</h2>
+            </div>
+            <form id="login-form" class="form-grid" novalidate>
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" autocomplete="username" required placeholder="admin@example.com">
+
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required placeholder="••••••••">
+
+                <button type="submit" class="primary-button">Sign in</button>
+                <p id="login-message" role="alert" class="status-message" hidden></p>
+            </form>
+        </section>
+
+        <section class="card" aria-labelledby="session-title">
+            <div class="card-header">
+                <h2 id="session-title">Session details</h2>
+            </div>
+            <div id="session-output" class="session-output" aria-live="polite">
+                <p>No active session. Log in to see your access token and role.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <small>&copy; <span id="copyright-year"></span> VVS Sales Automation. All rights reserved.</small>
+        </div>
+    </footer>
+
+    <script src="js/app.js" type="module"></script>
+</body>
+</html>
