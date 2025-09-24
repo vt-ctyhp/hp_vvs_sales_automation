@@ -668,9 +668,12 @@
      const fmtCurrency = (n) => '$' + Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 
 
-     const brand       = p.brand || p.Brand || '';
-     const so          = (p.soNumber || p.so || p.SO || p['SO#'] || '').toString();
-     const cust        = p.customerName || p.customer || p.Customer || p['Customer Name'] || '';
+    const brand       = p.brand || p.Brand || '';
+    const so          = (p.soNumber || p.so || p.SO || p['SO#'] || '').toString();
+    const cust        = p.customerName || p.customer || p.Customer || p['Customer Name'] || '';
+    const customerId  = p.customerId || p.customerID || p['Customer ID'] || p['CustomerID'] || '';
+    const business    = p.businessName || p.business || p['Business Name'] || p['Business'] || '';
+    const productDesc = p.productDescription || p.product || p['Product Description'] || '';
      const orderTotal  = num(p.orderTotal ?? p.OrderTotal ?? p.order_total ?? 0);
      const paidToDate  = num(p.paidToDate ?? p.paid_to_date ?? p.paid ?? 0);
      const balanceInit = Math.max(0, orderTotal - paidToDate);
@@ -679,17 +682,20 @@
 
 
      // Render prefill card (left panel)
-     const rows = [
-       ['Anchor', p.anchorType || (brand ? 'SO' : 'APPT')],
-       ['Brand', brand],
-       ['Customer', cust],
-       ['SO#', so],
-       ['Order Total', orderTotal ? fmtCurrency(orderTotal) : ''],
-       ['Paid-To-Date', paidToDate ? fmtCurrency(paidToDate) : ''],
-       ['Remaining Balance', fmtCurrency(balanceInit)],
-       ['Last Payment Date', lastPayDate || ''],
-       ['Payments Folder', payFolderURL ? `<a target="_blank" href="${html(payFolderURL)}">Open</a>` : '']
-     ];
+    const rows = [
+      ['Anchor', p.anchorType || (brand ? 'SO' : 'APPT')],
+      ['Brand', brand],
+      ['Customer', cust]
+    ];
+    if (customerId) rows.push(['Customer ID', customerId]);
+    if (business) rows.push(['Business Name', business]);
+    rows.push(['SO#', so]);
+    if (productDesc) rows.push(['Product Description', html(productDesc).replace(/\n/g, '<br>')]);
+    rows.push(['Order Total', orderTotal ? fmtCurrency(orderTotal) : '']);
+    rows.push(['Paid-To-Date', paidToDate ? fmtCurrency(paidToDate) : '']);
+    rows.push(['Remaining Balance', fmtCurrency(balanceInit)]);
+    rows.push(['Last Payment Date', lastPayDate || '']);
+    rows.push(['Payments Folder', payFolderURL ? `<a target="_blank" href="${html(payFolderURL)}">Open</a>` : '']);
      box.innerHTML = '<div class="kv">' + rows.map(r => `<div><b>${html(r[0])}</b></div><div>${r[1]}</div>`).join('') + '</div>';
 
 

@@ -353,7 +353,58 @@ function rp_init() {
       masterRowIndex:  master.rowIndex
     };
 
-    // 8) “Saved Lines” (100_ first; else last from 400_ only)
+    // 8) Optional SO details (Customer ID / Business Name / Product Description)
+    try {
+      const enrichFromMaster = function(map, rowVals, names) {
+        if (!map || !rowVals || !names || !names.length) return '';
+        const want = names.map(function(n){ return String(n || '').trim(); }).filter(Boolean);
+        for (var i = 0; i < want.length; i++) {
+          var idx = map[want[i]];
+          if (idx != null && idx >= 0) {
+            var val = rowVals[idx];
+            if (val != null && String(val).trim()) return String(val).trim();
+          }
+        }
+        // Case-insensitive fallback
+        const wantLC = want.map(function(n){ return n.toLowerCase(); });
+        for (var key in map) {
+          if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+          var idx2 = map[key];
+          if (idx2 == null || idx2 < 0) continue;
+          var keyLC = String(key || '').trim().toLowerCase();
+          if (wantLC.indexOf(keyLC) >= 0) {
+            var val2 = rowVals[idx2];
+            if (val2 != null && String(val2).trim()) return String(val2).trim();
+          }
+        }
+        return '';
+      };
+
+      var customerId = enrichFromMaster(master.map || {}, master.rowVals || [], ['Customer ID','CustomerID','Cust ID','Customer #','Customer Number','Customer Id']);
+      var businessName = enrichFromMaster(master.map || {}, master.rowVals || [], ['Business Name','Business','Company Name','Company','Business name']);
+      var productDescription = '';
+
+      if (anchorType === 'SO' && out.soNumber) {
+        var soRow = rp_findSoRowInBrand_(brand || '', out.soNumber);
+        if (soRow && soRow.map && soRow.rowVals) {
+          if (!customerId) {
+            customerId = enrichFromMaster(soRow.map, soRow.rowVals, ['Customer ID','CustomerID','Cust ID','Customer #','Customer Number','Customer Id']);
+          }
+          if (!businessName) {
+            businessName = enrichFromMaster(soRow.map, soRow.rowVals, ['Business Name','Business','Company Name','Company','Business name']);
+          }
+          productDescription = enrichFromMaster(soRow.map, soRow.rowVals, ['Product Description','Product','Item Description','Description','Product Desc','Description - Product']);
+        }
+      }
+
+      out.customerId = customerId;
+      out.businessName = businessName;
+      out.productDescription = productDescription;
+    } catch (e) {
+      Logger.log('[rp_init] WARN (SO enrichment): ' + (e && e.message ? e.message : e));
+    }
+
+    // 9) “Saved Lines” (100_ first; else last from 400_ only)
     try {
       const mObj  = rp_getMasterRowByIndex_(out.masterRowIndex);
       var saved   = rp_readSavedLinesFromMaster_(mObj);
@@ -374,7 +425,7 @@ function rp_init() {
       out.savedSubtotal = saved.subtotal || 0;
     }
 
-    // 9) Done
+    // 10) Done
     Logger.log('[rp_init] out: ' + JSON.stringify(out));
     if (stop) stop();
     Logger.log('[rp_init] end');
@@ -1517,14 +1568,53 @@ function rp_findSoRowInBrand_(brand, soNumber) {
     return null;
   })();
   if (!entry) return null;
+
+  const cacheKey = ['RP','SO_ROW', entry.brand, String(soNumber).trim()].join('::');
+  const cache = CacheService.getUserCache();
+  if (cache) {
+    try {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.rowIndex && parsed.map) {
+          const ssCached = SpreadsheetApp.openById(entry.fileId);
+          const shCached = ssCached.getSheetByName(parsed.sheetName || '') || ssCached.getSheetByName(rp_getOrdersTabName_()) || ssCached.getSheetByName('1. Sales') || ssCached.getSheets()[0];
+          const lcCached = shCached.getLastColumn();
+          const rowValsCached = shCached.getRange(parsed.rowIndex, 1, 1, lcCached).getValues()[0];
+          return { sh: shCached, rowIndex: parsed.rowIndex, map: parsed.map, rowVals: rowValsCached };
+        }
+      }
+    } catch (_) {
+      // Cache miss or stale entry → fall through to fresh lookup
+    }
+  }
+
   const ss = SpreadsheetApp.openById(entry.fileId);
   const sh = ss.getSheetByName(rp_getOrdersTabName_()) || ss.getSheetByName('1. Sales') || ss.getSheets()[0];
   const lr = sh.getLastRow(), lc = sh.getLastColumn();
-  const values = sh.getRange(1,1,lr,lc).getValues();
-  const map = rp_headerMap(values);
+  if (lr < 2 || lc < 1) return null;
+
+  const header = sh.getRange(1,1,1,lc).getValues();
+  const map = rp_headerMap(header);
   if (map['SO#'] == null) return null;
-  for (let r = 1; r < values.length; r++) { if (rp_soEq(values[r][map['SO#']], soNumber)) return { sh, rowIndex: r+1, map, rowVals: values[r] }; }
-  return null;
+
+  const soCol = map['SO#'] + 1; // convert to 1-based column number
+  const soVals = sh.getRange(2, soCol, Math.max(0, lr-1), 1).getDisplayValues();
+  let rowIndex = 0;
+  for (let i = 0; i < soVals.length; i++) {
+    if (rp_soEq(soVals[i][0], soNumber)) { rowIndex = i + 2; break; }
+  }
+  if (!rowIndex) return null;
+
+  const rowVals = sh.getRange(rowIndex, 1, 1, lc).getValues()[0];
+
+  if (cache && rowIndex) {
+    try {
+      cache.put(cacheKey, JSON.stringify({ rowIndex, sheetName: sh.getName(), map }), 120);
+    } catch (_) {}
+  }
+
+  return { sh, rowIndex, map, rowVals };
 }
 
 
