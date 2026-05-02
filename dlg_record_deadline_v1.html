@@ -21,8 +21,25 @@
       button { padding: 8px 12px; cursor: pointer; }
       button[disabled] { opacity: 0.6; cursor: not-allowed; }
     </style>
+    <?!= include('ui_styles') ?>
+    <style>
+      body.ui-shell{padding:16px;}
+      .ui-shell .wrap{padding:0;}
+      .ui-shell h2{margin:0 0 16px;}
+      .ui-shell .note{
+        background:var(--surface-inset);
+        border:1px solid var(--rule);
+        border-radius:0;
+        color:var(--ink-body);
+      }
+      .ui-shell .successPanel{
+        background:var(--surface-card);
+        border:1px solid var(--rule);
+        border-radius:0;
+      }
+    </style>
   </head>
-  <body>
+  <body class="ui-shell">
     <div class="wrap">
       <h2>Record Deadline</h2>
 
@@ -41,8 +58,7 @@
         <input id="date" type="date" />
       </div>
 
-      <div class="error" id="error"></div>
-      <div class="success" id="success"></div>
+      <div id="uiStatus" class="ui-status" role="status"></div>
 
       <div id="successPanel" class="successPanel" style="display:none">
         <div class="summary-grid">
@@ -65,14 +81,10 @@
 
     <script>
       function setError(msg) {
-        const el = document.getElementById('error');
-        el.textContent = msg || '';
-        el.style.display = msg ? 'block' : 'none';
+        uiSetStatus(msg || '', msg ? 'error' : '');
       }
       function setSuccess(msg) {
-        const el = document.getElementById('success');
-        el.textContent = msg || '';
-        el.style.display = msg ? 'block' : 'none';
+        uiSetStatus(msg || '', msg ? 'ok' : '');
       }
       function setDisabled(disabled) {
         document.getElementById('submitBtn').disabled = disabled;

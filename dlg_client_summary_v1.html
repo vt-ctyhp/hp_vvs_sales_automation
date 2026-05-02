@@ -27,10 +27,16 @@
     .fine{font-size:12px; color:var(--muted)}
     .err{color:var(--danger)}
   </style>
+  <?!= include('ui_styles') ?>
+  <style>
+    body.ui-shell{min-width:0;}
+    .ui-shell #title{margin:16px 16px 8px;}
+    .ui-shell .wrap{padding:0 16px 16px;}
+  </style>
 </head>
-<body>
+<body class="ui-shell">
   <h2 id="title">Client Summary</h2>
-  <div id="topErr" class="fine err" style="display:none; margin:0 16px 8px 16px;"></div>
+  <div id="uiStatus" class="ui-status" role="status" style="margin:0 16px 12px;"></div>
   <div class="chips" id="chips"></div>
 
   <div class="wrap">
@@ -92,7 +98,7 @@
     function el(tag, attrs, text){ var n=document.createElement(tag); attrs=attrs||{}; for(var k in attrs){ if(attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]); } if(text!=null) n.textContent=text; return n; }
     function fit(w){ try{ google.script.host.setWidth(w||1040); setTimeout(function(){ var h=Math.max(460, Math.min(760, document.body.scrollHeight+20)); google.script.host.setHeight(h); },0);}catch(_){ } }
     function asLink(href, label){ return href ? '<a href="'+href+'" target="_blank">'+(label||'Open')+'</a>' : '—'; }
-    function showError(msg){ var e=$('#topErr'); e.style.display='block'; e.textContent=msg; fit(); }
+    function showError(msg){ uiSetStatus(msg, 'error'); fit(); }
     window.addEventListener('error', function(e){ showError('Client error: ' + (e && e.message ? e.message : e)); });
 
     function applyChips(statuses, colors){
@@ -151,17 +157,48 @@
       applyQuick('#q_quote',   d.links.quotation);
 
       // Wire footer actions to your existing functions
-      $('#btnStart3d').onclick  = function(){ google.script.run.openStart3D(); };
-      $('#btnAssignSO').onclick = function(){ google.script.run.openAssignSO(); };
-      $('#btnRev3d').onclick    = function(){ google.script.run.open3DRevision(); };
-      $('#btnClientSt').onclick = function(){ google.script.run.csu_openClientStatus_(); };
-      $('#btnPay').onclick      = function(){ google.script.run.openRecordPayment(); };
+      $('#btnStart3d').onclick  = function(){
+        var btn = this; uiClearStatus(); uiSetBusy(btn, true, 'Opening...');
+        google.script.run
+          .withSuccessHandler(function(){ uiSetBusy(btn, false); })
+          .withFailureHandler(function(err){ uiSetBusy(btn, false); showError('Could not open Start 3D: ' + (err && err.message ? err.message : err)); })
+          .openStart3D();
+      };
+      $('#btnAssignSO').onclick = function(){
+        var btn = this; uiClearStatus(); uiSetBusy(btn, true, 'Opening...');
+        google.script.run
+          .withSuccessHandler(function(){ uiSetBusy(btn, false); })
+          .withFailureHandler(function(err){ uiSetBusy(btn, false); showError('Could not open Assign SO: ' + (err && err.message ? err.message : err)); })
+          .openAssignSO();
+      };
+      $('#btnRev3d').onclick    = function(){
+        var btn = this; uiClearStatus(); uiSetBusy(btn, true, 'Opening...');
+        google.script.run
+          .withSuccessHandler(function(){ uiSetBusy(btn, false); })
+          .withFailureHandler(function(err){ uiSetBusy(btn, false); showError('Could not open 3D Revision: ' + (err && err.message ? err.message : err)); })
+          .open3DRevision();
+      };
+      $('#btnClientSt').onclick = function(){
+        var btn = this; uiClearStatus(); uiSetBusy(btn, true, 'Opening...');
+        google.script.run
+          .withSuccessHandler(function(){ uiSetBusy(btn, false); })
+          .withFailureHandler(function(err){ uiSetBusy(btn, false); showError('Could not open Client Status Update: ' + (err && err.message ? err.message : err)); })
+          .csu_openClientStatus_();
+      };
+      $('#btnPay').onclick      = function(){
+        var btn = this; uiClearStatus(); uiSetBusy(btn, true, 'Opening...');
+        google.script.run
+          .withSuccessHandler(function(){ uiSetBusy(btn, false); })
+          .withFailureHandler(function(err){ uiSetBusy(btn, false); showError('Could not open Record Payment: ' + (err && err.message ? err.message : err)); })
+          .openRecordPayment();
+      };
 
       // 3D spec (lazy)
       $('#btn3dSpec').onclick = function(){
-        var btn=this; btn.disabled=true;
+        var btn=this; uiClearStatus(); uiSetBusy(btn, true, 'Loading...');
         google.script.run
           .withSuccessHandler(function(res){
+            uiSetBusy(btn, false);
             if (res && res.ok){
               var html=[];
               if (res.latest && (res.latest.html || res.latest.revNo || res.latest.when || res.latest.who)){
@@ -182,6 +219,7 @@
             fit();
           })
           .withFailureHandler(function(err){
+            uiSetBusy(btn, false);
             $('#designBrief').innerHTML = '<span class="err">Error: ' + (err && err.message ? err.message : err) + '</span>';
             fit();
           })

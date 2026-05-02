@@ -11,11 +11,11 @@ function openClientSummary() {
   // Use the canonical filename. If you keep a prefixed copy, uncomment the fallback.
   var html;
   try {
-    html = HtmlService.createHtmlOutputFromFile('dlg_client_summary_v1');
+    html = HtmlService.createTemplateFromFile('dlg_client_summary_v1').evaluate();
   } catch (e) {
     throw new Error('Missing HTML file "dlg_client_summary_v1.html". Create it and try again.');
     // Fallback if you insist on a prefixed file name:
-    // html = HtmlService.createHtmlOutputFromFile('04.1 - dlg_client_summary_v1');
+    // html = HtmlService.createTemplateFromFile('04.1 - dlg_client_summary_v1').evaluate();
   }
   html.setWidth(1040).setHeight(720);
   SpreadsheetApp.getUi().showModalDialog(html, 'Client Summary');
@@ -436,10 +436,9 @@ function csu_openClientStatus_() {
     if (typeof cs_openStatusDialog_ === 'function')    return cs_openStatusDialog_();
     if (typeof cs_showReadOnlyPing_ === 'function')    return cs_showReadOnlyPing_();
 
-    // As a last resort, inform the user rather than silently failing
-    SpreadsheetApp.getUi().alert('Client Status module not available: no opener function found.');
+    throw new Error('Client Status module not available: no opener function found.');
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Error opening Client Status: ' + (e && e.message ? e.message : e));
+    throw new Error('Error opening Client Status: ' + (e && e.message ? e.message : e));
   }
 }
 
@@ -463,6 +462,4 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
 

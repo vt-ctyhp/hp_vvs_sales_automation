@@ -559,8 +559,8 @@ var Deadlines = (function () {
     Logger.log('[showRecordDeadlineDialog] Opening dialog.');
     var html = HtmlService.createTemplateFromFile('dlg_record_deadline_v1')
       .evaluate()
-      .setWidth(460)
-      .setHeight(320);
+      .setWidth(520)
+      .setHeight(440);
     SpreadsheetApp.getUi().showModalDialog(html, 'Record Deadline');
   }
 
@@ -1063,4 +1063,3 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
