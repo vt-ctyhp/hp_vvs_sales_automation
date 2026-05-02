@@ -22,15 +22,17 @@
     .msg { margin: 12px 18px; padding: 10px; border: 1px solid #e5e5e5; background: #f8f9fb; border-radius: 6px; }
     .warn { background: #fff7e6; border-color: #ffd591; }
     .success { background: #f6ffed; border-color: #b7eb8f; }
+    .error { background: #fff1f0; border-color: #ffa39e; }
     .muted { color: #666; }
     .group { background: #f7f9fc; font-weight: 600; }
     .right { text-align:right; }
     .small { font-size: 12px; color: #666; }
   </style>
+  <?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 <header>
-  <h1>💎 Confirm Delivery</h1>
+  <h1>Confirm Delivery</h1>
   <div class="chip">Source: <b id="meta-file">…</b> <span class="muted" id="meta-tab" style="margin-left:6px;"></span></div>
 </header>
 
@@ -179,7 +181,6 @@
         } else {
           // keep explicit per-row value
         }
-        tdDue.textContent = previewDue(inp.value || document.getElementById('defMemo').value);
       });
 
       tb.appendChild(tr);

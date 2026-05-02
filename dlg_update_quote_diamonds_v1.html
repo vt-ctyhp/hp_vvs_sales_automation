@@ -20,11 +20,12 @@
     .group { background:#f7f9fc; font-weight:600; }
     .pill { display:inline-block; padding:2px 6px; border-radius:10px; border:1px solid #e5e5e5; background:#f4f7fb; margin-right:4px; }
   </style>
+  <?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 
 <header>
-  <h1>🧾 Update Quotation — Diamonds</h1>
+  <h1>Update Quotation — Diamonds</h1>
   <span class="chip">Customer: <b id="cust">—</b></span>
   <span class="chip">Visit: <b id="visit">—</b></span>
   <span class="chip">Company: <b id="brand">—</b></span>
@@ -170,7 +171,7 @@
     const msg = document.getElementById('msg');
     msg.textContent = '';
     if (!CTX.quotationUrl) {
-      alert('Quotation URL is missing on 100_. Please run Resolver first.');
+      uiSetStatus('Quotation URL is missing on 100_. Please run Resolver first.', 'error');
       return;
     }
     if (PICKS.size === 0) return;
@@ -192,14 +193,17 @@
         PICKS.clear(); sync();
         if (!res || !res.ok) {
           msg.textContent = 'Unknown error.';
+          uiSetStatus('Unknown error.', 'error');
           return;
         }
         msg.textContent = res.message + (res.sheetName ? (' (Sheet: ' + res.sheetName + ')') : '');
+        uiSetStatus(msg.textContent, 'ok');
       })
       .withFailureHandler(function(err){
         btn.disabled = false;
         btn.textContent = 'Send to Quotation (' + PICKS.size + ')';
         msg.textContent = (err && err.message) ? err.message : String(err);
+        uiSetStatus(msg.textContent, 'error');
       })
       .uq_submitUpdateQuotationDiamonds(payload);
   });

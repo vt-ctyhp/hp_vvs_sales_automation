@@ -65,7 +65,8 @@ const UQ_SETTINGS_COLS = {
 function uq_openUpdateQuotationSettings() {
   const ui = SpreadsheetApp.getUi();
   const html = HtmlService
-    .createHtmlOutputFromFile('dlg_update_quote_settings_v1') // <— EXACT NAME
+    .createTemplateFromFile('dlg_update_quote_settings_v1')
+    .evaluate()
     .setWidth(1040)
     .setHeight(700)
     .setTitle('Update Quotation — Ring Settings');
@@ -516,6 +517,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

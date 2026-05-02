@@ -25,7 +25,8 @@
     table{ width:100%; border-collapse:collapse; font-size:12px; }
     th, td{ border-bottom:1px solid #f0f0f0; padding:6px; vertical-align:top; }
     th{ position:sticky; top:0; background:#fafafa; z-index:1; }
-    input[type="text"]{ width:100%; padding:6px; border:1px solid #d0d7de; border-radius:6px; }
+    input[type="text"], textarea{ width:100%; padding:6px; border:1px solid #d0d7de; border-radius:6px; }
+    textarea{ min-height:110px; resize:vertical; font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .right{ text-align:right; }
     .col-small{ width:120px; }
     .col-mini{ width:90px; }
@@ -35,8 +36,9 @@
     #verBar select { max-width: 520px; display: inline-block; min-width: 340px; }
     #verBar .btn { position: relative; z-index: 2; }
   </style>
+  <?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 <header>
   <!-- The **only** Quotation URL surface -->
   <span id="qchip" class="chip muted" style="display:none;">
@@ -59,6 +61,16 @@
   </div>
 
   <div id="msg" class="msg"></div>
+  <div id="pastePanel" class="msg">
+    <div class="muted" style="margin-bottom:8px;">
+      Paste rows as tab- or comma-separated values in this order: Product, Style Detail, Metal, Band Width, Ring Size, Free Upgrade, Online Retailer, BE After Tax, VVS Price, Savings, Link.
+    </div>
+    <textarea id="pasteText" aria-label="Paste ring setting rows"></textarea>
+    <div class="toolbar" style="margin-bottom:0;">
+      <button class="btn primary" id="btnPasteApply" type="button">Insert rows</button>
+      <button class="btn" id="btnPasteCancel" type="button">Cancel</button>
+    </div>
+  </div>
 
   <table id="tbl">
     <thead>
@@ -213,7 +225,18 @@
 
   // --- Paste rows (single render)
   function pasteRows(){
-    const raw = prompt('Paste rows (Product | Style Detail | Metal | Band Width | Ring Size | Free Upgrade | Online Retailer | BE After Tax | VVS Price | Savings | Link):','');
+    const panel = $('#pastePanel');
+    const box = $('#pasteText');
+    if (panel) panel.style.display = 'block';
+    if (box) {
+      box.value = '';
+      setTimeout(() => box.focus(), 0);
+    }
+    fitDialog();
+  }
+
+  function applyPastedRows(){
+    const raw = ($('#pasteText') && $('#pasteText').value) || '';
     if (!raw) return;
     const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     if (!lines.length) return;
@@ -227,6 +250,7 @@
       };
     });
     __rows.push(...news);
+    $('#pastePanel').style.display = 'none';
     render();
   }
 
@@ -316,6 +340,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     $('#btnAdd').addEventListener('click', () => addRow());
     $('#btnPaste').addEventListener('click', pasteRows);
+    $('#btnPasteApply').addEventListener('click', applyPastedRows);
+    $('#btnPasteCancel').addEventListener('click', () => { $('#pastePanel').style.display = 'none'; fitDialog(); });
     $('#btnLoad').addEventListener('click', loadBaseline);
 
     $('#btnDup').addEventListener('click', () => {

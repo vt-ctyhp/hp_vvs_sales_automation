@@ -34,10 +34,11 @@
       cursor: not-allowed;
     }
   </style>
+  <?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 <header>
-  <h1>💎 Order/Approve Diamonds</h1>
+  <h1>Order/Approve Diamonds</h1>
   <div class="chip">Source: <b id="meta-file">…</b> <span class="muted" id="meta-tab" style="margin-left:6px;"></span></div>
 </header>
 
@@ -106,7 +107,7 @@
     if (isApplyAll()) {
       ev.preventDefault();
       ev.stopPropagation();
-      alert('“Apply defaults to all edited rows” is ON.\n\nUncheck it to edit per-row Ordered Date / Ordered By.');
+      showMsg('Apply defaults to all edited rows is on. Uncheck it to edit per-row Ordered Date / Ordered By.', 'warn');
       return false;
     }
     return true;
@@ -130,7 +131,7 @@
 
       render(); // first paint
     } catch (e) {
-      alert('Init error: ' + (e && e.message ? e.message : e));
+      showMsg('Init error: ' + (e && e.message ? e.message : e), 'error');
     }
   }
 
