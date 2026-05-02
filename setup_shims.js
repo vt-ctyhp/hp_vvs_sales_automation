@@ -3,6 +3,14 @@ function remind__runDailyNowForTesting(){
   return Remind.runDailyNowForTesting(); 
     }
 
+function remind__dailyCron(){
+  return Remind['remindersDailyCron']();
+}
+
+function remind__hourlySafetyNet(){
+  return Remind['remindersHourlySafetyNet']();
+}
+
 function remind__dev_enqueueCOS(){ Remind.scheduleCOS('SO_TEST', {customerName:'Test Client', assignedRepName:'Rep A', nextSteps:'Ping R&D'}, false); }
 
 // Paste anywhere (e.g., setup_shims.gs)
@@ -34,6 +42,4 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
 

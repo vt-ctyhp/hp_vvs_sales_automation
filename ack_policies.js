@@ -53,6 +53,18 @@ function _matchesWithAliases_(actual, expectedList, colName) {
 // --- read policies from 12_Ack_Policies ---
 function readAckPolicies_() {
   const sh = getSheetOrThrow_(POLICY_SHEET);
+  ackRequireHeaders_(sh, [
+    'Enabled',
+    'Priority',
+    'Group Name',
+    'Match Column',
+    'Match Values (comma-sep)',
+    'MustAck',
+    'QueueInclude',
+    'SnapshotInclude',
+    'AckCadence',
+    'Coverage Assisted Pairing'
+  ]);
   const rows = getObjects_(sh);
   const out = [];
   rows.forEach(r => {
@@ -203,6 +215,7 @@ function getPolicyGroupOrder_() {
  * - Applies alternating row banding per block (no overlap).
  */
 function renderQueueGroupedRows_(sheet, headers, rows) {
+  ackAssertGeneratedSheet_(sheet);
   // Hard reset: contents + formats + any existing banding
   sheet.clearContents();
   sheet.clearFormats();
@@ -499,6 +512,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

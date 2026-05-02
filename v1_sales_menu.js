@@ -84,9 +84,22 @@ function onOpen(e) {
     .addItem('🔍 Run Master Audit (v1)', 'runMasterAuditV1')
     .addToUi();
 
+  ui.createMenu('Recovery')
+    .addItem('Download Script Properties JSON', 'recovery_downloadScriptProperties')
+    .addItem('Create Script Properties Drive Backup', 'recovery_createScriptPropertiesDriveBackup')
+    .addItem('Create Full Recovery Copy', 'recovery_createFullRecoveryCopy')
+    .addSeparator()
+    .addItem('Restore Properties from Backup Sheet', 'recovery_restoreScriptPropertiesFromBackupSheet')
+    .addToUi();
+
   // ✅ Acknowledgements — top-level menu
   ackMenu.addToUi();
   addAutoAssignMenu();
+  try {
+    if (typeof resolver_onOpen_ === 'function') resolver_onOpen_();
+  } catch (e) {
+    Logger.log('resolver_onOpen_ failed: ' + e);
+  }
   
 
 
@@ -2341,5 +2354,3 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-

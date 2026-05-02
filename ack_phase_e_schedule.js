@@ -2,7 +2,7 @@
 
 /** Read 10_Roster_Schedule and return today's on-duty set + coverage partner map */
 function getScheduleToday_() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const sh = getSheetOrThrow_(SHEET_10);
   const tz = (typeof TIMEZONE !== 'undefined' && TIMEZONE) ? TIMEZONE : ss.getSpreadsheetTimeZone();
 
@@ -11,6 +11,18 @@ function getScheduleToday_() {
   if (!data.length) return { onDuty: new Set(), coveragePartner: new Map(), enabled: new Set() };
 
   const headers = data[0].map(h => String(h || '').trim());
+  ackRequireHeaderIndexes_(headers, [
+    'Rep',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+    'Assisted Coverage Enabled?',
+    'Assisted Coverage Partner'
+  ], SHEET_10);
   const col = {
     rep: headers.indexOf('Rep'),
     Mon: headers.indexOf('Mon'),
@@ -197,7 +209,6 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 
 

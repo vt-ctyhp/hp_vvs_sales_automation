@@ -4286,6 +4286,7 @@ function cs_submitClientStatusUpdate_(opts) {
     // 7) Reminders hook
     try {
       Remind.onClientStatusChange(soNumber, salesStage, customOrd, user, {
+        rootApptId:       rootApptId,
         assignedRepName:  rep,
         assistedRepName:  assistedRep,
         customerName:     client,

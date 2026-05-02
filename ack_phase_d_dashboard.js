@@ -13,10 +13,11 @@
  ****************************************************************/
 
 function MASTER_SS_() {
+  if (typeof ackSpreadsheet_ === 'function') return ackSpreadsheet_();
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   if (id) { try { return SpreadsheetApp.openById(id); } catch (e) {} }
   // fallback for container-bound or editor runs
-  return SpreadsheetApp.getActive();
+  return SpreadsheetApp.getActiveSpreadsheet();
 }
 
 // === Dashboard colors ===
@@ -42,11 +43,15 @@ const IN_PROD = (typeof IN_PRODUCTION_LITERAL !== 'undefined' ? IN_PRODUCTION_LI
 function buildAckDashboard() {
   const ss = MASTER_SS_();
   const s09 = getSheetOrThrow_('09_Ack_Dashboard');
+  ackAssertSheetName_(s09, '09_Ack_Dashboard');
 
   // Base sheets
   const s07 = getSheetOrThrow_('07_Root_Index');
   const s08 = getSheetOrThrow_('08_Reps_Map');
   const s06 = getSheetOrThrow_('06_Acknowledgement_Log');
+  ackRequireHeaders_(s07, ['RootApptID']);
+  ackRequireHeaders_(s08, ['RootApptID', 'Rep', 'Include? (Y/N)']);
+  ackRequireHeaders_(s06, ['RootApptID', 'Rep', 'Ack Status', 'Log Date', 'Timestamp']);
 
   // Snapshot sheets (your naming)
   const SNAP_TODAY_SHEET = '13_Morning_Snapshot';
@@ -382,6 +387,7 @@ function buildAckDashboard() {
   rootsWithLogToday.forEach(root => { if (!inScope.has(root)) scopeChangesToday++; });
 
   // ---------- RENDER ----------
+  ackAssertSheetName_(s09, '09_Ack_Dashboard');
   s09.clearContents();
 
   // HARD RESET: wipe all formatting on the whole sheet,
@@ -808,6 +814,7 @@ function applyRowBandingSafe_(sheet, startRow, startCol, numRows, numCols, theme
 
 /** OPTIONAL: create separate Filter Views per section (Advanced Sheets API) */
 function createDashboardFilterViews_(sheet, pos) {
+  if (!ackCanUseAdvancedSheets_()) return false;
   const ss = MASTER_SS_();
   const spreadsheetId = ss.getId();
   const sheetId = sheet.getSheetId();
@@ -872,6 +879,7 @@ function createDashboardFilterViews_(sheet, pos) {
   if (requests.length) {
     Sheets.Spreadsheets.batchUpdate({requests}, spreadsheetId);
   }
+  return true;
 }
 
 /** Windowed reader for append-only logs:
@@ -917,6 +925,7 @@ function getObjectsByDateWindow_(sheet, DATE_HEADER, lookbackDays) {
 }
 
 function resetSheetFormatting_(sheet) {
+  ackAssertSheetName_(sheet, '09_Ack_Dashboard');
   // 1) Clear ALL formats on the full canvas (not just the used range)
   var maxR = sheet.getMaxRows(), maxC = sheet.getMaxColumns();
   sheet.getRange(1, 1, maxR, maxC).clear({ formatOnly: true });
@@ -925,17 +934,8 @@ function resetSheetFormatting_(sheet) {
   try { sheet.getBandings().forEach(function(b){ b.remove(); }); } catch (_) {}
   try { sheet.setConditionalFormatRules([]); } catch (_) {}
 
-  // 3) (Optional but thorough) Remove all Filter Views on this sheet
-  try {
-    var ss = sheet.getParent();
-    var spreadsheetId = ss.getId();
-    var meta = Sheets.Spreadsheets.get(spreadsheetId, {fields: 'sheets.properties,sheets.filterViews'});
-    var cur = (meta.sheets || []).find(function(s){ return s.properties && s.properties.sheetId === sheet.getSheetId(); });
-    if (cur && cur.filterViews && cur.filterViews.length) {
-      var reqs = cur.filterViews.map(function(v){ return { deleteFilterView: { filterId: v.filterViewId } }; });
-      Sheets.Spreadsheets.batchUpdate({ requests: reqs }, spreadsheetId);
-    }
-  } catch (_) {}
+  // 3) Optional filter view cleanup. No-op when Advanced Sheets service is unavailable.
+  try { ackRemoveFilterViews_(sheet); } catch (_) {}
 }
 
 // --- Legacy → Canon shims (safe no-ops if the name already exists in this file) ---
@@ -957,7 +957,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
 
 

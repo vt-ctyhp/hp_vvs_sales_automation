@@ -87,6 +87,70 @@ const IN_PRODUCTION_LITERAL = 'In Production';
 // === CONFIG END === //
 ////////////////////////
 
+function ackSpreadsheet_() {
+  var id = '';
+  try {
+    id = String(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || '').trim();
+  } catch (_) {}
+  if (id) return SpreadsheetApp.openById(id);
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('ACK spreadsheet unavailable. Set Script Property SPREADSHEET_ID or run from the bound spreadsheet.');
+  return ss;
+}
+
+function ackSheet_(name) {
+  return ackSpreadsheet_().getSheetByName(name);
+}
+
+function ackAssertSheetName_(sheet, expectedName) {
+  if (!sheet) throw new Error('Expected sheet "' + expectedName + '" but received null.');
+  if (sheet.getName() !== expectedName) {
+    throw new Error('Refusing to modify sheet "' + sheet.getName() + '". Expected "' + expectedName + '".');
+  }
+}
+
+function ackAssertGeneratedSheet_(sheet, allowedNames) {
+  if (!sheet) throw new Error('Generated sheet guard received null sheet.');
+  var name = sheet.getName();
+  var allowed = allowedNames || [SHEET_07, SHEET_08, SHEET_09, SHEET_13, SHEET_14];
+  var isAllowed = allowed.indexOf(name) >= 0 || /^Q_/.test(name);
+  if (!isAllowed) throw new Error('Refusing destructive ACK rebuild on non-generated sheet: ' + name);
+}
+
+function ackRequireHeaderIndexes_(headers, required, context) {
+  var missing = required.filter(function(h){ return headers.indexOf(h) < 0; });
+  if (missing.length) throw new Error(context + ': missing required header(s): ' + missing.join(', '));
+}
+
+function ackRequireHeaders_(sheet, required) {
+  var headers = getHeaders_(sheet);
+  ackRequireHeaderIndexes_(headers, required, sheet.getName());
+  return headers;
+}
+
+function ackCanUseAdvancedSheets_() {
+  return typeof Sheets !== 'undefined' &&
+         Sheets &&
+         Sheets.Spreadsheets &&
+         typeof Sheets.Spreadsheets.get === 'function' &&
+         typeof Sheets.Spreadsheets.batchUpdate === 'function';
+}
+
+function ackRemoveFilterViews_(sheet) {
+  if (!ackCanUseAdvancedSheets_()) return false;
+  var ss = sheet.getParent();
+  var spreadsheetId = ss.getId();
+  var meta = Sheets.Spreadsheets.get(spreadsheetId, {fields: 'sheets.properties,sheets.filterViews'});
+  var cur = (meta.sheets || []).find(function(s){ return s.properties && s.properties.sheetId === sheet.getSheetId(); });
+  if (cur && cur.filterViews && cur.filterViews.length) {
+    var reqs = cur.filterViews.map(function(v){ return { deleteFilterView: { filterId: v.filterViewId } }; });
+    Sheets.Spreadsheets.batchUpdate({ requests: reqs }, spreadsheetId);
+    return true;
+  }
+  return false;
+}
+
 /** ===========================
  * STYLE THEME (Ack + Reminders)
  * Base colors + two standard tints
@@ -155,10 +219,11 @@ function runAllPipes() {
  *   07_Root_Index builder
  *  ======================== */
 function buildRootIndex() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const tz = TIMEZONE || ss.getSpreadsheetTimeZone();
   const s00 = getSheetOrThrow_(SHEET_00);
   const s07 = getSheetOrThrow_(SHEET_07);
+  ackRequireHeaders_(s00, [H.ROOT_ID, H.SALES_STAGE]);
 
   const rows00 = getObjects_(s00);
   if (!rows00.length) {
@@ -242,10 +307,12 @@ function buildRootIndex() {
  *   08_Reps_Map builder
  *  ======================= */
 function buildRepsMap() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const s00 = getSheetOrThrow_(SHEET_00);
   const s07 = getSheetOrThrow_(SHEET_07);
   const s08 = getSheetOrThrow_(SHEET_08);
+  ackRequireHeaders_(s00, [H.ROOT_ID, H.SALES_STAGE, H.ASSIGNED_REP, H.ASSISTED_REP]);
+  ackRequireHeaders_(s07, ['RootApptID', 'Sales Stage']);
 
   const rows00 = getObjects_(s00);
   const idx07  = getObjects_(s07); // we’ll prefer canonical Sales Stage from 07 if available
@@ -346,7 +413,7 @@ function buildRepsMap() {
  *  - Needs follow-up otherwise
  *  ======================================================= */
 function recomputeAckStatusSummary() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const tz = (typeof TIMEZONE !== 'undefined' && TIMEZONE) ? TIMEZONE : ss.getSpreadsheetTimeZone();
 
   // Sheets we read/write
@@ -354,6 +421,10 @@ function recomputeAckStatusSummary() {
   const s06 = getSheetOrThrow_(SHEET_06);
   const s07 = getSheetOrThrow_(SHEET_07);
   const s08 = getSheetOrThrow_(SHEET_08);
+  ackRequireHeaders_(s00, [H.ROOT_ID, H.ACK_STATUS]);
+  ackRequireHeaders_(s06, ['RootApptID', 'Rep', 'Ack Status', 'Log Date', 'Timestamp']);
+  ackRequireHeaders_(s07, ['RootApptID']);
+  ackRequireHeaders_(s08, ['RootApptID', 'Rep', 'Include? (Y/N)']);
 
   // Pull data once
   const idx07 = getObjects_(s07);
@@ -495,7 +566,7 @@ function repsMapHeaders_() {
 
 /** Ensure sheet exists; throw if missing to prevent silent failure */
 function getSheetOrThrow_(name) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(name);
+  const sh = ackSheet_(name);
   if (!sh) throw new Error(`Sheet "${name}" not found.`);
   return sh;
 }
@@ -520,6 +591,7 @@ function getHeaders_(sheet) {
 
 /** Clear body and write new data with headers */
 function clearAndWrite_(sheet, headers, rows) {
+  ackAssertGeneratedSheet_(sheet, [SHEET_07, SHEET_08]);
   sheet.clearContents();
   if (!headers || !headers.length) return;
   sheet.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
@@ -539,7 +611,7 @@ function parseMultiNames_(cell) {
 
 /** Build case-insensitive normalizer using both roster named ranges; returns fn(name)->canonical */
 function buildRosterNormalizer_() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
 
   const lowerToCanon = new Map();
   [NR.ROSTER_ASSIGNED, NR.ROSTER_ASSISTED].forEach(nr => {
@@ -582,7 +654,7 @@ function appendAckLog_(payload) {
   const headers = getHeaders_(s06);
   const row = [];
 
-  const tz = TIMEZONE || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  const tz = TIMEZONE || ackSpreadsheet_().getSpreadsheetTimeZone();
   const now = new Date();
   const logDate = Utilities.formatDate(now, tz, 'yyyy-MM-dd'); // write as text date to avoid locale shift
 
@@ -700,8 +772,8 @@ function refreshMyQueue() {
 /** Detect current user and submit their acks from the queue */
 function submitMyQueue() {
   const rep = detectRepName_();
-  if (!rep) return;
-  submitQueueForRep_(rep);
+  if (!rep) return { ok: false, submitted: 0, errors: ['Could not detect rep name.'] };
+  return submitQueueForRep_(rep);
 }
 
 
@@ -709,12 +781,15 @@ function submitMyQueue() {
 
 /** Compute today's expected roots per rep, along with snapshots and roles */
 function computeExpectedToday_() {
-  const ss  = SpreadsheetApp.getActive();
+  const ss  = ackSpreadsheet_();
   const tz  = (typeof TIMEZONE !== 'undefined' && TIMEZONE) ? TIMEZONE : ss.getSpreadsheetTimeZone();
 
   const s06 = getSheetOrThrow_('06_Acknowledgement_Log');
   const s07 = getSheetOrThrow_('07_Root_Index');
   const s08 = getSheetOrThrow_('08_Reps_Map');
+  ackRequireHeaders_(s06, ['RootApptID', 'Rep', 'Ack Status', 'Log Date', 'Timestamp']);
+  ackRequireHeaders_(s07, ['RootApptID']);
+  ackRequireHeaders_(s08, ['RootApptID', 'Rep', 'Include? (Y/N)']);
 
   // Pull sheets once
   const idx07 = getObjects_(s07);
@@ -781,6 +856,7 @@ function computeExpectedToday_() {
 /** Build (or rebuild) a single rep’s queue sheet with pending items only */
 function buildQueueForRep_(rep, rootsSet, snapByRoot) {
   const sh = ensureQueueSheet_(rep);
+  ackAssertGeneratedSheet_(sh);
   const headers = queueHeaders_();
 
   // Expand the input set of roots into an array
@@ -788,6 +864,7 @@ function buildQueueForRep_(rep, rootsSet, snapByRoot) {
 
   // If nothing pending, still show a clean header row (and exit)
   if (!roots.length) {
+    ackAssertGeneratedSheet_(sh);
     sh.clearContents();
     sh.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
     sh.setFrozenRows(1);
@@ -860,16 +937,17 @@ function buildQueueForRep_(rep, rootsSet, snapByRoot) {
 
 /** Submit all acks from a rep’s queue (rows with Ack Status filled) */
 function submitQueueForRep_(rep) {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const tz = TIMEZONE || ss.getSpreadsheetTimeZone();
 
   const sh = getQueueSheetOrNull_(rep);
   if (!sh) {
     SpreadsheetApp.getUi().alert(`No queue tab found for ${rep}. Build/Refresh first.`);
-    return;
+    return { ok: false, submitted: 0, errors: ['Queue tab not found for ' + rep] };
   }
 
   const headers = getHeaders_(sh);
+  ackRequireHeaderIndexes_(headers, ['RootApptID', 'Ack Status', 'Ack Note'], sh.getName());
   const data = sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), headers.length).getValues();
 
   const idxRoot = headers.indexOf('RootApptID');
@@ -883,6 +961,8 @@ function submitQueueForRep_(rep) {
   // Lookups from 08 + 07 for role/snapshot at time of log
   const s08   = getSheetOrThrow_(SHEET_08);
   const s07   = getSheetOrThrow_(SHEET_07);
+  ackRequireHeaders_(s08, ['RootApptID', 'Rep', 'Include? (Y/N)']);
+  ackRequireHeaders_(s07, ['RootApptID']);
   const map08 = getObjects_(s08);
   const idx07 = getObjects_(s07);
 
@@ -944,7 +1024,7 @@ function submitQueueForRep_(rep) {
     SpreadsheetApp.getUi().alert(
       'Please enter a Note for every row marked "Needs follow-up".\n\nRootApptID(s):\n' + list + more
     );
-    return; // abort without writing any logs
+    return { ok: false, submitted: 0, errors: ['Missing required note for Needs follow-up rows.'] };
   }
 
   // Append logs
@@ -957,6 +1037,7 @@ function submitQueueForRep_(rep) {
   const newRoots = expectedByRep.get(rep) || new Set();
   buildQueueForRep_(rep, newRoots, snaps);
 
+  return { ok: true, submitted: payloads.length, errors: [] };
 }
 
 
@@ -966,16 +1047,17 @@ function submitQueueForRep_(rep) {
 /** Build a queue tab for the current user if not exists, return sheet */
 function ensureQueueSheet_(rep) {
   const name = queueSheetNameForRep_(rep);
-  let sh = SpreadsheetApp.getActive().getSheetByName(name);
+  const ss = ackSpreadsheet_();
+  let sh = ss.getSheetByName(name);
   if (!sh) {
-    sh = SpreadsheetApp.getActive().insertSheet(name);
+    sh = ss.insertSheet(name);
   }
   return sh;
 }
 
 function getQueueSheetOrNull_(rep) {
   const name = queueSheetNameForRep_(rep);
-  return SpreadsheetApp.getActive().getSheetByName(name);
+  return ackSheet_(name);
 }
 
 function queueSheetNameForRep_(rep) {
@@ -1011,7 +1093,7 @@ function queueHeaders_() {
 }
 
 function applyAckStatusValidation_(sheet, colIndex, numRows) {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const rangeNamed = ss.getRangeByName(NR.ACK_STATUS_LIST);
   if (!rangeNamed) return; // silent if not present
 
@@ -1061,7 +1143,7 @@ function detectRepName_() {
 
 /** Return union of both named roster lists (de‑duped) */
 function listAllRosterNames_() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const out = new Set();
 
   [NR.ROSTER_ASSIGNED, NR.ROSTER_ASSISTED].forEach(nr => {
@@ -1078,7 +1160,7 @@ function listAllRosterNames_() {
 
 /** Lookup rep name by email on Dropdown sheet (prefers Assigned over Assisted if both match) */
 function lookupRepNameByEmail_(emailLC) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(DROPDOWN_SHEET);
+  const sh = ackSheet_(DROPDOWN_SHEET);
   if (!sh) return '';
 
   const values = sh.getDataRange().getValues();
@@ -1118,7 +1200,7 @@ function openQueueForRep_(rep) {
   buildQueueForRep_(rep, roots, snapByRoot);
 
   // Switch UI focus to that sheet
-  const sh = SpreadsheetApp.getActive().getSheetByName(queueSheetNameForRep_(rep));
+  const sh = getQueueSheetOrNull_(rep);
   if (sh) SpreadsheetApp.setActiveSheet(sh);
 }
 
@@ -1129,7 +1211,7 @@ var __PH1_MASTER_CACHE = null;
 function _getMasterSnapshot_() {
   if (__PH1_MASTER_CACHE) return __PH1_MASTER_CACHE;
 
-  var sh = SpreadsheetApp.getActive().getSheetByName('00_Master Appointments');
+  var sh = ackSheet_('00_Master Appointments');
   if (!sh) {
     __PH1_MASTER_CACHE = { headers: [], idx: {}, rows: [], soIdx: new Map(), custIdx: new Map() };
     return __PH1_MASTER_CACHE;
@@ -1307,6 +1389,3 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
-

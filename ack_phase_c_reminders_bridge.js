@@ -97,7 +97,7 @@ function _dateKey_(d, tz) {
   var dd = _toDateSafe_(d);
   if (!dd) return '';
   var z = (typeof tz === 'string' && tz) ? tz :
-          (Session.getScriptTimeZone ? Session.getScriptTimeZone() : SpreadsheetApp.getActive().getSpreadsheetTimeZone());
+          (Session.getScriptTimeZone ? Session.getScriptTimeZone() : ackSpreadsheet_().getSpreadsheetTimeZone());
   return Utilities.formatDate(dd, z, 'yyyy-MM-dd');
 }
 
@@ -160,9 +160,6 @@ function _displayLabelFor_(it) {
 
 
 
-// === Public helpers you can run from the editor or menus ===
-function getRemindersInAckFlag_(){ return true; }
-
 /** Rebuild my Q_ tab as usual, then insert Reminders on top if flag TRUE. */
 function refreshMyQueueHybrid() {
   var lock = LockService.getScriptLock();
@@ -202,7 +199,6 @@ function _injectRemindersAfterBuild_(rep) {
       return;
     }
 
-    var ss = SpreadsheetApp.getActive();
     var sh = _ensureQueueSheet_(rep);
     _ensureReminderBridgeColumnsOnQueue_(sh);
     // Re-read headers from the sheet so we use the full live width (incl. new columns)
@@ -368,7 +364,7 @@ function _buildReminderRowsMatrix_(items, queueHeaders) {
 // === Readers & builders ===
 
 function _readDueRemindersForRep_(rep) {
-  var ss = SpreadsheetApp.getActive();
+  var ss = ackSpreadsheet_();
   var sh = ss.getSheetByName(SHEET_REMINDERS_Q);
   Logger.log('[DBG 04_] file="%s"  tab="%s"  gid=%s',
     ss.getName(), sh ? sh.getName() : '(null)', sh ? sh.getSheetId() : '(null)');
@@ -393,6 +389,7 @@ function _readDueRemindersForRep_(rep) {
   var cCUSTOMER     = _hIdx_(headers, REM_H.CUSTOMER);
   var cNEXT_STEPS   = _hIdx_(headers, REM_H.NEXT_STEPS);
   var cSO           = _hIdx_(headers, REM_H.SO);
+  var cCREATED_AT   = _hIdx_(headers, 'createdAt', ['Created At']);
 
   // NEW: pick up RootApptID (if present) + Reminder text/title (if present)
   var cROOT         = _hIdx_(headers, 'rootApptId', ['RootApptID','Root Appointment ID','Root Appt ID']);
@@ -470,7 +467,9 @@ function _readDueRemindersForRep_(rep) {
       note: row[cNEXT_STEPS] || '',
       soNumber: row[cSO] || '',
       root: String(cROOT >= 0 ? row[cROOT] : ''),
-      reminder: String(cREMINDER_TXT >= 0 ? row[cREMINDER_TXT] : '')
+      reminder: String(cREMINDER_TXT >= 0 ? row[cREMINDER_TXT] : ''),
+      createdAt: cCREATED_AT >= 0 ? _toDateSafe_(row[cCREATED_AT]) : null,
+      sourceRow: i + 1
     });
   }
 
@@ -478,6 +477,7 @@ function _readDueRemindersForRep_(rep) {
 
   // Enrich with 07_Root_Index, then sort by type priority → due date asc
   out = _enrichRemindersFromIndex_(out);
+  out = _dedupeReminderItemsForQueue_(out);
 
   var order = TYPE_ORDER.reduce(function(m, k, i){ m[k] = i; return m; }, {});
   out.sort(function(a,b){
@@ -489,6 +489,53 @@ function _readDueRemindersForRep_(rep) {
 
   Logger.log('[DBG 04_ → reminders enriched for rep="%s"] kept=%s', rep, out.length);
   return out;
+}
+
+function _dedupeReminderItemsForQueue_(items) {
+  if (!items || !items.length) return items || [];
+
+  var pass = [];
+  var groups = {};
+  items.forEach(function(it){
+    var type = _normType_(it.type || '');
+    if (type !== 'COS') {
+      pass.push(it);
+      return;
+    }
+
+    var root = String(it.root || '').trim().toLowerCase();
+    var so = _soKey_(it.soNumber || '');
+    var cust = String(it.customer || '').trim().toLowerCase();
+    var key = root ? ('root:' + root)
+            : so ? ('so:' + so)
+            : cust ? ('cust:' + cust)
+            : '';
+    if (!key) {
+      pass.push(it);
+      return;
+    }
+
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(it);
+  });
+
+  Object.keys(groups).forEach(function(key){
+    var arr = groups[key];
+    arr.sort(function(a,b){
+      var ac = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+      var bc = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+      if (bc !== ac) return bc - ac;
+      var an = a.nextDueAt instanceof Date ? a.nextDueAt.getTime() : 0;
+      var bn = b.nextDueAt instanceof Date ? b.nextDueAt.getTime() : 0;
+      if (bn !== an) return bn - an;
+      return Number(b.sourceRow || 0) - Number(a.sourceRow || 0);
+    });
+    if (arr.length > 1) {
+      Logger.log('[dedupe queue] COS duplicate key=%s kept id=%s hidden=%s', key, arr[0].id, arr.slice(1).map(function(x){ return x.id; }).join(', '));
+    }
+    pass.push(arr[0]);
+  });
+  return pass;
 }
 
 function _remRowToQueueShape_(it, width) {
@@ -956,6 +1003,7 @@ function _removeExistingReminderSection_(sh, knownHeaders) {
       break; // first non-section, non-spacer, non-reminder row = boundary
     }
 
+    ackAssertGeneratedSheet_(sh);
     var count = end - start + 1;
     if (count > 0) sh.deleteRows(start, count);
   } catch (e) {
@@ -969,7 +1017,7 @@ function _ensureQueueSheet_(rep) {
   // use your existing helper if present
   if (typeof ensureQueueSheet_ === 'function') return ensureQueueSheet_(rep);
   // otherwise ensure the sheet exists
-  var ss = SpreadsheetApp.getActive();
+  var ss = ackSpreadsheet_();
   var name = 'Q_' + String(rep || '').trim();
   var sh = ss.getSheetByName(name) || ss.insertSheet(name);
   // write queue headers if missing
@@ -982,13 +1030,14 @@ function _ensureQueueSheet_(rep) {
 
 function _allQueueReps_() {
   // Reads 08_Reps_Map for list of reps to update (de-duped)
-  var ss = SpreadsheetApp.getActive();
+  var ss = ackSpreadsheet_();
   var s08 = ss.getSheetByName('08_Reps_Map');
   var reps = new Set();
   if (!s08) return [];
   var rows = s08.getDataRange().getValues();
   if (rows.length < 2) return [];
   var hdrs = rows[0].map(function(h){ return String(h || '').trim(); });
+  ackRequireHeaderIndexes_(hdrs, ['Rep', 'Include? (Y/N)'], '08_Reps_Map');
   var idxRep = hdrs.indexOf('Rep');
   var idxIncl = hdrs.indexOf('Include? (Y/N)');
   for (var i = 1; i < rows.length; i++) {
@@ -1134,7 +1183,7 @@ function _hIdx_(headers, want, alts) {
  */
 function _nextDiamondViewingDateForRoot_(root){
   if (!root) return null;
-  var ss = SpreadsheetApp.getActive();
+  var ss = ackSpreadsheet_();
   var sh = ss.getSheetByName('00_Master Appointments');
   if (!sh) return null;
 
@@ -1233,7 +1282,7 @@ function _friendlyReminderLabel_(type, root){
 function _enrichRemindersFromIndex_(items) {
   try {
     if (!items || !items.length) return items;
-    var ss = (typeof MASTER_SS_ === 'function') ? MASTER_SS_() : SpreadsheetApp.getActive();
+    var ss = (typeof MASTER_SS_ === 'function') ? MASTER_SS_() : ackSpreadsheet_();
     var s07 = (typeof getSheetOrThrow_ === 'function') ? getSheetOrThrow_('07_Root_Index') : ss.getSheetByName('07_Root_Index');
     if (!s07) { Logger.log('[enrich] 07_Root_Index missing — skip enrichment'); return items; }
 

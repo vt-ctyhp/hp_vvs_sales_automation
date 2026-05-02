@@ -26,11 +26,13 @@ function snapshotHeaders14_() {
  *  - Appends audit rows to 14_Snapshot_Log
  */
 function takeMorningSnapshot() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const tz = (typeof TIMEZONE !== 'undefined' && TIMEZONE) ? TIMEZONE : ss.getSpreadsheetTimeZone();
 
   const s07 = getSheetOrThrow_('07_Root_Index');
   const s08 = getSheetOrThrow_('08_Reps_Map');
+  ackRequireHeaders_(s07, ['RootApptID']);
+  ackRequireHeaders_(s08, ['RootApptID', 'Rep', 'Role (Assigned/Assisted)']);
 
   // canonical target sheets
   const sSnap = getSheetOrThrow_('13_Morning_Snapshot');
@@ -116,7 +118,7 @@ function takeMorningSnapshot() {
  *  - captureTime: Date or null if none for today
  */
 function readTodaySnapshot_() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
   const tz = TZ_SNAPSHOT || ss.getSpreadsheetTimeZone();
   const todayKey = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
 
@@ -149,7 +151,10 @@ function readTodaySnapshot_() {
 
 /** Ensure sheet exists with the given headers (repair if headers differ) */
 function ensureSheetWithHeaders_(name, headers) {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ackSpreadsheet_();
+  if ([SHEET_13, SHEET_14].indexOf(name) < 0) {
+    throw new Error('Refusing to repair unexpected snapshot sheet: ' + name);
+  }
   let sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
 
@@ -158,6 +163,7 @@ function ensureSheetWithHeaders_(name, headers) {
   const want = headers.map(h => String(h || '').trim());
 
   if (cur.join('\u0001') !== want.join('\u0001')) {
+    ackAssertGeneratedSheet_(sh, [SHEET_13, SHEET_14]);
     sh.clearContents();
     sh.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
     sh.setFrozenRows(1);
@@ -168,6 +174,7 @@ function ensureSheetWithHeaders_(name, headers) {
 /** Clear a snapshot sheet to exactly the given headers; remove old banding/merges/formats (robust) */
 function healSnapshotSheet_(sh, headers) {
   if (!sh) throw new Error('healSnapshotSheet_: sheet is null');
+  ackAssertSheetName_(sh, SHEET_13);
   // 0) Break merges safely (on the used range only — avoids OOB)
   try {
     const used = sh.getDataRange(); // always at least 1x1
@@ -213,6 +220,7 @@ function healSnapshotSheet_(sh, headers) {
 /** Ensure the log sheet has the same header set; repair width only (no content clear) */
 function ensureSnapshotLogHeader_(sh, headers) {
   if (!sh) throw new Error('ensureSnapshotLogHeader_: sheet is null');
+  ackAssertSheetName_(sh, SHEET_14);
 
   const want = Math.max(1, Number(headers.length || 0));
   const have = Math.max(1, sh.getLastColumn());
@@ -312,6 +320,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

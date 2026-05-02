@@ -2783,7 +2783,7 @@ function addBackupResolverMenu() {
   ]);
 }
 
-function onOpen() {
+function resolver_onOpen_() {
   addBackupResolverMenu();
 }
 

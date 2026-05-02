@@ -6,6 +6,11 @@
  * Safe-by-default: column-by-name resolution, idempotent queue, batched Chat posts, daily 9:30 schedule.
  */
 
+function remind__spreadsheet_() {
+  if (typeof ackSpreadsheet_ === 'function') return ackSpreadsheet_();
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
 /**
  * Dump all queue rows that match a given customer (case/space/NBSP tolerant).
  * Shows: row#, id, type, status, SO, customer.
@@ -16,7 +21,7 @@ function remind__dumpQueueForCustomer(customerName){
   function normSO(s){ return normWS(s).replace(/^'+/, ''); }
   function eqCI(a,b){ return normWS(a).toLowerCase() === normWS(b).toLowerCase(); }
 
-  const sh = SpreadsheetApp.getActive().getSheetByName('04_Reminders_Queue');
+  const sh = remind__spreadsheet_().getSheetByName('04_Reminders_Queue');
   if (!sh){ console.log('Queue sheet not found'); return; }
 
   const rg = sh.getDataRange().getDisplayValues();
@@ -360,7 +365,7 @@ const Remind = (function() {
   }
 
   function _getSpreadsheet() {
-    return SpreadsheetApp.getActiveSpreadsheet();
+    return remind__spreadsheet_();
   }
 
   function _getSheetByName(name, createIfMissing=false) {
@@ -385,6 +390,19 @@ const Remind = (function() {
     if (changed) {
       range.setValues([values]);
     }
+  }
+
+  function _ensureOptionalHeaders(sh, headers) {
+    let lastCol = Math.max(1, sh.getLastColumn());
+    const current = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0] || [];
+    const seen = new Set(current.map(h => _normalizeCI(h)));
+    headers.forEach(h => {
+      const key = _normalizeCI(h);
+      if (seen.has(key)) return;
+      lastCol++;
+      sh.getRange(1, lastCol).setValue(h);
+      seen.add(key);
+    });
   }
 
   function _findHeaderIndexes(headerRow) {
@@ -534,6 +552,7 @@ const Remind = (function() {
   function _queueSheet() {
     const sh = _getSheetByName(REMIND.QUEUE_SHEET_NAME, true);
     _ensureHeaders(sh, QHEAD);
+    _ensureOptionalHeaders(sh, ['rootApptId']);
     return sh;
   }
   function _logSheet() {
@@ -565,6 +584,7 @@ const Remind = (function() {
     const soCol = q.idx.col('soNumber');
     const typeCol = q.idx.col('type');
     const statusCol = q.idx.col('status');
+    const rootColIdx = q.idx.tryCol('rootApptId') || q.idx.tryCol('RootApptID');
 
     // Deduplicate logic:
     // - COS: if SO present → match by SO; if SO blank and customer present → match by customerName
@@ -574,6 +594,7 @@ const Remind = (function() {
 
     const wantSOKey = _soKey_(so);
     const wantCust = _normalize(opts && opts.customerName);
+    const wantRoot = _normalize((opts && (opts.rootApptId || opts.rootApptID || opts.root)) || '');
 
     const custColIdx = (q.idx.tryCol ? q.idx.tryCol('customerName') : null) || q.idx.col('customerName');
 
@@ -584,11 +605,13 @@ const Remind = (function() {
 
       const rSoKey = _soKey_(r[soCol-1]);
       const rType  = _normalize(r[typeCol-1]);
+      const rRoot  = rootColIdx ? _normalize(r[rootColIdx-1]) : '';
 
       if (type === REMIND.TYPE_COS) {
         const rCust = _normalize(r[custColIdx-1]);
+        if (wantRoot && rRoot && rType === REMIND.TYPE_COS && _equalsCI(rRoot, wantRoot)) { matchRow = i+2; break; }
         if (wantSOKey && rSoKey && rType === REMIND.TYPE_COS && rSoKey === wantSOKey) { matchRow = i+2; break; }
-        if (!wantSOKey && wantCust && rType === REMIND.TYPE_COS && _equalsCI(rCust, wantCust)) { matchRow = i+2; break; }
+        if (wantCust && rType === REMIND.TYPE_COS && (!wantSOKey || !rSoKey) && _equalsCI(rCust, wantCust)) { matchRow = i+2; break; }
       } else if (similar3D.has(type)) {
         if (wantSOKey && rSoKey && similar3D.has(rType) && rSoKey === wantSOKey) { matchRow = i+2; break; }
       } else {
@@ -616,6 +639,7 @@ const Remind = (function() {
       assistedRepEmail: _normalize(opts?.assistedRepEmail),
       customerName: _normalize(opts?.customerName),
       nextSteps: _normalize(opts?.nextSteps),
+      rootApptId: _normalize(opts?.rootApptId || opts?.rootApptID || opts?.root),
       createdAt: Utilities.formatDate(tzNow, REMIND.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
       createdBy: _normalize(createdBy),
       confirmedAt: '',
@@ -637,6 +661,7 @@ const Remind = (function() {
       if (payload.assistedRepEmail) sh.getRange(matchRow, q.idx.col('assistedRepEmail')).setValue(payload.assistedRepEmail);
       if (payload.customerName)     sh.getRange(matchRow, q.idx.col('customerName')).setValue(payload.customerName);
       if (payload.nextSteps)        sh.getRange(matchRow, q.idx.col('nextSteps')).setValue(payload.nextSteps);
+      if (payload.rootApptId && rootColIdx) sh.getRange(matchRow, rootColIdx).setValue(payload.rootApptId);
 
       // NEW: keep the visible SO in the standardized ##.#### format
       sh.getRange(matchRow, q.idx.col('soNumber')).setValue(payload.soNumber);
@@ -648,7 +673,10 @@ const Remind = (function() {
       // Append
       q.sh.appendRow(QHEAD.map(h => payload[h]));
       const q2 = _readQueue();
-      _writePrettyRow_(q2, q2.sh.getLastRow(), payload);
+      const appendedRow = q2.sh.getLastRow();
+      const appendedRootCol = q2.idx.tryCol('rootApptId') || q2.idx.tryCol('RootApptID');
+      if (payload.rootApptId && appendedRootCol) q2.sh.getRange(appendedRow, appendedRootCol).setValue(payload.rootApptId);
+      _writePrettyRow_(q2, appendedRow, payload);
 
       _log(payload.id, so, type, 'ENQUEUED', createdBy, 'New');
       return payload.id;
@@ -695,17 +723,19 @@ const Remind = (function() {
     return d;
   }
 
-  function _closeActiveCosFor_(so, customerName, note, by) {
+  function _closeActiveCosFor_(so, customerName, note, by, rootApptId) {
     const q   = _readQueue();
     const soC = q.idx.col('soNumber');
     const tyC = q.idx.col('type');
     const stC = q.idx.col('status');
     const idC = q.idx.col('id');
+    const rootC = q.idx.tryCol('rootApptId') || q.idx.tryCol('RootApptID');
 
     const custC = (q.idx.tryCol ? q.idx.tryCol('customerName') : null) || q.idx.col('customerName');
 
     const targetSO   = _normalizeSO(so);
     const targetCust = _normalize(customerName);
+    const targetRoot = _normalize(rootApptId);
 
     const typesToClose = new Set([REMIND.TYPE_COS, REMIND.TYPE_START3D, REMIND.TYPE_ASSIGNSO, REMIND.TYPE_REV3D]);
     const nowStr = Utilities.formatDate(_now(), REMIND.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
@@ -718,6 +748,7 @@ const Remind = (function() {
       const rType = _normalize(r[tyC-1]);
       if (!typesToClose.has(rType)) continue;
 
+      const rRoot = rootC ? _normalize(r[rootC-1]) : '';
       const rSO   = _normalizeSO(r[soC-1]);
       const rCust = _normalize(r[custC-1]);
 
@@ -725,7 +756,8 @@ const Remind = (function() {
       // 1) SO matches, OR
       // 2) SO is blank AND customer matches (only when we know the customer)
       const hit =
-        (targetSO && _equalsCI(rSO, targetSO)) ||
+        (targetRoot && rRoot && _equalsCI(rRoot, targetRoot)) ||
+        (targetSO && _eqSO_(rSO, targetSO)) ||
         (targetSO && !rSO && targetCust && _equalsCI(rCust, targetCust)) ||
         (!targetSO && targetCust && _equalsCI(rCust, targetCust));
 
@@ -769,13 +801,14 @@ const Remind = (function() {
   }
 
   function onClientStatusChange(soNumber, newSalesStage, newCustomOrderStatus, editorEmail, opts) {
+    opts = opts || {};
     // COS: Create/keep while status remains in the pending set; confirm when it leaves
     if (_is3DPendingStatus_(newCustomOrderStatus)) {
       // If the status is "3D Revision Requested", start a new cycle and end the previous.
       const restart = _equalsCI(newCustomOrderStatus, '3D Revision Requested');
-      scheduleCOS(soNumber, opts || {}, restart);
+      scheduleCOS(soNumber, opts, restart);
     } else {
-      _closeActiveCosFor_(soNumber, '', 'Auto-confirmed (Custom Order Status left pending set)', editorEmail || _currentEditor_());
+      _closeActiveCosFor_(soNumber, opts.customerName || '', 'Auto-confirmed (Custom Order Status left pending set)', editorEmail || _currentEditor_(), opts.rootApptId || opts.rootApptID || opts.root || '');
     }
 
     // Follow-up: keep while Sales Stage == Follow-Up Required; else confirm
@@ -1461,12 +1494,14 @@ const Remind = (function() {
      * If restart=false, upsert by SO (or by customer if SO blank).
      */
     function scheduleCOS(soNumber, opts, restart /* boolean */) {
+      opts = opts || {};
       const so   = _normalizeSO(soNumber);
       const cust = _normalize(opts && opts.customerName);
+      const root = _normalize(opts && (opts.rootApptId || opts.rootApptID || opts.root));
 
       if (restart) {
         // Close any COS/3D for this SO
-        _closeActiveCosFor_(so, cust, 'Superseded by update (restart: SO)', _currentEditor_());
+        _closeActiveCosFor_(so, cust, 'Superseded by update (restart: SO/root)', _currentEditor_(), root);
 
         // EXTRA GUARD: also close any blank-SO entries for this customer
         if (cust) {
@@ -1481,8 +1516,92 @@ const Remind = (function() {
         assignedRepEmail: opts && opts.assignedRepEmail,
         assistedRepEmail: opts && opts.assistedRepEmail,
         customerName:     cust,
-        nextSteps:        opts && opts.nextSteps
+        nextSteps:        opts && opts.nextSteps,
+        rootApptId:       root
       });
+    }
+
+    function dedupeActiveCosReminders(dryRun) {
+      const q = _readQueue();
+      const soCol = q.idx.col('soNumber');
+      const typeCol = q.idx.col('type');
+      const statusCol = q.idx.col('status');
+      const idCol = q.idx.col('id');
+      const rootCol = q.idx.tryCol('rootApptId') || q.idx.tryCol('RootApptID');
+      const custCol = (q.idx.tryCol ? q.idx.tryCol('customerName') : null) || q.idx.col('customerName');
+      const createdCol = q.idx.tryCol('createdAt');
+      const nextCol = q.idx.tryCol('nextDueAt');
+      const cancelCol = q.idx.tryCol('cancelReason');
+      const actCol = q.idx.tryCol('lastAdminAction');
+      const byCol = q.idx.tryCol('lastAdminBy');
+
+      const groups = new Map();
+      for (let i = 0; i < q.rows.length; i++) {
+        const r = q.rows[i];
+        const status = _normalize(r[statusCol-1]).toUpperCase();
+        const type = _normalize(r[typeCol-1]).toUpperCase();
+        if (type !== REMIND.TYPE_COS) continue;
+        if (status === REMIND.ST_CANCELLED || status === REMIND.ST_CONFIRMED) continue;
+
+        const root = rootCol ? _normalize(r[rootCol-1]) : '';
+        const soKey = _soKey_(r[soCol-1]);
+        const cust = _normalizeCI(r[custCol-1]);
+        const key = root ? ('root:' + root.toLowerCase())
+                  : soKey ? ('so:' + soKey)
+                  : cust ? ('cust:' + cust)
+                  : '';
+        if (!key) continue;
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({
+          rowIdx: i + 2,
+          id: q.sh.getRange(i + 2, idCol).getValue(),
+          so: _normalizeSO(r[soCol-1]),
+          key: key,
+          createdAt: createdCol ? _parseComparableDate_(r[createdCol-1]) : null,
+          nextDueAt: nextCol ? _parseComparableDate_(r[nextCol-1]) : null
+        });
+      }
+
+      const by = _currentEditor_();
+      const nowStr = Utilities.formatDate(_now(), REMIND.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+      const result = { ok: true, dryRun: !!dryRun, duplicateGroups: 0, closed: 0, kept: [] };
+      groups.forEach(records => {
+        if (records.length < 2) return;
+        result.duplicateGroups++;
+        records.sort((a, b) => _compareReminderRecordNewest_(a, b));
+        const keep = records[0];
+        result.kept.push({ key: keep.key, row: keep.rowIdx, id: keep.id });
+
+        records.slice(1).forEach(rec => {
+          result.closed++;
+          if (dryRun) return;
+          q.sh.getRange(rec.rowIdx, statusCol).setValue(REMIND.ST_CANCELLED);
+          if (cancelCol) q.sh.getRange(rec.rowIdx, cancelCol).setValue('Superseded duplicate COS reminder; kept row ' + keep.rowIdx);
+          if (actCol) q.sh.getRange(rec.rowIdx, actCol).setValue('DEDUPED');
+          if (byCol) q.sh.getRange(rec.rowIdx, byCol).setValue(by);
+          if (q.idx.tryCol('confirmedAt')) q.sh.getRange(rec.rowIdx, q.idx.tryCol('confirmedAt')).setValue(nowStr);
+          if (q.idx.tryCol('confirmedBy')) q.sh.getRange(rec.rowIdx, q.idx.tryCol('confirmedBy')).setValue(by);
+          _log(rec.id, rec.so || '', REMIND.TYPE_COS, REMIND.ST_CANCELLED, by, 'Superseded duplicate COS reminder; kept row ' + keep.rowIdx);
+        });
+      });
+      Logger.log('[Reminders] COS dedupe result: %s', JSON.stringify(result));
+      return result;
+    }
+
+    function _parseComparableDate_(value) {
+      const d = value instanceof Date ? value : new Date(String(value || ''));
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function _compareReminderRecordNewest_(a, b) {
+      const ac = a.createdAt ? a.createdAt.getTime() : 0;
+      const bc = b.createdAt ? b.createdAt.getTime() : 0;
+      if (bc !== ac) return bc - ac;
+      const an = a.nextDueAt ? a.nextDueAt.getTime() : 0;
+      const bn = b.nextDueAt ? b.nextDueAt.getTime() : 0;
+      if (bn !== an) return bn - an;
+      return b.rowIdx - a.rowIdx;
     }
 
     // Snooze by SO or (if SO blank) by Customer. Acts on all active items (PENDING/SNOOZED).
@@ -1709,11 +1828,20 @@ const Remind = (function() {
     unsnoozeForTarget,
     snoozeForTarget,
     cancelForTarget,
+    dedupeActiveCosReminders,
     remindersDailyCron,
     remindersHourlySafetyNet,
     runDailyNowForTesting
   };
 })(); // <— CLOSE THE Remind IIFE EXACTLY ONCE HERE
+
+function remind__dedupeActiveCosRemindersPreview() {
+  return Remind.dedupeActiveCosReminders(true);
+}
+
+function remind__dedupeActiveCosReminders() {
+  return Remind.dedupeActiveCosReminders(false);
+}
 
 
 function remind_menu_snoozeSelected() {
@@ -1810,7 +1938,7 @@ function remind__cancelTarget_do(so, cust, choice, reason) {
 
 // Returns [{type, prettyNext, prettySnooze}] using the given tz for display (e.g., 'America/Los_Angeles').
 function remind__getActiveSummaryForTarget(so, cust /* tz ignored; PT local */) {
-  const ss  = SpreadsheetApp.getActive();
+  const ss  = remind__spreadsheet_();
   const qsh = ss.getSheetByName('04_Reminders_Queue');
   if (!qsh) return [];
 
@@ -1874,9 +2002,9 @@ function remind__snoozeTarget_do(so, cust, isoDateStr) {
  * Throws a user-friendly error if no data row is selected.
  */
 function remind__getSelectionTarget_() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = remind__spreadsheet_();
   const sh = ss.getSheetByName('00_Master Appointments');
-  const r  = ss.getActiveRange();
+  const r  = SpreadsheetApp.getActiveSpreadsheet().getActiveRange();
 
   if (!sh || !r || r.getSheet().getName() !== sh.getName() || r.getRow() < 2) {
     throw new Error('Please select a data row in "00_Master Appointments" first.');
@@ -1961,16 +2089,21 @@ function remind__debugCheckWebhooks() {
 
 /** Install/refresh the time-based triggers for daily Chat reminders. */
 function remind__installTimeTriggers() {
+  const dailyFn = 'remind__dailyCron';
+  const hourlyFn = 'remind__hourlySafetyNet';
+  const legacyDailyFn = ['Remind', 'remindersDailyCron'].join('.');
+  const legacyHourlyFn = ['Remind', 'remindersHourlySafetyNet'].join('.');
+
   // Clean up any prior copies of our runners to avoid duplicates
   ScriptApp.getProjectTriggers().forEach(t => {
     const fn = t.getHandlerFunction();
-    if (fn === 'Remind.remindersDailyCron' || fn === 'Remind.remindersHourlySafetyNet') {
+    if (fn === dailyFn || fn === hourlyFn || fn === legacyDailyFn || fn === legacyHourlyFn) {
       ScriptApp.deleteTrigger(t);
     }
   });
 
   // Daily @ 9:30 AM in your project TZ (REMIND.TIMEZONE = 'America/Los_Angeles')
-  ScriptApp.newTrigger('Remind.remindersDailyCron')
+  ScriptApp.newTrigger(dailyFn)
     .timeBased()
     .atHour(9)                 // 9 AM hour
     .nearMinute(30)            // as close to :30 as Apps Script can schedule
@@ -1979,7 +2112,7 @@ function remind__installTimeTriggers() {
     .create();
 
   // Hourly safety net: only sends if the daily didn’t mark today as sent
-  ScriptApp.newTrigger('Remind.remindersHourlySafetyNet')
+  ScriptApp.newTrigger(hourlyFn)
     .timeBased()
     .everyHours(1)
     .create();
@@ -2072,6 +2205,3 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
-

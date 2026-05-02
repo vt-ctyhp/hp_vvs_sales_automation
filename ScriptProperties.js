@@ -46,13 +46,13 @@ function phase0_checkCoreProps_() {
 
 function phase0_initFlagOff(){
   phase0_checkCoreProps_();
-  setRemindersInAckFlag_(true); // keep OFF for the shadow-prep phase
+  setRemindersInAckFlag_(false); // keep OFF for the shadow-prep phase
 }
 
 
 /** ===== Phase 0: timestamped backup of core tabs ===== */
 function phase0_backupTabs() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = (typeof ackSpreadsheet_ === 'function') ? ackSpreadsheet_() : SpreadsheetApp.getActiveSpreadsheet();
   const tz = Session.getScriptTimeZone() || 'America/Los_Angeles';
   const stamp = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH.mm');
 
@@ -86,8 +86,8 @@ function phase0_listKeyTriggers() {
     'ack_runMorningFlow',
     'ack_middayQueuesRefresh',
     'ack_lateDayDashboardRefresh',
-    'Remind.remindersDailyCron',
-    'Remind.remindersHourlySafetyNet'
+    'remind__dailyCron',
+    'remind__hourlySafetyNet'
   ];
   const have = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
   Logger.log('Current triggers:\n- ' + have.join('\n- '));
@@ -99,7 +99,8 @@ function phase0_listKeyTriggers() {
 
 /** ===== Phase 0: Header guards ===== */
 function phase0_ensureRemindersHeaders() {
-  const sh = SpreadsheetApp.getActive().getSheetByName('04_Reminders_Queue');
+  const ss = (typeof ackSpreadsheet_ === 'function') ? ackSpreadsheet_() : SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName('04_Reminders_Queue');
   if (!sh) { Logger.log('⚠️ Missing sheet: 04_Reminders_Queue'); return; }
   const need = [
     'id','soNumber','type','firstDueDate','nextDueAt','recurrence','status','snoozeUntil',
@@ -113,12 +114,19 @@ function phase0_ensureRemindersHeaders() {
   for (let i = 0; i < need.length; i++) {
     if ((have[i]||'') !== need[i]) { sh.getRange(1, i+1).setValue(need[i]); changed = true; }
   }
+  const optional = ['rootApptId'];
+  optional.forEach(h => {
+    if (have.map(x => x.toLowerCase()).indexOf(h.toLowerCase()) >= 0) return;
+    sh.getRange(1, sh.getLastColumn() + 1).setValue(h);
+    changed = true;
+  });
   if (changed) sh.setFrozenRows(1);
   Logger.log('✅ 04_Reminders_Queue headers: OK');
 }
 
 function phase0_ensureAckLogHeaders() {
-  const sh = SpreadsheetApp.getActive().getSheetByName('06_Acknowledgement_Log');
+  const ss = (typeof ackSpreadsheet_ === 'function') ? ackSpreadsheet_() : SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName('06_Acknowledgement_Log');
   if (!sh) { Logger.log('⚠️ Missing sheet: 06_Acknowledgement_Log'); return; }
   const lr = sh.getLastRow();
   // Only write headers if the first row is blank / not initialized
@@ -138,4 +146,3 @@ function phase0_ensureAckLogHeaders() {
     Logger.log('✅ 06_Acknowledgement_Log headers already present.');
   }
 }
-

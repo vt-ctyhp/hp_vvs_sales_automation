@@ -7,57 +7,153 @@
 
 // Public entry point — use this instead of the original Submit in your menu
 function submitMyQueueUnified() {
-  var rep = (typeof detectRepName_ === 'function') ? detectRepName_() : '';
-  if (!rep) { SpreadsheetApp.getUi().alert('Could not detect your Rep name.'); return; }
-
-  var ss = SpreadsheetApp.getActive();
-  var sh = (typeof ensureQueueSheet_ === 'function') ? ensureQueueSheet_(rep) : ss.getSheetByName('Q_' + rep);
-  if (!sh) { SpreadsheetApp.getUi().alert('Queue sheet not found for ' + rep); return; }
-
-  // 0) PRE-COLLECT the user's Reminder actions (strict) BEFORE the legacy submit clears anything
-  var preWork = _collectReminderActionsFromSheet_(sh);
-
-  // 0b) SCRUB header/subsection hint text in the Action column so legacy submit doesn't count banners
-  _scrubReminderSectionHintCells_(sh);
-
-  // 1) Run existing ACK submit (unchanged behavior; it will now ignore banners; see Edit 3 for "skip Reminder rows")
-  if (typeof submitMyQueue === 'function') {
-    try { submitMyQueue(); } catch (e) { Logger.log('submitMyQueue() failed: ' + e); }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    SpreadsheetApp.getUi().alert('Another ACK/Reminder submit is running. Please wait a moment and try again.');
+    return { ok: false, error: 'LOCK_BUSY' };
   }
 
-  // 2) Apply Reminder actions captured in preWork → update 04_ + 15_ AND also log to 06_
-  var out = _processReminderActionsForRep_(rep, preWork, { alsoLogTo06: true });
-  recomputeAckStatusSummary(); // reflect reminder-driven logs in 00_ immediately
-
-  // 3) Auto-refresh the owner’s queue (ACK + Reminders) so both lists remain visible
+  var finalMsg = '';
+  var shouldRefresh = false;
   try {
-    if (typeof refreshMyQueueHybrid === 'function') {
-      refreshMyQueueHybrid();                     // ← hybrid: ACKs + Reminders (date-based due)
-    } else if (typeof refreshMyQueue === 'function') {
-      refreshMyQueue();                           // ← fallback: ACK-only
-    }
-  } catch (e) {
-    Logger.log('Hybrid refresh after submit failed: ' + e);
-  }
+    var rep = (typeof detectRepName_ === 'function') ? detectRepName_() : '';
+    if (!rep) throw new Error('Could not detect your Rep name.');
 
-  var msg = 'Submit complete.\n' +
-            'Reminders processed: ' + out.processed + '\n' +
-            (out.errors.length ? ('Errors:\n- ' + out.errors.join('\n- ')) : 'No reminder errors.');
-  SpreadsheetApp.getUi().alert(msg);
+    var ss = ackSpreadsheet_();
+    var sh = (typeof ensureQueueSheet_ === 'function') ? ensureQueueSheet_(rep) : ss.getSheetByName('Q_' + rep);
+    if (!sh) throw new Error('Queue sheet not found for ' + rep);
+    ackAssertGeneratedSheet_(sh);
+
+    // PRE-COLLECT reminder actions before the legacy ACK submit rebuilds the queue.
+    var preWork = _collectReminderActionsFromSheet_(sh);
+
+    var reminderValidationErrors = _validateReminderActionsBeforeAck_(ss, preWork);
+    if (reminderValidationErrors.length) {
+      throw new Error('Reminder validation failed:\n- ' + reminderValidationErrors.join('\n- '));
+    }
+
+    // SCRUB header/subsection hint text in the Action column so legacy submit doesn't count banners.
+    _scrubReminderSectionHintCells_(sh);
+
+    var ackResult = { ok: true, submitted: 0, errors: [] };
+    if (typeof submitMyQueue !== 'function') throw new Error('submitMyQueue() not found.');
+    try {
+      ackResult = submitMyQueue() || ackResult;
+    } catch (e) {
+      throw new Error('ACK submit failed: ' + (e && e.message ? e.message : e));
+    }
+    if (ackResult && ackResult.ok === false) {
+      throw new Error('ACK submit stopped: ' + ((ackResult.errors || []).join('; ') || 'unknown ACK error'));
+    }
+
+    var out = _processReminderActionsForRep_(rep, preWork, { alsoLogTo06: true });
+    if (out.errors && out.errors.length) {
+      shouldRefresh = true;
+      finalMsg = 'ACK submitted: ' + (ackResult.submitted || 0) + '\n' +
+                 'Reminder actions were not completed.\n\nErrors:\n- ' + out.errors.join('\n- ');
+      return { ok: false, ack: ackResult, reminders: out };
+    }
+
+    recomputeAckStatusSummary(); // reflect confirmed reminder logs in 00_ immediately
+    shouldRefresh = true;
+    finalMsg = 'Submit complete.\n' +
+               'ACK rows submitted: ' + (ackResult.submitted || 0) + '\n' +
+               'Reminder actions: ' + out.processed + '\n' +
+               'Confirmed: ' + (out.confirmed || 0) + '\n' +
+               'Snoozed: ' + (out.snoozed || 0) + '\n' +
+               'Cancelled: ' + (out.cancelled || 0);
+    return { ok: true, ack: ackResult, reminders: out };
+  } catch (e) {
+    finalMsg = 'Submit stopped.\n' + (e && e.message ? e.message : String(e));
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+    if (shouldRefresh) {
+      try {
+        if (typeof refreshMyQueueHybrid === 'function') {
+          refreshMyQueueHybrid();
+        } else if (typeof refreshMyQueue === 'function') {
+          refreshMyQueue();
+        }
+      } catch (e2) {
+        Logger.log('Hybrid refresh after submit failed: ' + e2);
+      }
+    }
+    SpreadsheetApp.getUi().alert(finalMsg || 'Submit finished.');
+  }
 }
 
 
 // ===== Core processing =====
 
+function _validateReminderActionsBeforeAck_(ss, work) {
+  var errors = [];
+  errors = errors.concat(_validateReminderActionIds_(ss, work));
+  errors = errors.concat(_validateReminderActionInputs_(work));
+  return errors;
+}
+
+function _validateReminderActionIds_(ss, work) {
+  var errors = [];
+  work = Array.isArray(work) ? work : [];
+  if (!work.length) return errors;
+
+  var sQ = ss.getSheetByName('04_Reminders_Queue');
+  if (!sQ) return ['04_Reminders_Queue not found.'];
+
+  var qLc = sQ.getLastColumn(), qLr = sQ.getLastRow();
+  if (qLr < 2) return ['04_Reminders_Queue is empty.'];
+
+  var qHdrs = sQ.getRange(1,1,1,qLc).getDisplayValues()[0].map(function(s){ return String(s||'').trim(); });
+  var cIdQ = qHdrs.indexOf('id') + 1;
+  if (cIdQ < 1) return ['04_Reminders_Queue headers incomplete: missing id.'];
+
+  var ids = new Set();
+  var qVals = sQ.getRange(2, cIdQ, qLr - 1, 1).getDisplayValues();
+  qVals.forEach(function(row){
+    var id = String(row[0] || '').trim();
+    if (id) ids.add(id);
+  });
+
+  work.forEach(function(w){
+    var id = String(w.id || '').trim();
+    if (!id) {
+      errors.push('Row ' + w.idx + ': Reminder ID missing. Please Refresh My Queue and try again.');
+    } else if (!ids.has(id)) {
+      errors.push('Row ' + w.idx + ': Reminder ID not found in 04_. Please Refresh My Queue and try again.');
+    }
+  });
+  return errors;
+}
+
+function _validateReminderActionInputs_(work) {
+  var errors = [];
+  work = Array.isArray(work) ? work : [];
+  function needsNote(a){ return a === 'Cancel' || a.indexOf('Snooze') === 0; }
+  function isCustomSnooze(a){ return a === 'Snooze…'; }
+
+  work.forEach(function(w){
+    if (needsNote(w.action) && !String(w.note||'').trim()) {
+      errors.push('Row ' + w.idx + ': Notes required for "' + w.action + '".');
+    }
+    if (isCustomSnooze(w.action)) {
+      var dt = _parseDateStrict_(w.snoozeCell);
+      if (!dt) errors.push('Row ' + w.idx + ': "Snooze Until" date/time required for Snooze….');
+    }
+  });
+  return errors;
+}
+
 function _processReminderActionsForRep_(rep, preWork, opts) {
   opts = opts || {};
   var alsoLogTo06 = !!opts.alsoLogTo06;
 
-  var ss = SpreadsheetApp.getActive();
+  var ss = ackSpreadsheet_();
   var sh = (typeof ensureQueueSheet_ === 'function') ? ensureQueueSheet_(rep) : ss.getSheetByName('Q_' + rep);
-  try { _ensureReminderBridgeColumnsOnQueue_(sh); } catch (_) {}
 
   if (!sh) return { processed: 0, errors: ['Queue sheet not found for ' + rep] };
+  ackAssertGeneratedSheet_(sh);
+  try { _ensureReminderBridgeColumnsOnQueue_(sh); } catch (_) {}
 
   var lc = sh.getLastColumn(), lr = sh.getLastRow();
   if (lr < 2) return { processed: 0, errors: [] };
@@ -101,20 +197,8 @@ function _processReminderActionsForRep_(rep, preWork, opts) {
     if (!work.length) return { processed: 0, errors: [] };
   }
 
-  // Validate inputs (Notes and Snooze until)
-  var errors = [];
-  function needsNote(a){ return a === 'Cancel' || a.indexOf('Snooze') === 0; }
-  function isCustomSnooze(a){ return a === 'Snooze…'; }
-
-  work.forEach(function(w){
-    if (needsNote(w.action) && !String(w.note||'').trim()) {
-      errors.push('Row ' + w.idx + ': Notes required for "' + w.action + '".');
-    }
-    if (isCustomSnooze(w.action)) {
-      var dt = _parseDateStrict_(w.snoozeCell);
-      if (!dt) errors.push('Row ' + w.idx + ': "Snooze Until" date/time required for Snooze….');
-    }
-  });
+  // Validate inputs again in case this helper is called directly.
+  var errors = _validateReminderActionInputs_(work);
   if (errors.length) return { processed: 0, errors: errors };
 
   // Build id → 04_ row map
@@ -148,6 +232,17 @@ function _processReminderActionsForRep_(rep, preWork, opts) {
     var id = String(qVals[i][cIdQ-1] || '').trim();
     if (id) rowById.set(id, {row: i+2, arr: qVals[i]});
   }
+
+  work.forEach(function(w){
+    if (!String(w.id || '').trim()) {
+      errors.push('Row ' + w.idx + ': Reminder ID missing. Please Refresh My Queue and try again.');
+      return;
+    }
+    if (!rowById.has(w.id)) {
+      errors.push('Row ' + w.idx + ': Reminder ID not found in 04_. Please Refresh My Queue and try again.');
+    }
+  });
+  if (errors.length) return { processed: 0, confirmed: 0, snoozed: 0, cancelled: 0, errors: errors };
 
   var actor = _safeEmail_() || Session.getActiveUser().getEmail() || 'unknown';
   var tz = Session.getScriptTimeZone() || 'America/Los_Angeles';
@@ -267,6 +362,10 @@ function _processReminderActionsForRep_(rep, preWork, opts) {
   }
 
   var processed = 0;
+  var confirmed = 0;
+  var snoozed = 0;
+  var cancelled = 0;
+  var processedWork = [];
 
   work.forEach(function(w){
     var rec = rowById.get(w.id);
@@ -280,6 +379,7 @@ function _processReminderActionsForRep_(rep, preWork, opts) {
       confirmedAt = now;
       confirmedBy = actor;
       lastAdminAction = 'CONFIRM';
+      confirmed++;
     } else if (aL.indexOf('snooze') === 0) {
       newStatus = 'SNOOZED';
       if (aL === 'snooze 1 day') {
@@ -290,10 +390,12 @@ function _processReminderActionsForRep_(rep, preWork, opts) {
       nextDue = snoozeUntil;
       lastAdminAction = 'SNOOZE';
       cancelReason = '';
+      snoozed++;
     } else if (aL === 'cancel') {
       newStatus = 'CANCELLED';
       cancelReason = w.note || 'Cancelled';
       lastAdminAction = 'CANCEL';
+      cancelled++;
     } else {
       return; // unknown label
     }
@@ -319,14 +421,17 @@ function _processReminderActionsForRep_(rep, preWork, opts) {
     ]);
 
     processed++;
+    processedWork.push(w);
   });
 
-  // ALSO append these Reminder actions as Ack logs in 06_ (so both flows appear in 06)
-  if (alsoLogTo06 && processed > 0) {
-    _appendAcknowledgementLogsForReminders_(work, rep, tz);
+  // Only Reminder Confirm counts as an ACK completion in 06_. Snooze/Cancel stay in 15_ only.
+  if (alsoLogTo06 && confirmed > 0) {
+    _appendAcknowledgementLogsForReminders_(processedWork.filter(function(w){
+      return String(w.action || '').toLowerCase() === 'confirm';
+    }), rep, tz);
   }
 
-  return { processed: processed, errors: errors };
+  return { processed: processed, confirmed: confirmed, snoozed: snoozed, cancelled: cancelled, errors: errors };
 }
 
 
@@ -440,8 +545,9 @@ function _scrubReminderSectionHintCells_(sh) {
 }
 
 function _appendAcknowledgementLogsForReminders_(work, rep, tz) {
-  if (!work || !work.length) return;
-  var ss = SpreadsheetApp.getActive();
+  work = (work || []).filter(function(w){ return String(w.action || '').toLowerCase() === 'confirm'; });
+  if (!work.length) return;
+  var ss = ackSpreadsheet_();
   var s06 = ss.getSheetByName('06_Acknowledgement_Log') || ss.insertSheet('06_Acknowledgement_Log');
   var hdr = s06.getLastRow() ? s06.getRange(1,1,1,s06.getLastColumn()).getDisplayValues()[0]
                              : (function(){ s06.getRange(1,1,1,10).setValues([['Timestamp','Log Date','RootApptID','Rep','Ack Status','Ack Note','Customer (at log)','Custom Order Status (at log)','Last Updated At (at log)','Client Status Report URL']]); s06.setFrozenRows(1); return s06.getRange(1,1,1,s06.getLastColumn()).getDisplayValues()[0]; })();
@@ -478,10 +584,8 @@ function _appendAcknowledgementLogsForReminders_(work, rep, tz) {
     if (iRoot>=0) arr[iRoot] = w.root || '';
     if (iRep>=0)  arr[iRep] = rep || '';
     if (iStat>=0) {
-      // Map Reminder action → canonical Ack status used by dashboards
-      var L = String(w.action||'').toLowerCase();
-      arr[iStat] = (L === 'confirm') ? (typeof LABELS !== 'undefined' ? LABELS.FULLY_UPDATED : 'Fully Updated')
-                                     : (typeof LABELS !== 'undefined' ? LABELS.NEEDS_FOLLOW_UP : 'Needs follow-up');
+      // Only Confirm reaches this helper; Snooze/Cancel stay in 15_Reminders_Log.
+      arr[iStat] = (typeof LABELS !== 'undefined' ? LABELS.FULLY_UPDATED : 'Fully Updated');
     }
     if (iNote>=0) arr[iNote] = w.note || '';
     if (iCust>=0) arr[iCust] = w.customer || '';
@@ -515,5 +619,3 @@ function _tomorrow0930_(tz) {
   d.setHours(9, 30, 0, 0);
   return d;
 }
-
-
