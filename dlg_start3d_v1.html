@@ -45,8 +45,9 @@
     .copy-box{white-space:pre-wrap; background:#fff; border:1px dashed var(--line); padding:8px; border-radius:8px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
     .xDisabled{opacity:.55; pointer-events:none}
   </style>
+  <?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
   <div class="wrap" id="root">
 
     <!-- Step‑1 warnings -->
@@ -408,7 +409,7 @@ on(so,'input', debounce(function(){
                 renderSuccess(res.summary);
               } else {
                 setSubmitting(false);
-                alert('Saved, but no summary returned.');
+                uiSetStatus('Saved, but no summary returned.', 'ok');
                 google.script.host.close();
               }
             })
@@ -427,7 +428,7 @@ on(so,'input', debounce(function(){
                 fitDialog();
                 return;
               }
-              alert('Failed: ' + msg);
+              uiSetStatus('Failed: ' + msg, 'error');
             })
             .saveAssignedSO(payload);
         });
@@ -509,7 +510,7 @@ on(so,'input', debounce(function(){
             .withSuccessHandler(renderInitBanner)
             .withFailureHandler(function(err){
               // Optional: surface errors like "Select a data row..." instead of silently failing
-              alert((err && err.message) ? err.message : String(err));
+              uiSetStatus((err && err.message) ? err.message : String(err), 'error');
             })
             .start3d_init();
         }

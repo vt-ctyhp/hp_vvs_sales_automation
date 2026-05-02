@@ -1,0 +1,223 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-foundation: #F7F1EB;
+    --surface-card:  #FBF7F1;
+    --surface-inset: #EFE8DD;
+    --ink-primary:   #2A2725;
+    --ink-body:      #4A4540;
+    --ink-muted:     #8A8178;
+    --rule:          #D4CFC4;
+    --accent:        #E91D79;
+  }
+
+  body.ui-shell {
+    margin: 0;
+    background: var(--bg-foundation);
+    color: var(--ink-body);
+    font: 14px/1.5 Inter, system-ui, -apple-system, sans-serif;
+  }
+
+  .ui-shell h1,
+  .ui-shell h2,
+  .ui-shell h3 {
+    color: var(--ink-primary);
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  .ui-shell label,
+  .ui-shell legend {
+    color: var(--ink-muted);
+    font: 500 11px/1.35 Inter, system-ui, sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .ui-shell fieldset,
+  .ui-shell .panel,
+  .ui-shell .card,
+  .ui-shell .box {
+    background: var(--surface-card);
+    border: 1px solid var(--rule);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ui-shell input[type="text"],
+  .ui-shell input[type="url"],
+  .ui-shell input[type="number"],
+  .ui-shell input[type="date"],
+  .ui-shell input[type="datetime-local"],
+  .ui-shell select,
+  .ui-shell textarea {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    border-radius: 0;
+    color: var(--ink-body);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    padding: 6px 2px;
+  }
+
+  .ui-shell input:focus,
+  .ui-shell select:focus,
+  .ui-shell textarea:focus {
+    border-bottom: 2px solid var(--accent);
+    outline: none;
+    padding-bottom: 5px;
+  }
+
+  .ui-shell button,
+  .ui-shell .btn {
+    border-radius: 2px;
+    font: 500 12px/1 Inter, system-ui, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out;
+  }
+
+  .ui-shell .primary,
+  .ui-shell .btn-primary {
+    background: var(--ink-primary);
+    color: var(--bg-foundation);
+  }
+
+  .ui-shell .primary:hover,
+  .ui-shell .btn-primary:hover {
+    background: var(--accent);
+  }
+
+  .ui-shell .ghost,
+  .ui-shell .btn-ghost,
+  .ui-shell button:not(.primary):not(.btn-primary):not(.danger) {
+    background: transparent;
+    border: 1px solid var(--ink-primary);
+    color: var(--ink-primary);
+  }
+
+  .ui-shell .ghost:hover,
+  .ui-shell .btn-ghost:hover,
+  .ui-shell button:not(.primary):not(.btn-primary):not(.danger):hover {
+    background: var(--ink-primary);
+    color: var(--bg-foundation);
+  }
+
+  .ui-shell .danger {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+
+  .ui-shell .danger:hover {
+    background: var(--ink-primary);
+    border-color: var(--ink-primary);
+    color: var(--bg-foundation);
+  }
+
+  .ui-status {
+    background: var(--surface-inset);
+    border-top: 2px solid var(--accent);
+    color: var(--ink-body);
+    display: none;
+    font-size: 12px;
+    margin: 12px 0;
+    padding: 10px 12px;
+  }
+
+  .ui-status.is-error {
+    color: var(--accent);
+  }
+
+  .ui-status.is-ok {
+    color: var(--ink-muted);
+  }
+
+  .ui-shell table {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-shell th {
+    background: var(--surface-inset);
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-muted);
+    font: 500 10px/1.3 Inter, system-ui, sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .ui-shell td {
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-body);
+  }
+</style>
+<script>
+  (function() {
+    function statusNode() {
+      var node = document.getElementById('uiStatus');
+      if (node) return node;
+      node = document.createElement('div');
+      node.id = 'uiStatus';
+      node.className = 'ui-status';
+      var anchor = document.querySelector('.actions, .btns, form') || document.body.firstChild;
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(node, anchor);
+      else document.body.appendChild(node);
+      return node;
+    }
+
+    window.uiSetStatus = function(message, kind) {
+      var node = statusNode();
+      node.textContent = String(message || '');
+      node.className = 'ui-status' + (kind ? ' is-' + kind : '');
+      node.style.display = message ? 'block' : 'none';
+    };
+
+    window.uiClearStatus = function() {
+      var node = document.getElementById('uiStatus');
+      if (node) node.style.display = 'none';
+    };
+
+    window.uiSetBusy = function(button, busy, label) {
+      if (!button) return;
+      if (busy) {
+        button.dataset.originalLabel = button.dataset.originalLabel || button.textContent;
+        button.disabled = true;
+        button.textContent = label || 'Working...';
+      } else {
+        button.disabled = false;
+        button.textContent = button.dataset.originalLabel || label || button.textContent;
+        delete button.dataset.originalLabel;
+      }
+    };
+
+    window.uiConfirmOnce = function(button, message, run) {
+      if (!button) return;
+      var now = Date.now();
+      var armedUntil = Number(button.dataset.confirmUntil || 0);
+      if (armedUntil > now) {
+        delete button.dataset.confirmUntil;
+        if (typeof run === 'function') run();
+        return;
+      }
+      button.dataset.confirmUntil = String(now + 4000);
+      button.dataset.originalLabel = button.dataset.originalLabel || button.textContent;
+      button.textContent = message || 'Confirm?';
+      setTimeout(function() {
+        if (Number(button.dataset.confirmUntil || 0) <= Date.now()) {
+          delete button.dataset.confirmUntil;
+          button.textContent = button.dataset.originalLabel || button.textContent;
+        }
+      }, 4200);
+    };
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && window.google && google.script && google.script.host) {
+        google.script.host.close();
+      }
+    });
+  })();
+</script>

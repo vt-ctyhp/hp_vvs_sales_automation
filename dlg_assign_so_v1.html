@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8" />
+<base target="_top">
 <title>Assign SO</title>
 <style>
   :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
@@ -22,8 +23,9 @@
   .ghost { background:#f6f8fa; }
   .error { color:#b3261e; font-size: 12px; }
 </style>
+<?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 
 <script>
   // If the server injected a preview (via openAssignSOWithPreview),
@@ -97,6 +99,12 @@
 
   <!-- keep server-templated design request hidden (unchanged behavior) -->
   <textarea id="designReq" style="display:none"><?!= designRequest || '' ?></textarea>
+
+  <div id="relinkPanel" class="card" style="display:none;margin-top:10px;">
+    <label for="relinkReason">Relink reason</label>
+    <textarea id="relinkReason" rows="3" placeholder="Explain why this SO should replace the current linked SO."></textarea>
+    <div class="hint">This row already has a linked SO. Enter a reason, then click Save again.</div>
+  </div>
 
   <!-- ACTIONS: reversed to Cancel / Save per your spec -->
   <div class="actions">
@@ -280,14 +288,19 @@
 
     // If preview shows an existing link, require confirm + reason (same as Start 3D)
     if (previewData && previewData.hasLinkedSO){
-      const proceed = confirm('Re-link SO?\nThis row already has '
-        + (previewData.existingBrand||'') + ' · ' + (previewData.existingSo||'')
-        + '.\nProceed to overwrite?');
-      if (!proceed) return;
-      const why = prompt('Enter reason for re-link (required):','');
-      if (!why || !why.trim()){ alert('Reason is required.'); return; }
+      const panel = $('#relinkPanel');
+      const reason = $('#relinkReason');
+      if (panel && panel.style.display === 'none') {
+        panel.style.display = 'block';
+        uiSetStatus('This row already has a linked SO. Enter a relink reason, then click Save again.', 'error');
+        if (reason) reason.focus();
+        fitDialogToContent(520);
+        return;
+      }
+      const why = reason ? reason.value.trim() : '';
+      if (!why){ uiSetStatus('Reason is required.', 'error'); return; }
       payload.forceRelink = true;
-      payload.relinkReason = why.trim();
+      payload.relinkReason = why;
     }
 
     setSubmitting(true);
@@ -295,7 +308,7 @@
       .withSuccessHandler(function(res){
         setSubmitting(false);
         if (res && res.ok && res.summary) renderSuccess(res.summary);
-        else { alert('Saved, but no summary returned.'); google.script.host.close(); }
+        else { uiSetStatus('Saved, but no summary returned.', 'ok'); google.script.host.close(); }
       })
       .withFailureHandler(function(err){
         setSubmitting(false);
@@ -305,29 +318,17 @@
         if (msg.indexOf('RELINK_REQUIRED|') === 0){
           try {
             const info = JSON.parse(msg.split('|')[1] || '{}');
-            const ok2 = confirm('Re-link SO?\nExisting: ' + (info.existingBrand||'') + ' · ' + (info.existingSo||'') + '\nProceed to overwrite?');
-            if (!ok2) return;
-            const why2 = prompt('Enter reason for re-link (required):','');
-            if (!why2 || !why2.trim()){ alert('Reason is required.'); return; }
-            payload.forceRelink = true; payload.relinkReason = why2.trim();
-
-            setSubmitting(true);
-            google.script.run
-              .withSuccessHandler(function(res2){
-                setSubmitting(false);
-                if (res2 && res2.ok && res2.summary) renderSuccess(res2.summary);
-                else { alert('Saved, but no summary returned.'); google.script.host.close(); }
-              })
-              .withFailureHandler(function(er2){
-                setSubmitting(false);
-                alert('Failed to save: ' + (er2 && er2.message ? er2.message : er2));
-              })
-              .saveAssignedSO(payload);
+            const panel = $('#relinkPanel');
+            const reason = $('#relinkReason');
+            if (panel) panel.style.display = 'block';
+            uiSetStatus('Server found an existing SO link: ' + (info.existingBrand||'') + ' ' + (info.existingSo||'') + '. Enter a relink reason, then click Save again.', 'error');
+            if (reason) reason.focus();
+            fitDialogToContent(520);
             return;
           } catch(_) {}
         }
 
-        alert('Failed to save: ' + msg);
+        uiSetStatus('Failed to save: ' + msg, 'error');
       })
       .saveAssignedSO(payload);
   });

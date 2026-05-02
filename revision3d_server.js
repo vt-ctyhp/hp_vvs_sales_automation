@@ -14,7 +14,7 @@
 
 // ---------- Open dialog ----------
 function open3DRevision(){
-  const html = HtmlService.createHtmlOutputFromFile('dlg_revision3d_v1')
+  const html = HtmlService.createTemplateFromFile('dlg_revision3d_v1').evaluate()
     .setTitle('3D Revision Request')
     .setWidth(650)
     .setHeight(560);
@@ -344,6 +344,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

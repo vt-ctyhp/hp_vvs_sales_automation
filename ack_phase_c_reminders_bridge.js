@@ -743,11 +743,23 @@ function _formatQueueHeaderAndColumns_(sh) {
     var lc = sh.getLastColumn();
     var hdr = sh.getRange(1, 1, 1, lc).getDisplayValues()[0].map(function(s){ return String(s || '').trim(); });
 
+    var UI_SHEET = {
+      headerBg: '#EFE8DD',
+      inputBg: '#F7F1EB',
+      ink: '#2A2725',
+      muted: '#8A8178',
+      rule: '#D4CFC4'
+    };
+
     // 1) Header row: wrap + center the first (header) row
     sh.getRange(1, 1, 1, lc)
       .setWrap(true)
       .setHorizontalAlignment('center')
-      .setVerticalAlignment('middle');
+      .setVerticalAlignment('middle')
+      .setBackground(UI_SHEET.headerBg)
+      .setFontColor(UI_SHEET.ink)
+      .setFontWeight('bold');
+    sh.setRowHeight(1, 36);
 
 
     // 2) Robust header lookups (supports alts + normalization)
@@ -835,6 +847,16 @@ function _formatQueueHeaderAndColumns_(sh) {
 
     if (cNext > 0) sh.setColumnWidth(cNext, NEXT_STEPS_WIDTH_PX);
     if (cCSR  > 0) sh.setColumnWidth(cCSR,  CSR_URL_WIDTH_PX);
+
+    var lr = sh.getLastRow();
+    ['Ack Status', 'Ack Note', 'Reminder Snooze Until'].forEach(function(label){
+      var c = colOf(label);
+      if (c > 0 && lr >= 2) {
+        sh.getRange(2, c, lr - 1, 1)
+          .setBackground(UI_SHEET.inputBg)
+          .setFontColor(UI_SHEET.ink);
+      }
+    });
 
   } catch (e) {
     Logger.log('format header/columns skipped: ' + e);

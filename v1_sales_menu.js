@@ -1,58 +1,58 @@
 function onOpen(e) {
   const ui = SpreadsheetApp.getUi();
 
-  // ⏰ Reminders submenu
-  const remindersMenu = ui.createMenu('⏰ Reminders')
-    .addItem('💤 Snooze selected order', 'remind_menu_snoozeSelected')
-    .addItem('💤 Snooze today (1-click)', 'remind_menu_snoozeTodaySelected')
-    .addItem('↩️ Unsnooze now (1-click)', 'remind_menu_unsnoozeNowSelected')
-    .addItem('❌ Cancel selected order', 'remind_menu_cancelSelected');
+  // Reminders submenu
+  const remindersMenu = ui.createMenu('Reminders')
+    .addItem('Snooze selected order', 'remind_menu_snoozeSelected')
+    .addItem('Snooze today', 'remind_menu_snoozeTodaySelected')
+    .addItem('Unsnooze now', 'remind_menu_unsnoozeNowSelected')
+    .addItem('Cancel selected order', 'remind_menu_cancelSelected');
 
-  // 💎 Diamond Viewing submenu
-  const diamondsMenu = ui.createMenu('💎 Diamond Viewing')
-    .addItem('💎 Propose', 'dp_openProposeDiamonds')
-    .addItem('💎 Order/Approve', 'dp_openOrderApproveDiamonds')
-    .addItem('💎 Confirm Delivery', 'dp_openConfirmDeliveryDiamonds')
-    .addItem('💎 Client Decisions', 'dp_openStoneDecisions');
+  // Diamond Viewing submenu
+  const diamondsMenu = ui.createMenu('Diamond Viewing')
+    .addItem('Propose diamonds', 'dp_openProposeDiamonds')
+    .addItem('Order or approve diamonds', 'dp_openOrderApproveDiamonds')
+    .addItem('Confirm delivery', 'dp_openConfirmDeliveryDiamonds')
+    .addItem('Record client decisions', 'dp_openStoneDecisions');
 
-  // 🧾 Update Quotation submenu
-  const updateQuotationMenu = ui.createMenu('🧾 Update Quotation')
-    .addItem('💎 Diamonds', 'uq_openUpdateQuotationDiamonds')
-    .addItem('💍 Ring Setting', 'uq_openUpdateQuotationSettings');
+  // Update Quotation submenu
+  const updateQuotationMenu = ui.createMenu('Update Quotation')
+    .addItem('Diamonds', 'uq_openUpdateQuotationDiamonds')
+    .addItem('Ring setting', 'uq_openUpdateQuotationSettings');
 
-  // 🕯️ Wax Print submenu
-  const waxMenu = ui.createMenu('🕯️ Wax Print')
-    .addItem('📥 Pull Pending', 'wax_adminOpenDialog_');
+  // Wax Print submenu
+  const waxMenu = ui.createMenu('Wax Print')
+    .addItem('Pull pending requests', 'wax_adminOpenDialog_');
 
   // ✅ Acknowledgements submenu (Phase B + Phase C actions)
   // Requires functions from Phase B: runAllPipes, buildRootIndex, buildRepsMap, recomputeAckStatusSummary
   // And from Phase C: buildTodaysQueuesAll_WithReminders, openMyQueue, refreshMyQueueHybrid, submitMyQueueUnified
   const ackMenu = ui.createMenu('✅ Acknowledgements')
-    .addItem('🧰 Build Today’s Queues (All)', 'buildTodaysQueuesAll_WithReminders')
-    .addItem('🙋 My Queue (Detect Me)', 'openMyQueue')
-    .addItem('🔄 Refresh My Queue', 'refreshMyQueueHybrid')
-    .addItem('✅ Submit My Queue', 'submitMyQueueUnified')
-    .addItem('📊 Refresh 09_Ack_Dashboard', 'buildAckDashboard')
+    .addItem('Build today’s queues', 'buildTodaysQueuesAll_WithReminders')
+    .addItem('Open my queue', 'openMyQueue')
+    .addItem('Refresh my queue', 'refreshMyQueueHybrid')
+    .addItem('Submit my queue', 'submitMyQueueUnified')
+    .addItem('Refresh ACK dashboard', 'buildAckDashboard')
     .addSeparator()
-    .addItem('🧮 Recompute 00 Ack Status (from log)', 'recomputeAckStatusSummary');
+    .addItem('Recompute ACK status from log', 'recomputeAckStatusSummary');
 
   // 💎 Sales — primary workflow
   ui.createMenu('💎 Sales')
-    .addItem('Authorize Once', 'authorizeDriveOnce')
-    .addItem('🚀 Start 3D Design', 'openStart3D')
-    .addItem('🔗 Assign SO', 'assignSO')
-    .addItem('♻️ 3D Revision Request', 'open3DRevision')
-    .addItem('📆 Record Deadline', 'showRecordDeadlineDialog')
+    .addItem('Authorize Drive', 'authorizeDriveOnce')
+    .addItem('Start 3D design', 'openStart3D')
+    .addItem('Assign SO', 'assignSO')
+    .addItem('3D revision request', 'open3DRevision')
+    .addItem('Record deadline', 'showRecordDeadlineDialog')
     .addSeparator()
     .addSubMenu(diamondsMenu)
     .addSubMenu(updateQuotationMenu)
     .addSubMenu(waxMenu)
     .addSeparator()
-    .addItem('🧑‍💼 Client Status Update', 'cs_openStatusDialog_')
-    .addItem('📁 Client Summary', 'openClientSummary')
+    .addItem('Client status update', 'cs_openStatusDialog_')
+    .addItem('Client summary', 'openClientSummary')
     .addSeparator()
-    .addItem('💵 Record Payment', 'openRecordPayment')
-    .addItem('🧾 Payment Summary', 'openPaymentSummary')
+    .addItem('Record payment', 'openRecordPayment')
+    .addItem('Payment summary', 'openPaymentSummary')
     // .addItem('📊 Payment Report',  'openPaymentReportDialog')
     .addSeparator()
     .addSubMenu(remindersMenu)
@@ -60,9 +60,9 @@ function onOpen(e) {
 
   // 📈 Reports — quick access
   ui.createMenu('📈 Reports')
-    .addItem('📋 By Status', 'openReportByStatus')
-    .addItem('🙋 By Rep', 'openReportByRep')
-    .addItem('📅 Appointment Sales Report', 'openApptReportDialog')
+    .addItem('By status', 'openReportByStatus')
+    .addItem('By rep', 'openReportByRep')
+    .addItem('Appointment sales report', 'openApptReportDialog')
     .addSubMenu(
       ui.createMenu('Quick PDF Exports')
         .addItem('Booked Appointment (Sales Stage)', 'report_menu_export_BookedAppointment')
@@ -71,17 +71,17 @@ function onOpen(e) {
         .addItem('In Production (Custom Order)',     'report_menu_export_InProduction')
     )
     .addSeparator()
-    .addItem('📆 Appointment Summary', 'as_openAppointmentSummary')
+    .addItem('Appointment summary', 'as_openAppointmentSummary')
     .addSeparator()
     .addSubMenu(
-      ui.createMenu('📊 Stage Rollup')
+      ui.createMenu('Stage Rollup')
         .addItem('Refresh now', 'refreshClientStageRollup')
     )
     .addToUi();
 
   // 🧹 Audit — data quality checks
   ui.createMenu('🧹 Audit')
-    .addItem('🔍 Run Master Audit (v1)', 'runMasterAuditV1')
+    .addItem('Run master audit', 'runMasterAuditV1')
     .addToUi();
 
   ui.createMenu('Recovery')
@@ -125,7 +125,7 @@ function authorizeDriveOnce() {
 
 function openRecordPayment() {
   try { rp_markActiveMasterRowIndex_(); } catch(_){}
-  const html = HtmlService.createHtmlOutputFromFile('dlg_record_payment_v1').setWidth(980).setHeight(640);
+  const html = HtmlService.createTemplateFromFile('dlg_record_payment_v1').evaluate().setWidth(980).setHeight(640);
   SpreadsheetApp.getUi().showModalDialog(html, 'Record Payment');
 }
 

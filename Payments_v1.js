@@ -78,7 +78,7 @@ function openRecordPayment() {
   // ← THÊM: xóa cache cũ để tránh load nhầm row
   try { CacheService.getUserCache().remove('RP_ACTIVE_MASTER_ROW'); } catch(_){}
   try { rp_markActiveMasterRowIndex_(); } catch(_){}
-  const html = HtmlService.createHtmlOutputFromFile('dlg_record_payment_v1').setWidth(980).setHeight(640);
+  const html = HtmlService.createTemplateFromFile('dlg_record_payment_v1').evaluate().setWidth(980).setHeight(640);
   SpreadsheetApp.getUi().showModalDialog(html, 'Record Payment');
 }
 function rp_ping(){ RP_LOG('[rp_ping]'); return 'pong'; }

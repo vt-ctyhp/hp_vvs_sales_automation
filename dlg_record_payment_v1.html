@@ -225,9 +225,10 @@
     display: none;
   }
 </style>
+<?!= include('ui_styles') ?>
 </head>
 
-<body>
+<body class="ui-shell">
 <div class="wrap">
 
   <!-- ── LEFT ──────────────────────────────────────────── -->
@@ -1482,7 +1483,7 @@ $('btnSubmit').addEventListener('click', function () {
                 const ok = !!(out && out.ok !== false);
                 if (!ok) {
                   const hint = out && out.hint ? out.hint : (out && out.reason ? out.reason : 'check template/brand or folder settings');
-                  alert('❌ Doc/PDF Error:\n\nReason: ' + (out && out.reason || '') + '\n\nHint: ' + hint);
+                  uiSetStatus('Doc/PDF error. Reason: ' + (out && out.reason || '') + ' Hint: ' + hint, 'error');
                   showToast('Doc/PDF: ' + hint);
                   renderSuccess({
                     docNumber: out && out.docNumber ? out.docNumber : '(auto)',

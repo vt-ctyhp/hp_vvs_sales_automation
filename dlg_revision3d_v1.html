@@ -44,8 +44,9 @@
     /* Softer gray-out for disabled inputs while prefill runs */
     input:disabled, select:disabled, textarea:disabled { background:#f3f4f6; color:#6b7280; }
   </style>
+  <?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 <div class="wrap" id="root">
 
   <!-- Warnings/Guidance -->
@@ -366,13 +367,13 @@
             scheduleFit();
           } else {
             setSubmitting(false);
-            alert('Submitted, but no summary returned.');
+            uiSetStatus('Submitted, but no summary returned.', 'ok');
             google.script.host.close();
           }
         })
         .withFailureHandler(function(err){
           setSubmitting(false);
-          alert('Failed: ' + (err && err.message ? err.message : err));
+          uiSetStatus('Failed: ' + (err && err.message ? err.message : err), 'error');
         })
         .submit3DRevision(payload);
     });
@@ -436,7 +437,7 @@
       })
       .withFailureHandler(function(err){
         try{ setPrefillBanner(false); setStep1Enabled(true); }catch(_){}
-        alert('Init failed: ' + (err && err.message ? err.message : err));
+        uiSetStatus('Init failed: ' + (err && err.message ? err.message : err), 'error');
       })
       .rev3d_init();
 
@@ -461,7 +462,7 @@
         })
         .withFailureHandler(function(err){
           btn.disabled=false; btn.classList.remove('xDisabled'); btn.textContent='Next';
-          alert('Server error: ' + (err && err.message ? err.message : err));
+          uiSetStatus('Server error: ' + (err && err.message ? err.message : err), 'error');
         })
         .previewRevOdooPaste(form);
     });

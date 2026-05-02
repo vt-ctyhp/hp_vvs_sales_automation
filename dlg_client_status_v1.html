@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <base target="_top">
   <title>Client Status Update</title>
   <style>
     :root{
@@ -96,10 +97,11 @@
     const RULES_FLAT = <?!= JSON.stringify(rulesFlat || {matrix:[], viewing:[]}) ?>;
     const VISIT_ISO  = '<?= prefill.visitISO ?>';
   </script>
+  <?!= include('ui_styles') ?>
 
 </head>
 
-<body>
+<body class="ui-shell">
   <div class="wrap">
     <div class="hdr">
       <div class="bar"></div>
@@ -479,7 +481,7 @@
 
 
     if (errs.length) {
-      alert('Please complete the following before submitting:\n\n• ' + errs.join('\n• '));
+      uiSetStatus('Please complete: ' + errs.join(', '), 'error');
       setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update';
       return;
     }
@@ -491,7 +493,7 @@
       // NEW: Conditional requirement for IPS
       const isInProd = isInProductionStatus($('customOrder').value);
       if (isInProd && !$('inProduction').value) {
-        alert('Please select an "In Production Status" since Custom Order Status is In Production.');
+        uiSetStatus('Please select an "In Production Status" since Custom Order Status is In Production.', 'error');
         setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update'; return;
       }
 
@@ -527,20 +529,20 @@
 
 
       if (!(window.google && google.script && google.script.run)) {
-        alert('google.script.run is not available in this dialog.');
+        uiSetStatus('Apps Script runtime is not available in this dialog.', 'error');
         setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update'; return;
       }
 
       google.script.run
         .withSuccessHandler(res => {
           setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update';
-          if (!res || res.ok !== true) { alert('Server error: ' + (res && res.error || 'Unknown')); return; }
+          if (!res || res.ok !== true) { uiSetStatus('Server error: ' + (res && res.error || 'Unknown'), 'error'); return; }
           if (res.summary) { renderSuccess(res.summary); return; }
           google.script.host.close();
         })
         .withFailureHandler(err => {
           setFormDisabled(false); btn.disabled=false; btn.textContent='Submit Update';
-          alert('Server error: ' + (err && err.message || err));
+          uiSetStatus('Server error: ' + (err && err.message || err), 'error');
         })
         .cs_submitFromDialog(payload);
     }

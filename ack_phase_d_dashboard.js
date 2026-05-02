@@ -21,10 +21,10 @@ function MASTER_SS_() {
 }
 
 // === Dashboard colors ===
-const DASH_HEADER_BG = '#e31c79'; // header background (VVS pink)
-const DASH_HEADER_FG = '#ffffff'; // header text
-const DASH_BAND_1    = '#ffffff'; // body stripe 1
-const DASH_BAND_2    = '#fff0fb'; // body stripe 2
+const DASH_HEADER_BG = '#EFE8DD'; // warm neutral header background
+const DASH_HEADER_FG = '#2A2725'; // primary ink
+const DASH_BAND_1    = '#FBF7F1'; // body stripe 1
+const DASH_BAND_2    = '#F7F1EB'; // body stripe 2
 
 // Timezone
 const TZ_DASH = typeof TIMEZONE !== 'undefined' ? TIMEZONE : 'America/Los_Angeles';
@@ -957,5 +957,4 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 

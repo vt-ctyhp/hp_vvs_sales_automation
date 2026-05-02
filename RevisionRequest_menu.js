@@ -7,7 +7,7 @@
 
 /** Menu handler (Sales → 3D Revision Request). */
 function open3DRevision() {      // DO NOT rename; used by the Sales menu builder
-  const html = HtmlService.createHtmlOutputFromFile('dlg_revision3d_v1')
+  const html = HtmlService.createTemplateFromFile('dlg_revision3d_v1').evaluate()
     .setWidth(650).setHeight(680).setTitle('3D Revision Request');
   SpreadsheetApp.getUi().showModalDialog(html, '3D Revision Request');
 }
@@ -35,6 +35,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

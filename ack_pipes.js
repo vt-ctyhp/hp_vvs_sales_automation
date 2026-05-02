@@ -158,25 +158,25 @@ function ackRemoveFilterViews_(sheet) {
 const STYLE_THEME = {
   STAGE_COLORS: {
     // ACK section groups (Sales Stages)
-    'Appointment':         '#AECBFA',
-    'Viewing Scheduled':   '#FFD7C2',
-    'Hot Lead':            '#D93025',
-    'Follow-Up Required':  '#C5221F',
-    'In Production':       '#C8E6C9',
+    'Appointment':         '#DDE5EA',
+    'Viewing Scheduled':   '#EFE0D4',
+    'Hot Lead':            '#7A3B32',
+    'Follow-Up Required':  '#E6D2C8',
+    'In Production':       '#DDE6D8',
 
     // Reminder section groups (by subsection header text)
-    'Custom Order Update Needed': '#E6CFF2',
-    'DV_URGENT_OTW_DAILY':        '#C5221F',
-    'DV_URGENT':                  '#C5221F',
+    'Custom Order Update Needed': '#E8DDEA',
+    'DV_URGENT_OTW_DAILY':        '#7A3B32',
+    'DV_URGENT':                  '#7A3B32',
 
     // 👇 ADD these three aliases (exact strings) so any label variant resolves to peach
-    'FollowUp':                   '#FFD7C2',
-    'FOLLOWUP':                   '#FFD7C2',
-    'Need to Follow-Up':          '#FFD7C2',
+    'FollowUp':                   '#EFE0D4',
+    'FOLLOWUP':                   '#EFE0D4',
+    'Need to Follow-Up':          '#EFE0D4',
 
     // Fallbacks
-    REMINDERS:                    '#C5221F',
-    ACK_DEFAULT:                  '#AECBFA'
+    REMINDERS:                    '#2A2725',
+    ACK_DEFAULT:                  '#EFE8DD'
   },
 
   TINT_1: 0.86,

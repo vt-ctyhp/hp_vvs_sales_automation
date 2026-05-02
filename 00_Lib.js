@@ -1,4 +1,8 @@
 /* ---------- [HELPERS/PROP] ---------- */
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
 function PROP_(k, def){ return PropertiesService.getScriptProperties().getProperty(k) || def || ''; }
 function MASTER_SS_(){ return SpreadsheetApp.openById(PROP_('SPREADSHEET_ID')); }
 function DEFAULT_TZ_(){ return PROP_('DEFAULT_TZ','America/Los_Angeles'); }
@@ -173,6 +177,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

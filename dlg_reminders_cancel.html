@@ -12,8 +12,9 @@
       .row { margin-top: 12px; }
       button { margin-right: 8px; padding: 6px 10px; }
     </style>
+    <?!= include('ui_styles') ?>
   </head>
-  <body>
+  <body class="ui-shell">
     <h2>Cancel</h2>
 
     <!-- Active summary -->
@@ -67,11 +68,11 @@
           var dd = document.getElementById('typeSel');   // <-- correct id
           var choice = (dd ? dd.value : '').toUpperCase();
           if (!active.length) {
-            alert('There are no active reminders to cancel for this order/customer.');
+            uiSetStatus('There are no active reminders to cancel for this order/customer.', 'error');
             return false;
           }
           if (choice !== 'BOTH' && active.indexOf(choice) === -1) {
-            alert('No "'+choice+'" reminder exists for this target. Active: ' + active.join(', '));
+            uiSetStatus('No "'+choice+'" reminder exists for this target. Active: ' + active.join(', '), 'error');
             return false;
           }
           return true;
@@ -92,7 +93,7 @@
         
         const t  = document.getElementById('typeSel').value;
         const rs = (document.getElementById('reason').value || '').trim();
-        if (!rs) { alert('Please provide a reason.'); return; }
+        if (!rs) { uiSetStatus('Please provide a reason.', 'error'); return; }
 
         btn.disabled = true; btn.textContent = 'Cancelling…';
         google.script.run
@@ -101,11 +102,11 @@
             const msg = (res && res.ok)
               ? `Cancelled ${typeLabel} (${res.changed || 0} row(s)) for ${whoText}.`
               : `Cancelled ${typeLabel} for ${whoText}.`;
-            alert(msg);
+            uiSetStatus(msg, 'ok');
             google.script.host.close();
           })
           .withFailureHandler(err => {
-            alert(err && err.message ? err.message : err);
+            uiSetStatus(err && err.message ? err.message : err, 'error');
             btn.disabled = false; btn.textContent = 'Cancel reminders';
           })
           .remind__cancelTarget_do(DATA.so, DATA.cust, t, rs);

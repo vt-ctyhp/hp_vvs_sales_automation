@@ -13,8 +13,9 @@
       .row { margin-top: 12px; }
       button { margin-right: 8px; padding: 6px 10px; }
     </style>
+    <?!= include('ui_styles') ?>
   </head>
-  <body>
+  <body class="ui-shell">
     <h2>Snooze</h2>
 
     <!-- show active chips -->
@@ -38,7 +39,7 @@
         const active = <?= JSON.stringify(a.map(function(x){return String(x.type||'').toUpperCase();})) ?>;
         window.__verifySnooze = function(){
           if (!active.length) {
-            alert('There are no active reminders to snooze for this order/customer.');
+            uiSetStatus('There are no active reminders to snooze for this order/customer.', 'error');
             return false;
           }
           return true;
@@ -121,11 +122,11 @@
             const msg = (res && res.ok)
               ? `Snoozed ${res.changed || 0} reminder(s) for ${whoText} until ${res.untilPretty}.`
               : 'Snoozed.';
-            alert(msg);
+            uiSetStatus(msg, 'ok');
             google.script.host.close();
           })
           .withFailureHandler(err => {
-            alert(err && err.message ? err.message : err);
+            uiSetStatus(err && err.message ? err.message : err, 'error');
             btn.disabled = false; btn.textContent = 'Snooze';
           })
           .remind__snoozeTarget_do(DATA.so, DATA.cust, val);
