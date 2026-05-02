@@ -27,6 +27,15 @@ function setRemindersInAckFlag_(on) {
   Logger.log('REMINDERS_IN_ACK = %s', v);
   return v;
 }
+
+function run_setRemindersInAckFlag_TRUE() {
+  return setRemindersInAckFlag_(true);
+}
+
+function run_setRemindersInAckFlag_FALSE() {
+  return setRemindersInAckFlag_(false);
+}
+
 function getRemindersInAckFlag_() {
   const sp = PropertiesService.getScriptProperties();
   return /true/i.test(sp.getProperty('REMINDERS_IN_ACK') || '');
