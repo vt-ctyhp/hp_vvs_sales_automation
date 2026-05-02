@@ -186,8 +186,16 @@ function refreshMyQueueHybrid() {
 
 /** Rebuild all reps’ Q_ tabs as usual, then insert Reminders on top (flag TRUE). */
 function buildTodaysQueuesAll_WithReminders() {
-  // Bulk job: build ACK queues only. Reminders are injected on-demand by the owner refresh.
   if (typeof buildTodaysQueuesAll === 'function') buildTodaysQueuesAll();
+
+  if (typeof getRemindersInAckFlag_ === 'function' && !getRemindersInAckFlag_()) {
+    Logger.log('REMINDERS_IN_ACK is OFF — built ACK queues only.');
+    return;
+  }
+
+  _allQueueReps_().forEach(function(rep) {
+    _injectRemindersAfterBuild_(rep);
+  });
 }
 
 
@@ -1014,17 +1022,23 @@ function _removeExistingReminderSection_(sh, knownHeaders) {
 
 // === Sheet/query utilities ===
 function _ensureQueueSheet_(rep) {
-  // use your existing helper if present
-  if (typeof ensureQueueSheet_ === 'function') return ensureQueueSheet_(rep);
-  // otherwise ensure the sheet exists
   var ss = ackSpreadsheet_();
   var name = 'Q_' + String(rep || '').trim();
-  var sh = ss.getSheetByName(name) || ss.insertSheet(name);
-  // write queue headers if missing
+  var sh = (typeof ensureQueueSheet_ === 'function')
+    ? ensureQueueSheet_(rep)
+    : (ss.getSheetByName(name) || ss.insertSheet(name));
+
   var headers = (typeof queueHeaders_ === 'function') ? queueHeaders_() : _queueHeadersFallback_();
   var haveCols = sh.getLastColumn();
-  if (!haveCols) sh.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
-  sh.setFrozenRows(1);
+  var haveHeaders = haveCols > 0
+    ? sh.getRange(1, 1, 1, haveCols).getDisplayValues()[0].map(function(h){ return String(h || '').trim(); })
+    : [];
+
+  if (haveHeaders.indexOf('RootApptID') < 0 || haveHeaders.indexOf('Ack Status') < 0) {
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+
   return sh;
 }
 

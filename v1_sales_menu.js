@@ -26,9 +26,9 @@ function onOpen(e) {
 
   // ✅ Acknowledgements submenu (Phase B + Phase C actions)
   // Requires functions from Phase B: runAllPipes, buildRootIndex, buildRepsMap, recomputeAckStatusSummary
-  // And from Phase C: buildTodaysQueuesAll, openMyQueue, refreshMyQueue, submitMyQueue
+  // And from Phase C: buildTodaysQueuesAll_WithReminders, openMyQueue, refreshMyQueueHybrid, submitMyQueueUnified
   const ackMenu = ui.createMenu('✅ Acknowledgements')
-    .addItem('🧰 Build Today’s Queues (All)', 'buildTodaysQueuesAll')
+    .addItem('🧰 Build Today’s Queues (All)', 'buildTodaysQueuesAll_WithReminders')
     .addItem('🙋 My Queue (Detect Me)', 'openMyQueue')
     .addItem('🔄 Refresh My Queue', 'refreshMyQueueHybrid')
     .addItem('✅ Submit My Queue', 'submitMyQueueUnified')
