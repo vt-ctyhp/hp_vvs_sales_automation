@@ -26,14 +26,18 @@ const AS_CFG = Object.freeze({
     'Custom Order Status',
     'Center Stone Order Status',
     'Visit Date',
-    'Brand'
+    'Brand',
+    'Status',
+    'Active?',
+    'RescheduledToUID',
+    'CanceledAt'
   ],
 
   CACHE_TTL_SEC: 600 // 10 minutes
 });
 
 // Bump this to invalidate header-index cache safely when headers change
-const AS_HDR_CACHE_VER = 'b1';
+const AS_HDR_CACHE_VER = 'b2';
 
 
 function as_openAppointmentSummary() {
@@ -173,10 +177,14 @@ function as_runAppointmentSummary(startISO, endISO, filters) {
       conv:     ixInSpan('conversion status'),
       cos:      ixInSpan('custom order status'),
       csos:     ixInSpan('center stone order status'),
-      brand:    ixInSpan('brand')
+      brand:    ixInSpan('brand'),
+      status:   ixInSpan('status'),
+      active:   ixInSpan('active?'),
+      rescheduledTo: ixInSpan('rescheduledtouid'),
+      canceledAt: ixInSpan('canceledat')
     };
 
-    const F = filters || {};
+    let F = filters || {};
     // Back-compat: if caller passed just an array, treat it as Brand filters
     if (Array.isArray(F)) F = { brands: F };
 
@@ -189,6 +197,7 @@ function as_runAppointmentSummary(startISO, endISO, filters) {
     const conversionsSet  = toSet(F.conversions);
     const customOrdersSet = toSet(F.customOrders);
     const centerStonesSet = toSet(F.centerStones);
+    const includeHistory = F.includeHistory === true;
 
     const out = [];
 
@@ -197,6 +206,8 @@ function as_runAppointmentSummary(startISO, endISO, filters) {
       const vMs = as_coerceDateMs_(iVisitDate != null ? row[iVisitDate] : null);
     
       if (vMs == null || vMs < startMs || vMs > endMs) continue;
+
+      if (!includeHistory && !as_isCurrentSummaryRow_(row, wanted)) continue;
 
       // Apply Brand filter
       if (brandsSet.size) {
@@ -464,7 +475,11 @@ function as_fuzzyHeaderKey_(key) {
     ['custom order status', ['custom order status','co status','custom status']],
     ['center stone order status', ['center stone order status','center stone status','cs order status']],
     ['visit date', ['visit date','appointment date','appt date','date']],
-    ['brand', ['brand','company','store','business unit','division']]
+    ['brand', ['brand','company','store','business unit','division']],
+    ['status', ['status']],
+    ['active?', ['active?','active','is active']],
+    ['rescheduledtouid', ['rescheduledtouid','rescheduled to uid']],
+    ['canceledat', ['canceledat','canceled at','cancelledat','cancelled at']]
   ];
   for (const [canon, variants] of map) {
     if (variants.includes(key)) return canon;
@@ -512,6 +527,18 @@ function as_val(row, ix) {
   return String(v);
 }
 
+function as_isCurrentSummaryRow_(row, wanted) {
+  const active = String(as_val(row, wanted.active) || '').trim().toLowerCase();
+  const status = String(as_val(row, wanted.status) || '').trim().toLowerCase();
+  const rescheduledTo = String(as_val(row, wanted.rescheduledTo) || '').trim();
+  const canceledAt = String(as_val(row, wanted.canceledAt) || '').trim();
+
+  if (!(active === 'yes' || active === 'true' || active === '1')) return false;
+  if (/cancel|resched|duplicate|superseded|inactive/.test(status)) return false;
+  if (rescheduledTo || canceledAt) return false;
+  return true;
+}
+
 
 // --- Legacy → Canon shims (safe no-ops if the name already exists in this file) ---
 if (typeof headerMap_ !== 'function') {
@@ -532,6 +559,4 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
 

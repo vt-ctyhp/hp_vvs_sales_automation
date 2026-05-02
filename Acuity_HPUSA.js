@@ -374,6 +374,26 @@ function acuityToFormFieldMap_(appt) {
   };
 }
 
+function acuityStableRescheduleUid_(appt) {
+  const base = String(appt && appt.id || '').trim();
+  const startISO = (appt && (appt.datetime || appt.date)) || '';
+  const dt = startISO ? new Date(startISO) : null;
+  const stamp = dt && !isNaN(dt.getTime())
+    ? Utilities.formatDate(dt, ACUITY_CFG.TZ, 'yyyyMMddHHmmss')
+    : 'unknown';
+  return base ? base + '_R' + stamp : '';
+}
+
+function acuityNormEmail_(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function acuityNormPhone_(value) {
+  let d = String(value || '').replace(/\D+/g, '');
+  if (d.length > 10 && d[0] === '1') d = d.slice(1);
+  return d.length >= 7 ? d : '';
+}
+
 // ─── FIELD EXTRACT HELPERS ────────────────────────────────────────────────────
 
 function acuityExtractPhone_(appt, formData) {
@@ -642,18 +662,47 @@ function acuityHandleExisting_(appt, formId) {
       return 'unchanged';
     }
 
+    const oldUid = H['CalendlyEventUID']
+      ? String(sh.getRange(masterRow, H['CalendlyEventUID']).getValue() || appt.id || '').trim()
+      : String(appt.id || '').trim();
+    const newUid = acuityStableRescheduleUid_(appt);
+    if (!newUid) {
+      Logger.log('Reschedule skipped: could not build stable UID for appt=' + appt.id);
+      return 'unchanged';
+    }
+
     // Đánh dấu dòng cũ
     sh.getRange(masterRow, H['Status']).setValue('Rescheduled');
     if (H['Active?'])          sh.getRange(masterRow, H['Active?']).setValue('No');
+    if (H['CanceledAt'] && !sh.getRange(masterRow, H['CanceledAt']).getValue()) {
+      sh.getRange(masterRow, H['CanceledAt']).setValue(new Date());
+    }
+    if (H['RescheduledToUID'] && !sh.getRange(masterRow, H['RescheduledToUID']).getValue()) {
+      sh.getRange(masterRow, H['RescheduledToUID']).setValue(newUid);
+    }
     if (H['Automation Notes']) {
       const prev = sh.getRange(masterRow, H['Automation Notes']).getValue() || '';
-      const note = 'Rescheduled via Acuity @ ' + new Date().toISOString();
+      const note = 'Rescheduled via Acuity to ' + newUid + ' @ ' + new Date().toISOString();
       sh.getRange(masterRow, H['Automation Notes']).setValue(prev ? prev + '\n' + note : note);
     }
     Logger.log('Marked Rescheduled: row=' + masterRow + ' uid=' + appt.id);
 
+    try {
+      if (typeof _rememberCancelUID_ === 'function') {
+        _rememberCancelUID_(
+          ACUITY_CFG.COMPANY,
+          fieldMap['Visit Type'],
+          acuityNormEmail_(fieldMap['Email']),
+          acuityNormPhone_(fieldMap['Phone']),
+          oldUid,
+          7200
+        );
+      }
+    } catch (e) {
+      Logger.log('Acuity reschedule link cache skipped: ' + (e && e.message ? e.message : e));
+    }
+
     // Submit dòng mới với UID mới
-    const newUid      = String(appt.id) + '_R' + Date.now();
     const newFieldMap = Object.assign({}, fieldMap, { 'Admin: Calendly Event UID': newUid });
     acuitySubmitToForm_(formId, newFieldMap);
 

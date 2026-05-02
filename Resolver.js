@@ -119,6 +119,151 @@ function findMasterRowByUID_(uuid){
   return idx < 0 ? 0 : idx + 2;
 }
 
+function findBestMasterRowByUID_(uuid){
+  if (!uuid) return 0;
+  const s = SH(SHT.MASTER), H = headers_(SHT.MASTER);
+  const cUid = H['CalendlyEventUID'] || 0;
+  if (!cUid) return 0;
+  const last = lastDataRow_(SHT.MASTER, LASTROW_SENTINELS);
+  if (last < 2) return 0;
+
+  const rows = s.getRange(2, 1, last - 1, s.getLastColumn()).getValues();
+  let bestRow = 0, bestScore = -1;
+  for (let i = 0; i < rows.length; i++){
+    const r = rows[i];
+    if (String(r[cUid - 1] || '') !== String(uuid)) continue;
+    const rowIndex = i + 2;
+    const score = dedupeCanonicalRowScore_(r, H, rowIndex);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = rowIndex;
+    }
+  }
+  return bestRow;
+}
+
+function dedupeNormKey_(value){
+  return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function dedupeNormDateKey_(value){
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, CFG.TZ, 'yyyy-MM-dd');
+  }
+  const s = String(value).trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+  const mdY = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (mdY) {
+    return mdY[3] + '-' + String(mdY[1]).padStart(2, '0') + '-' + String(mdY[2]).padStart(2, '0');
+  }
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) return Utilities.formatDate(dt, CFG.TZ, 'yyyy-MM-dd');
+  return dedupeNormKey_(s);
+}
+
+function dedupeNormTimeKey_(value){
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, CFG.TZ, 'HH:mm');
+  }
+  const s = String(value).trim();
+  const m12 = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i.exec(s);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const ap = m12[3].toUpperCase();
+    if (ap === 'AM' && h === 12) h = 0;
+    if (ap === 'PM' && h !== 12) h += 12;
+    return String(h).padStart(2, '0') + ':' + m12[2];
+  }
+  const m24 = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
+  if (m24) return String(parseInt(m24[1], 10)).padStart(2, '0') + ':' + m24[2];
+  const dt = new Date('2000-01-01 ' + s);
+  if (!isNaN(dt.getTime())) return Utilities.formatDate(dt, CFG.TZ, 'HH:mm');
+  return dedupeNormKey_(s);
+}
+
+function dedupeContactKey_(emailLower, phoneNorm){
+  const email = normEmail_(emailLower);
+  const phone = normPhone_(phoneNorm);
+  if (email) return 'email:' + email;
+  if (phone) return 'phone:' + phone;
+  return '';
+}
+
+function dedupeAppointmentFingerprint_(brand, visitDate, visitTime, visitType, emailLower, phoneNorm){
+  const contact = dedupeContactKey_(emailLower, phoneNorm);
+  const d = dedupeNormDateKey_(visitDate);
+  const t = dedupeNormTimeKey_(visitTime);
+  if (!contact || !d || !t) return '';
+  return [
+    dedupeNormKey_(brand),
+    d,
+    t,
+    dedupeNormKey_(visitType),
+    contact
+  ].join('|');
+}
+
+function dedupeIsCurrentRow_(row, H){
+  const status = H['Status'] ? row[H['Status'] - 1] : '';
+  const active = H['Active?'] ? row[H['Active?'] - 1] : '';
+  const s = dedupeNormKey_(status);
+  const a = dedupeNormKey_(active);
+  if (/cancel|resched|duplicate|superseded|inactive/.test(s)) return false;
+  if (a === 'yes' || a === 'true' || a === '1') return true;
+  if (a === 'no' || a === 'false' || a === '0') return false;
+  return true;
+}
+
+function dedupeCanonicalRowScore_(row, H, rowIndex){
+  let score = 0;
+  if (dedupeIsCurrentRow_(row, H)) score += 1000;
+  if (H['CalendlyEventUID'] && row[H['CalendlyEventUID'] - 1]) score += 100;
+  if (H['Visit #'] && row[H['Visit #'] - 1]) score += 80;
+  if (H['APPT_ID'] && row[H['APPT_ID'] - 1]) score += 40;
+  if (H['RootApptID'] && row[H['RootApptID'] - 1]) score += 20;
+  return score + Math.min(rowIndex || 0, 99999) / 100000;
+}
+
+function dedupeFingerprintForMasterRow_(row, H){
+  const email = H['EmailLower'] ? row[H['EmailLower'] - 1] : (H['Email'] ? row[H['Email'] - 1] : '');
+  const phone = H['PhoneNorm'] ? row[H['PhoneNorm'] - 1] : (H['Phone'] ? row[H['Phone'] - 1] : '');
+  return dedupeAppointmentFingerprint_(
+    H['Brand'] ? row[H['Brand'] - 1] : '',
+    H['Visit Date'] ? row[H['Visit Date'] - 1] : '',
+    H['Visit Time'] ? row[H['Visit Time'] - 1] : '',
+    H['Visit Type'] ? row[H['Visit Type'] - 1] : '',
+    email,
+    phone
+  );
+}
+
+function findCurrentMasterRowByFingerprint_(brand, visitDate, visitTime, visitType, emailLower, phoneNorm, excludeRow){
+  const wanted = dedupeAppointmentFingerprint_(brand, visitDate, visitTime, visitType, emailLower, phoneNorm);
+  if (!wanted) return 0;
+  const s = SH(SHT.MASTER), H = headers_(SHT.MASTER);
+  const last = lastDataRow_(SHT.MASTER, LASTROW_SENTINELS);
+  if (last < 2) return 0;
+
+  const rows = s.getRange(2, 1, last - 1, s.getLastColumn()).getValues();
+  let bestRow = 0, bestScore = -1;
+  for (let i = 0; i < rows.length; i++){
+    const rowIndex = i + 2;
+    if (excludeRow && rowIndex === excludeRow) continue;
+    const r = rows[i];
+    if (!dedupeIsCurrentRow_(r, H)) continue;
+    if (dedupeFingerprintForMasterRow_(r, H) !== wanted) continue;
+    const score = dedupeCanonicalRowScore_(r, H, rowIndex);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = rowIndex;
+    }
+  }
+  return bestRow;
+}
+
 /** Shared: build a stable contact key (prefer email; fallback phone) */
 function _contactKey_(brand, vtype, emailLower, phoneNorm){
   const b=(brand||'').toUpperCase().trim();
@@ -1547,6 +1692,8 @@ function onFormSubmit(e){
     const budgetRaw   = (nv['Budget Range']||[''])[0];
     const sourceRaw   = (nv['Source']||[''])[0];
     const notes       = (nv['Style Notes']||[''])[0];
+    // Legacy form/header name. This is the external appointment occurrence UID:
+    // Calendly UUID for old bookings, Acuity appointment/synthetic UID for new bookings.
     const calUID      = nvGet(nv, 'Admin: Calendly Event UID');
     const diamondTypeQ = (nv['Diamond Type']||[''])[0];
     
@@ -1571,7 +1718,7 @@ function onFormSubmit(e){
     let row = 0;
     let createdNow = false;
 
-    if (calUID) row = findMasterRowByUID_(calUID);
+    if (calUID) row = findBestMasterRowByUID_(calUID);
 
     let looksLikeReschedule = false, oldRow = 0, oldUID = '';
     const pendingOldUID = _popPendingCancelUID_(brand, vtype, emailLower, phoneNorm);
@@ -1606,16 +1753,53 @@ function onFormSubmit(e){
       }
     }
 
+    if (!row && !looksLikeReschedule){
+      const fpRow = findCurrentMasterRowByFingerprint_(brand, vdate, vtime, vtype, emailLower, phoneNorm, 0);
+      if (fpRow) {
+        row = fpRow;
+        Logger.log('[dedupe] fingerprint matched existing current row=' + row);
+      }
+    }
+
     __mark('reschedule detection done; looksLikeReschedule=' + looksLikeReschedule + ', oldRow=' + oldRow + ', preRow=' + row);
 
     if (!row){
       const tempIso = (vdate && vtime) 
         ? Utilities.formatDate(new Date(`${vdate} ${vtime}`), CFG.TZ, "yyyy-MM-dd'T'HH:mm:ssXXX") 
         : '';
-      row = appendObj_(SHT.MASTER, {'APPT_ID': nextApptId_(tempIso)});
-      setCell_(SHT.MASTER, row, 'Visit #', countVisits_(emailLower, phoneNorm));
-      stampSalesStageIfConsult_(row, vtype);
-      createdNow = true;
+      row = withScriptLock_(() => {
+        let existingRow = calUID ? findBestMasterRowByUID_(calUID) : 0;
+        if (!existingRow && !looksLikeReschedule) {
+          existingRow = findCurrentMasterRowByFingerprint_(brand, vdate, vtime, vtype, emailLower, phoneNorm, 0);
+        }
+        if (existingRow) {
+          Logger.log('[dedupe] lock recheck reused row=' + existingRow);
+          return existingRow;
+        }
+
+        const visitNo = countVisits_(emailLower, phoneNorm);
+        const newRow = appendObj_(SHT.MASTER, {
+          'APPT_ID': nextApptId_(tempIso),
+          'CalendlyEventUID': calUID || '',
+          'Status': 'Scheduled',
+          'Active?': 'Yes',
+          'Brand': brand || '',
+          'Company': company || '',
+          'Customer Name': name || '',
+          'Email': email || '',
+          'EmailLower': emailLower || '',
+          'Phone': phone || '',
+          'PhoneNorm': phoneNorm || '',
+          'Visit Date': vdate || '',
+          'Visit Time': vtime || '',
+          'Visit Type': vtype || '',
+          'Visit #': visitNo,
+          'Timestamp': submittedAt || ''
+        });
+        stampSalesStageIfConsult_(newRow, vtype);
+        createdNow = true;
+        return newRow;
+      });
     }
 
     const phoneData = resolvePhoneForRow_(phone, row, oldRow, looksLikeReschedule);
@@ -1693,9 +1877,11 @@ function onFormSubmit(e){
       });
     }
 
+    const existingStatusForUpdate = getCell_(SHT.MASTER,row,'Status') || '';
+    const existingActiveForUpdate = getCell_(SHT.MASTER,row,'Active?') || '';
     const updates = {
-      'Status': 'Scheduled',
-      'Active?': 'Yes',
+      'Status': existingStatusForUpdate || 'Scheduled',
+      'Active?': existingActiveForUpdate || 'Yes',
       'Brand': brand || getCell_(SHT.MASTER,row,'Brand') || '',
       'Company': company || getCell_(SHT.MASTER,row,'Company') || '',
       'Company (normalized)': brand || getCell_(SHT.MASTER,row,'Company (normalized)') || '',
@@ -1710,7 +1896,7 @@ function onFormSubmit(e){
       'Timezone': CFG.TZ,
       'Duration (min)': getCell_(SHT.MASTER,row,'Duration (min)') || DEFAULT_DURATION_MIN,
       'Location': locToEnum_(location) || getCell_(SHT.MASTER,row,'Location') || '',
-      'CalendlyEventUID': calUID || getCell_(SHT.MASTER,row,'CalendlyEventUID') || '',
+      'CalendlyEventUID': getCell_(SHT.MASTER,row,'CalendlyEventUID') || calUID || '',
       'Diamond Type': diamondTypeNorm || getCell_(SHT.MASTER,row,'Diamond Type') || '',
       'Budget Range': budgetRaw || getCell_(SHT.MASTER,row,'Budget Range') || '',
       'Budget Min': min || getCell_(SHT.MASTER,row,'Budget Min') || '',
