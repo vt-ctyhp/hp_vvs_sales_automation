@@ -1,0 +1,24 @@
+# Local app assets and repository files are not part of the Apps Script deploy.
+web/**
+cmd/**
+internal/**
+docs/**
+config/**
+
+# Local/runtime files.
+.git/**
+.gitignore
+.editorconfig
+.env
+.env.*
+app/**
+backup/**
+files/**
+logs/**
+*.db
+
+# Repository documentation and Go module files.
+README.md
+CONTRIBUTING.md
+go.mod
+go.sum
