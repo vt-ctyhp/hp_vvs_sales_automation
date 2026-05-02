@@ -1,0 +1,1545 @@
+<!doctype html>
+<!-- dlg_record_payment_v1.html — v7.2
+   Changes from v7.1:
+   • Thêm nút "Reset All Payments" cho row đang active
+   • Modal xác nhận 2 bước trước khi reset
+   • Checkbox tùy chọn xóa file PDF/Doc trên Drive
+   • Sau khi reset thành công: reload prefill tự động
+-->
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<title>Record Payment</title>
+<style>
+  :root { --font: system-ui,-apple-system,Segoe UI,Roboto,Arial; --pink:#e0006a; --pink-light:#fce4f0; }
+  body { margin: 0; padding: 16px; font: 13px/1.48 var(--font); color:#111; }
+  h2 { margin: 0 0 12px; font-size: 20px; }
+  .wrap { display: grid; grid-template-columns: 1fr 3fr; gap: 16px; }
+  fieldset { border:1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; }
+  legend { padding: 0 6px; font-weight: 600; color:#222; }
+  input[type="text"], input[type="number"], input[type="datetime-local"], select, textarea {
+    width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px;
+  }
+  input[type="datetime-local"] { font-size: 12.5px; }
+  textarea { resize: vertical; white-space: pre-wrap; }
+  .muted { color:#6a737d; font-size:12px; }
+  .btns { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }
+  button { padding: 8px 12px; border: 0; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .primary { background: var(--pink); color:#fff; }
+  .ghost { background:#f6f8fa; }
+  .danger { background:#dc2626; color:#fff; }
+  .danger:hover { background:#b91c1c; }
+  .card { border:1px solid #e5e7eb; background:#f9fafb; border-radius:8px; padding:10px; }
+  .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px; }
+  .kv div { min-height: 20px; }
+  .row { display:grid; grid-template-columns: 140px 1fr; gap:10px; align-items:center; }
+  label { font-weight: 600; }
+  .table-head { display:grid; grid-template-columns: minmax(240px,0.5fr) 90px 120px 36px; gap:8px; align-items:center; font-weight:600; margin-bottom:6px; }
+  .xbtn { width:32px; height:32px; border-radius:6px; border:0; background:#f3f4f6; cursor:pointer; }
+  .note { font-size:12px; color:#6a737d; }
+  .err { color:#b91c1c; font-size:12px; margin-top:6px; display:none; }
+  .warn { color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; padding:8px; border-radius:8px; margin-top:8px; display:none; }
+  .tax-toggle-row { display:flex; align-items:center; gap:10px; padding: 6px 0; border-top:1px solid #f0f0f0; margin-top:6px; }
+  .tax-toggle-row label { font-weight:500; color:#333; cursor:pointer; font-size:13px; }
+  .tax-toggle-row .lock-note { font-size:11px; color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; padding:2px 7px; border-radius:6px; display:none; }
+  .referral-row { display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid #f0f0f0; margin-top:4px; flex-wrap:wrap; }
+  .referral-row label { font-weight:500; color:#333; cursor:pointer; font-size:13px; }
+  .referral-name-wrap { display:none; width:100%; margin-top:6px; }
+  .referral-name-wrap input { border:1px solid #d0d7de; border-radius:6px; padding:7px 10px; font-size:13px; width:100%; box-sizing:border-box; }
+  .referral-name-wrap input.invalid { border-color:#dc2626; }
+  .referral-name-wrap .referral-err { color:#b91c1c; font-size:11px; margin-top:3px; display:none; }
+  .referral-discount-tag { font-size:11px; font-weight:600; color:#166534; background:#dcfce7; border:1px solid #86efac; padding:2px 8px; border-radius:6px; }
+  #referralLockNote {
+    font-size:11px; color:#9a3412; background:#fff7ed;
+    border:1px solid #fed7aa; padding:2px 7px; border-radius:6px; display:none;
+  }
+  .tax-disabled td, .tax-disabled div { color:#bbb !important; text-decoration: line-through; }
+  #successPanel { display:none; position:fixed; inset:0; background:rgba(17,24,39,.55); z-index:9999; align-items:center; justify-content:center; }
+  #successCard { background:#fff; border-radius:12px; padding:16px; width:720px; max-width:92vw; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  #successCard h3 { margin:0 0 8px; }
+  #successCard .grid { display:grid; grid-template-columns: 160px 1fr; gap:6px 12px; }
+  #successCard .btns { justify-content:flex-end; margin-top:12px; }
+  a[target="_blank"] { color:var(--pink); text-decoration:none; }
+  input:disabled, select:disabled, textarea:disabled, button:disabled { opacity:.6; background:#f3f4f6 !important; color:#6b7280 !important; cursor:not-allowed !important; }
+  body.isFrozen { cursor: wait; }
+  .row-2col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:6px; }
+  .row-2col .field { display:grid; grid-template-columns: 60px 1fr; gap:6px; align-items:center; }
+  .btn-stationery { background:#1e293b; color:#fff; }
+  #printHint { margin-top:8px; font-size:11px; color:#6a737d; display:none; }
+  #confirmOTPanel {
+    background:#fff7ed; border:1px solid #fed7aa;
+    border-radius:8px; padding:10px 14px; margin-top:8px; display:none;
+  }
+  #confirmOTPanel .confirm-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #confirmOTPanel .confirm-msg { font-size:13px; color:#9a3412; flex:1; }
+  #btnConfirmOT {
+    background:#16a34a; color:#fff; border:0;
+    border-radius:6px; padding:7px 14px; font-size:13px; cursor:pointer; white-space:nowrap;
+  }
+  #btnConfirmOT:hover { background:#15803d; }
+  #btnDismissOT {
+    background:transparent; border:1px solid #d0d7de;
+    border-radius:6px; padding:7px 10px; font-size:12px; cursor:pointer; color:#6a737d;
+  }
+  .ot-confirmed-badge {
+    display:inline-block; font-size:11px; font-weight:600;
+    color:#166534; background:#dcfce7; border:1px solid #86efac;
+    padding:2px 8px; border-radius:6px; margin-left:8px;
+  }
+
+  /* ── Reset button (góc trên prefill box) ── */
+  #resetBtnWrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+  }
+  #btnReset {
+    font-size: 12px;
+    padding: 5px 10px;
+    background: #fff1f2;
+    color: #be123c;
+    border: 1px solid #fda4af;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  #btnReset:hover { background: #ffe4e6; }
+
+  /* ── Reset confirmation modal ── */
+  #resetModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(17,24,39,.6);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+  }
+  #resetCard {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    width: 480px;
+    max-width: 92vw;
+    box-shadow: 0 10px 30px rgba(0,0,0,.28);
+  }
+  #resetCard h3 {
+    margin: 0 0 6px;
+    font-size: 17px;
+    color: #be123c;
+  }
+  #resetCard .reset-body {
+    font-size: 13px;
+    color: #374151;
+    margin-bottom: 14px;
+    line-height: 1.6;
+  }
+  #resetCard .reset-body strong { color: #111; }
+  #resetCard .reset-body ul {
+    margin: 8px 0 0 16px;
+    padding: 0;
+    color: #6b7280;
+    font-size: 12px;
+  }
+  #resetCard .reset-body ul li { margin-bottom: 3px; }
+  #resetDeleteFiles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #9a3412;
+    cursor: pointer;
+  }
+  #resetDeleteFiles input { width: auto; margin: 0; }
+  .reset-confirm-row {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  #btnConfirmReset {
+    background: #dc2626;
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #btnConfirmReset:hover { background: #b91c1c; }
+  #btnCancelReset {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 9px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #resetSpinner { display: none; font-size: 13px; color: #6b7280; margin-right: auto; }
+  #resetResultMsg {
+    margin-top: 10px;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    display: none;
+  }
+  #resetResultMsg.ok  { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+  #resetResultMsg.err { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  /* ── Password gate ── */
+  #resetPasswordWrap {
+    margin-bottom: 14px;
+  }
+  #resetPasswordWrap label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 5px;
+  }
+  #resetPasswordWrap .pw-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  #resetPassword {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    width: auto;
+    letter-spacing: 2px;
+  }
+  #resetPassword.invalid { border-color: #dc2626; background: #fff1f2; }
+  #resetPwErr {
+    font-size: 11px;
+    color: #dc2626;
+    margin-top: 4px;
+    display: none;
+  }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <!-- ── LEFT ──────────────────────────────────────────── -->
+  <section>
+    <fieldset>
+      <legend>Prefill</legend>
+
+      <!-- Reset button above prefill box -->
+      <div id="resetBtnWrap">
+        <button type="button" id="btnReset" title="Reset all payment data for this row back to zero">
+          🗑 Reset All Payments
+        </button>
+      </div>
+
+      <div id="prefillBox" class="card"><div class="muted">Loading active row…</div></div>
+    </fieldset>
+
+    <fieldset style="margin-top:12px">
+      <legend>Order Details (for Invoice/Receipt)</legend>
+      <div class="left-actions" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+        <button type="button" class="ghost" id="btnBuildFrom3D">Build line from 3D</button>
+        <span class="note">Pulls latest specs from the 3D Revision Log (skips blanks).</span>
+      </div>
+      <div id="orderBox" class="card">
+        <div class="table-head">
+          <div>Description</div><div style="text-align:right;">Qty</div><div style="text-align:right;">Amount</div><div></div>
+        </div>
+        <div id="lineItems"></div>
+        <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button type="button" class="ghost" id="btnAddLine">+ Add line</button>
+            <label class="note" style="display:flex;align-items:center;gap:8px;font-weight:500;">
+              <input id="chkAssignOT" type="checkbox" />
+              Assign "Order Total" from Lines Subtotal (write to sheets)
+            </label>
+          </div>
+          <div style="font-weight:600;">Lines Subtotal: <span id="linesSubtotal">$0.00</span></div>
+        </div>
+        <div class="muted" style="margin-top:6px;">These descriptions print on the Invoice/Receipt.</div>
+
+        <div id="confirmOTPanel">
+          <div class="confirm-row">
+            <span class="confirm-msg" id="confirmOTMsg"></span>
+            <button type="button" id="btnConfirmOT">✓ Set as Order Total</button>
+            <button type="button" id="btnDismissOT">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- ── RIGHT ─────────────────────────────────────────── -->
+  <section>
+    <form id="f" novalidate>
+      <script>
+        (function(){ try{ document.getElementById('f').addEventListener('keydown',function(e){ if(e.key==='Enter') e.preventDefault(); }); }catch(_){} })();
+      </script>
+
+      <fieldset style="margin-bottom:12px;">
+        <legend>Client Info (prints on doc)</legend>
+        <div class="row-2col">
+          <div class="field"><label for="clientPhone">Phone</label><input id="clientPhone" type="text" placeholder="(408) 000-0000" /></div>
+          <div class="field"><label for="clientEmail">Email</label><input id="clientEmail" type="text" placeholder="client@email.com" /></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Payment</legend>
+        <div class="row">
+          <label id="lblAmount" for="amount">Amount</label>
+          <input id="amount" name="amount" type="number" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="row">
+          <label for="date">Payment Date/Time</label>
+          <input id="date" name="date" type="datetime-local" />
+        </div>
+        <div class="row" style="align-items:start;">
+          <label for="method">Method</label>
+          <div>
+            <select id="method" name="method">
+              <option value="" disabled selected>Select…</option>
+              <option value="Cash">Cash</option>
+              <option value="Zelle (Citi #4500)">Zelle (Citi #4500)</option>
+              <option value="Zelle (BoA #9875)">Zelle (BoA #9875)</option>
+              <option value="Check">Check</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Bank Wire">Bank Wire</option>
+              <option value="Trade-in">Trade-in</option>
+              <option value="Deposit Credit">Deposit Credit</option>
+              <option value="Other">Other</option>
+            </select>
+            <div id="methodErr" class="err">Please select a payment method.</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="reference">Reference</label>
+          <input id="reference" name="reference" type="text" placeholder="Auth code / Ref / Check #" />
+        </div>
+        <div class="row">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="3" placeholder="Optional note on this payment"></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset style="margin-top:12px">
+        <legend>Documents</legend>
+        <div class="row">
+          <label for="docStatus">Status</label>
+          <select id="docStatus" name="docStatus">
+            <option value="" selected disabled>— Select —</option>
+            <option value="DRAFT">Draft</option>
+            <option value="ISSUED">Issue now</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="docType">Doc Type</label>
+          <select id="docType" name="docType">
+            <option value="Deposit Receipt">Deposit Receipt</option>
+            <option value="Deposit Invoice">Deposit Invoice</option>
+            <option value="Sales Invoice">Sales Invoice</option>
+            <option value="Sales Receipt">Sales Receipt</option>
+          </select>
+        </div>
+        <div id="roleTag" class="muted" style="margin:6px 0 0 0;"></div>
+        <details style="margin-top:8px;">
+          <summary>Advanced</summary>
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;margin-top:10px">
+            <label for="docRole" style="font-weight:600;">Role</label>
+            <select id="docRole">
+              <option value="">(auto)</option>
+              <option value="DEPOSIT">Deposit (Invoice)</option>
+              <option value="PROGRESS">Progress (Invoice)</option>
+              <option value="FINAL">Final (Invoice)</option>
+              <option value="CREDIT">Credit (Invoice)</option>
+              <option value="PAYMENT_RECEIPT">Payment Receipt</option>
+              <option value="SALES_RECEIPT">Sales Receipt</option>
+            </select>
+            <label for="supersedes" style="font-weight:600;">Supersedes Doc#</label>
+            <select id="supersedes"><option value="">(none)</option></select>
+            <label for="appliesTo" style="font-weight:600;">Applies To Doc#</label>
+            <select id="appliesTo"><option value="">(none)</option></select>
+          </div>
+        </details>
+      </fieldset>
+
+      <fieldset style="margin-top:12px">
+        <legend>Financial Summary</legend>
+        <div class="card" id="finSum">
+          <div class="kv">
+            <div><b>Lines Subtotal</b></div><div id="fs_lines">$0.00</div>
+            <div id="fs_tax_label_cell"><b id="fs_tax_label">Sales Tax</b><span id="fs_tax_rate" style="font-weight:400;color:#6a737d;font-size:11px;margin-left:4px;"></span></div>
+            <div id="fs_tax_val_cell"><span id="fs_tax">$0.00</span></div>
+            <div style="border-top:1px solid #e5e7eb;padding-top:4px;"><b>Total (w/ Tax)</b></div>
+            <div id="fs_total" style="border-top:1px solid #e5e7eb;padding-top:4px;font-weight:600;">$0.00</div>
+            <div style="margin-top:4px;"><b id="fs_payment_label">Payment</b></div>
+            <div id="fs_payment" style="margin-top:4px;">$0.00</div>
+            <div><b>Remaining Balance</b></div><div id="fs_remain">$0.00</div>
+          </div>
+          <div class="tax-toggle-row">
+            <input type="checkbox" id="chkTaxEnabled" checked />
+            <label for="chkTaxEnabled">Include Sales Tax</label>
+            <span id="taxLockNote" class="lock-note">🔒 Locked — payment already recorded</span>
+          </div>
+          <div class="referral-row">
+            <input type="checkbox" id="chkReferral" />
+            <label for="chkReferral">Refer a Friend</label>
+            <span id="referralDiscountTag" class="referral-discount-tag" style="display:none;">− $100.00 discount</span>
+            <span id="referralLockNote"></span>
+          </div>
+          <div class="referral-name-wrap" id="referralNameWrap">
+            <input type="text" id="referralName" placeholder="Referrer's full name (required)" maxlength="100" />
+            <div class="referral-err" id="referralErr">Referrer name is required when Refer a Friend is selected.</div>
+          </div>
+          <div id="overpayWarn" class="warn"></div>
+          <div id="srErr" class="err" style="display:none;"></div>
+          <div id="docTypeHint" class="warn" style="display:none;"></div>
+        </div>
+        <div class="muted" style="margin-top:6px;">Initialized from current balance; updates when you edit amount/lines.</div>
+      </fieldset>
+
+      <div class="btns">
+        <button id="btnClose" type="button" class="ghost" onclick="google.script.host.close()">Close</button>
+        <button id="btnSubmit" type="button" class="primary">Submit</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<!-- ── SUCCESS OVERLAY ──────────────────────────────────── -->
+<div id="successPanel">
+  <div id="successCard">
+    <h3>Saved ✓</h3>
+    <div class="grid" id="successGrid"></div>
+    <div class="btns">
+      <button id="btnPrintStationery" type="button" class="btn-stationery" style="display:none;">
+        🖨&nbsp; Print on Stationery
+      </button>
+      <button id="btnSuccessClose" class="primary" onclick="google.script.host.close()">Close</button>
+    </div>
+    <div id="printHint">
+      A print window opened automatically. If it was blocked, click "Print on Stationery" above.<br>
+      Settings: <b>Paper 8×10 in &nbsp;·&nbsp; Scale 100% &nbsp;·&nbsp; Margins None</b>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     RESET CONFIRMATION MODAL
+═══════════════════════════════════════════════════════════ -->
+<div id="resetModal">
+  <div id="resetCard">
+    <h3>⚠️ Reset All Payments</h3>
+
+    <div class="reset-body">
+      <p>This action will <strong>permanently delete all payment data</strong> for the selected row:</p>
+      <ul>
+        <li>Void all rows on the Ledger (Payments sheet)</li>
+        <li>Reset Paid-to-Date, Last Payment Date, Remaining Balance to 0</li>
+        <li>Reset Order Total, Cash-in (Gross), Sales Stage to blank</li>
+        <li>Clear Saved Lines JSON and saved Subtotal</li>
+      </ul>
+      <p style="margin-top:10px;color:#dc2626;font-weight:600;">This action cannot be undone.</p>
+    </div>
+
+    <label id="resetDeleteFiles" for="chkDeleteFiles">
+      <input type="checkbox" id="chkDeleteFiles" />
+      Also delete PDF &amp; Doc files on Drive (cannot be recovered)
+    </label>
+
+    <!-- Password gate -->
+    <div id="resetPasswordWrap">
+      <label for="resetPassword">🔐 Enter admin password to confirm:</label>
+      <div class="pw-row">
+        <input type="password" id="resetPassword" placeholder="Password required" autocomplete="off" />
+      </div>
+      <div id="resetPwErr">Incorrect password. Please try again.</div>
+    </div>
+
+    <div id="resetResultMsg"></div>
+
+    <div class="reset-confirm-row">
+      <span id="resetSpinner">⏳ Resetting…</span>
+      <button type="button" id="btnCancelReset">Cancel</button>
+      <button type="button" id="btnConfirmReset" disabled>🗑 Confirm Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SCRIPTS ───────────────────────────────────────────── -->
+<script id="early-boot">
+(function(){
+  var box=null;
+  function set(msg){ try{(box||(box=document.getElementById('prefillBox'))).innerHTML='<div class="muted">'+msg+'</div>';}catch(_){} }
+  window.addEventListener('error',function(e){
+    try{(box||(box=document.getElementById('prefillBox'))).innerHTML=
+      '<div class="card" style="background:#fff7ed;border-color:#fed7aa;">'
+      +'<div style="font-weight:600;color:#9a3412;">Client JS error</div>'
+      +'<div class="muted">'+(e&&e.message?e.message:e)+'</div></div>';
+    }catch(_){}
+  });
+  function renderFallback(p){
+    try{
+      var b=(box||(box=document.getElementById('prefillBox')));
+      b.innerHTML='<div class="kv"><div><b>Anchor</b></div><div>'+(p&&p.anchorType||'')+'</div>'
+        +'<div><b>Brand</b></div><div>'+(p&&p.brand||'')+'</div>'
+        +'<div><b>Customer</b></div><div>'+(p&&p.customerName||'')+'</div>'
+        +'<div><b>SO#</b></div><div>'+(p&&(p.soNumber||'')||'')+'</div>'
+        +'<div><b>Order Total</b></div><div>'+(p&&p.orderTotal||'')+'</div>'
+        +'<div><b>Paid-To-Date</b></div><div>'+(p&&p.paidToDate||'')+'</div></div>';
+    }catch(_){}
+  }
+  function start(){
+    if(window.__rp_booted) return;
+    window.__rp_booted=true;
+    set('Loading prefill…');
+    try{if(google&&google.script&&google.script.run) google.script.run.rp_trace('earlyBoot start');}catch(_){}
+    google.script.run
+      .withSuccessHandler(function(p){
+        window.__rp_prefill=p;
+        if(typeof renderPrefill==='function'){try{renderPrefill(p);}catch(e){renderFallback(p);}}
+        else{renderFallback(p);}
+      })
+      .withFailureHandler(function(err){set('Prefill error: '+(err&&err.message?err.message:err));})
+      .rp_init();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+  var tries=0,t=setInterval(function(){
+    if(window.google&&google.script&&google.script.run){clearInterval(t);start();}
+    else if(++tries>50){clearInterval(t);set('Failed to initialize (runtime not ready).');}
+  },100);
+})();
+</script>
+
+<script>
+
+// ── Project #21 ────────────────────────────────────────────────
+function p21_checkPrerequisite(selectedDocType, onPass, onFail) {
+  var isSalesReceipt = /sales\s*receipt/i.test(selectedDocType || '');
+  if (!isSalesReceipt) { onPass && onPass(); return; }
+  if (window.__rp_hasSalesInvoice === true) { onPass && onPass(); return; }
+  if (window.__rp_hasSalesInvoice === false) {
+    onFail && onFail('⚠️ A Sales Invoice is required before creating a Sales Receipt.\n\nPlease generate a Sales Invoice for this order first, then return here to record the payment.');
+    return;
+  }
+  var payload = {
+    anchorType: window.__rp_prefill && window.__rp_prefill.anchorType,
+    rootApptId: window.__rp_prefill && (window.__rp_prefill.rootApptId || window.__rp_prefill.rootApptID || ''),
+    soNumber:   window.__rp_prefill && window.__rp_prefill.soNumber,
+    docType:    selectedDocType
+  };
+  google.script.run
+    .withSuccessHandler(function(res) {
+      window.__rp_hasSalesInvoice = !!(res && res.ok);
+      if (res && res.ok) { onPass && onPass(); }
+      else { onFail && onFail(res && res.message ? res.message : 'Please create an Invoice before generating a Sales Receipt.'); }
+    })
+    .withFailureHandler(function(e) { onFail && onFail('Server error: ' + (e && e.message ? e.message : String(e))); })
+    .rp_validateDocTypePrerequisite(payload);
+}
+
+// ── Utilities ──────────────────────────────────────────────────
+function fitDialogToContent(w){ try{ google.script.host.setWidth(w||980); requestAnimationFrame(function(){ var h=Math.max(420,Math.min(1000,document.body.scrollHeight+24)); google.script.host.setHeight(h); }); }catch(_){} }
+fitDialogToContent(980);
+let __fitS=false;
+function scheduleFitDialog(){ if(__fitS) return; __fitS=true; requestAnimationFrame(function(){ __fitS=false; fitDialogToContent(980); }); }
+function html(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+const fmtCurrency=(n)=>'$'+(isFinite(n)?Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'0.00');
+const $=(id)=>document.getElementById(id);
+const els={amount:$('amount'),fs_lines:$('fs_lines'),fs_payment:$('fs_payment'),fs_remain:$('fs_remain'),docType:$('docType')};
+const num=(v)=>{const n=parseFloat(String(v||'').replace(/[^\d.\-]/g,''));return isFinite(n)?n:0;};
+
+// ── Freeze ─────────────────────────────────────────────────────
+const _SKIP=new Set(['btnClose','btnSuccessClose','chkTaxEnabled','btnPrintStationery','btnCancelReset','btnReset']);
+function freezeUI(on){
+  try{
+    document.body.classList.toggle('isFrozen',!!on);
+    document.querySelectorAll('input,select,textarea,button').forEach(el=>{
+      if(_SKIP.has(el.id)) return;
+      if(on){el.dataset.prevDisabled=el.disabled?'1':'0';el.disabled=true;}
+      else{if(el.dataset.prevDisabled==='0') el.disabled=false;delete el.dataset.prevDisabled;}
+    });
+  }catch(_){}
+}
+
+window.__rp_context={orderTotal:0,paidToDate:0,balance:0,anchorType:'APPT'};
+window.__rp_prefill=null;
+window.__rp_taxRate=0;
+window.__rp_lastPrintPayload=null;
+
+// ══════════════════════════════════════════════════════════════
+// RESET LOGIC
+// ══════════════════════════════════════════════════════════════
+function openResetModal() {
+  const p = window.__rp_prefill || {};
+  if (!p.rootApptId && !p.masterRowIndex) {
+    showToast('No active row found. Please click a row on the sheet first.');
+    return;
+  }
+  // Reset modal state
+  const rmsg = $('resetResultMsg');
+  if (rmsg) { rmsg.style.display = 'none'; rmsg.textContent = ''; rmsg.className = 'resetResultMsg'; }
+  const chk = $('chkDeleteFiles');
+  if (chk) chk.checked = false;
+  const spinner = $('resetSpinner');
+  if (spinner) spinner.style.display = 'none';
+  // Reset password field
+  const pw = $('resetPassword');
+  if (pw) { pw.value = ''; pw.classList.remove('invalid'); }
+  const pwErr = $('resetPwErr');
+  if (pwErr) pwErr.style.display = 'none';
+  // Confirm button starts disabled until password entered
+  const btnCR = $('btnConfirmReset');
+  if (btnCR) { btnCR.disabled = true; btnCR.textContent = '🗑 Confirm Reset'; }
+
+  $('resetModal').style.display = 'flex';
+  // Focus password field
+  setTimeout(function(){ try{ $('resetPassword').focus(); }catch(_){} }, 120);
+}
+
+function closeResetModal() {
+  $('resetModal').style.display = 'none';
+}
+
+// ── Change this to your desired admin password ──────────────
+var RESET_PASSWORD = 'AdminHP2026';
+
+function executeReset() {
+  const p = window.__rp_prefill || {};
+
+  // Password check
+  const pw = $('resetPassword');
+  const pwErr = $('resetPwErr');
+  if (!pw || pw.value !== RESET_PASSWORD) {
+    if (pw) pw.classList.add('invalid');
+    if (pwErr) pwErr.style.display = 'block';
+    if (pw) pw.focus();
+    return;
+  }
+  if (pw) pw.classList.remove('invalid');
+  if (pwErr) pwErr.style.display = 'none';
+
+  const deletePdf = !!($('chkDeleteFiles') && $('chkDeleteFiles').checked);
+
+  const payload = {
+    rootApptId:     p.rootApptId || p.rootApptID || '',
+    masterRowIndex: p.masterRowIndex || 0,
+    deletePdfFiles: deletePdf,
+    confirmToken:   'CONFIRM_RESET'
+  };
+
+  if (!payload.rootApptId && !payload.masterRowIndex) {
+    showResetResult(false, 'Missing row information. Cannot reset.');
+    return;
+  }
+
+  // Show spinner, disable buttons
+  const spinner  = $('resetSpinner');
+  const btnCR    = $('btnConfirmReset');
+  const btnCancel= $('btnCancelReset');
+  if (spinner)  spinner.style.display  = 'inline';
+  if (btnCR)    { btnCR.disabled = true;   btnCR.textContent  = '⏳ Resetting…'; }
+  if (btnCancel){ btnCancel.disabled = true; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (spinner)  spinner.style.display  = 'none';
+      if (btnCancel){ btnCancel.disabled = false; }
+      if (!res || !res.ok) {
+        if (btnCR) { btnCR.disabled = false; btnCR.textContent = '🗑 Confirm Reset'; }
+        showResetResult(false, '❌ Reset failed: ' + (res && res.error ? res.error : 'Unknown error'));
+        return;
+      }
+
+      // Success
+      var msg = '✅ Reset complete!\n'
+        + '• Ledger rows voided: ' + (res.voided || 0) + '\n'
+        + '• Master fields cleared: ' + (res.cleared || []).join(', ') + '\n'
+        + (res.deleted > 0 ? '• Drive files deleted: ' + res.deleted : '');
+      showResetResult(true, msg);
+
+      // After 2s: close modal and reload prefill
+      setTimeout(function() {
+        closeResetModal();
+        reloadPrefill();
+      }, 2200);
+    })
+    .withFailureHandler(function(err) {
+      if (spinner)  spinner.style.display  = 'none';
+      if (btnCR)    { btnCR.disabled = false; btnCR.textContent = '🗑 Confirm Reset'; }
+      if (btnCancel){ btnCancel.disabled = false; }
+      showResetResult(false, '❌ Server error: ' + (err && err.message ? err.message : String(err)));
+    })
+    .rp_resetFromDialog(payload);
+}
+
+function showResetResult(ok, msg) {
+  const el = $('resetResultMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.className   = 'resetResultMsg ' + (ok ? 'ok' : 'err');
+  el.style.display = 'block';
+}
+
+function reloadPrefill() {
+  const box = $('prefillBox');
+  if (box) box.innerHTML = '<div class="muted">Reloading…</div>';
+  // Reset dialog state
+  window.__rp_prefill     = null;
+  window.__rp_hasSalesInvoice = undefined;
+  window.__rp_context     = { orderTotal:0, paidToDate:0, balance:0, anchorType:'APPT' };
+  // Clear lines, reset form
+  try {
+    const li = $('lineItems');
+    if (li) li.innerHTML = '';
+    if (elLines && !elLines.firstElementChild) elLines.appendChild(makeLine({}));
+    updateSubtotal();
+  } catch(_) {}
+  // Re-call rp_init
+  google.script.run
+    .withSuccessHandler(function(p) {
+      window.__rp_prefill = p;
+      try { renderPrefill(p); } catch(e) { if(box) box.innerHTML = '<div class="muted">Reload error: '+e.message+'</div>'; }
+    })
+    .withFailureHandler(function(err) {
+      if(box) box.innerHTML = '<div class="muted">Reload error: '+(err&&err.message?err.message:err)+'</div>';
+    })
+    .rp_init();
+}
+
+// Wire up Reset modal buttons
+document.addEventListener('DOMContentLoaded', function() {
+  var btnR  = $('btnReset');
+  var btnCR = $('btnConfirmReset');
+  var btnX  = $('btnCancelReset');
+  var pwInp = $('resetPassword');
+
+  if (btnR)  btnR.addEventListener('click', openResetModal);
+  if (btnCR) btnCR.addEventListener('click', executeReset);
+  if (btnX)  btnX.addEventListener('click', closeResetModal);
+
+  // Enable Confirm button only when password is typed (live check)
+  if (pwInp) {
+    pwInp.addEventListener('input', function() {
+      var btn = $('btnConfirmReset');
+      if (!btn) return;
+      var correct = (this.value === RESET_PASSWORD);
+      btn.disabled = !correct;
+      // Clear error styling while typing
+      this.classList.remove('invalid');
+      var pwErr = $('resetPwErr');
+      if (pwErr) pwErr.style.display = 'none';
+    });
+    // Allow Enter key to submit if password correct
+    pwInp.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var btn = $('btnConfirmReset');
+        if (btn && !btn.disabled) executeReset();
+      }
+    });
+  }
+
+  // Click outside modal to close
+  var modal = $('resetModal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) closeResetModal();
+    });
+  }
+
+  var btnC  = $('btnConfirmOT');
+  var btnD  = $('btnDismissOT');
+  if (btnC) btnC.addEventListener('click', confirmOrderTotal);
+  if (btnD) btnD.addEventListener('click', function() {
+    __otConfirmed = true;
+    var panel = $('confirmOTPanel');
+    if (panel) panel.style.display = 'none';
+  });
+});
+
+// ── Tax toggle ─────────────────────────────────────────────────
+function isTaxEnabled(){const chk=$('chkTaxEnabled');return chk?chk.checked:true;}
+function applyTaxToggleLock(ptd){
+  const chk=$('chkTaxEnabled'),note=$('taxLockNote');
+  if(!chk) return;
+  chk.disabled=false;
+  if(note) note.style.display='none';
+}
+function applyTaxRowStyle(){
+  const en=isTaxEnabled(),tr=window.__rp_taxRate||0;
+  const rEl=$('fs_tax_rate'),tEl=$('fs_tax'),lC=$('fs_tax_label_cell'),vC=$('fs_tax_val_cell');
+  if(rEl){
+    if(en&&tr>0){rEl.textContent='('+(tr*100).toFixed(3).replace(/\.?0+$/,'')+'%)';rEl.style.textDecoration='';rEl.style.color='#6a737d';}
+    else if(!en){rEl.textContent='(disabled)';rEl.style.color='#bbb';rEl.style.textDecoration='';}
+    else{rEl.textContent='';}
+  }
+  if(lC) lC.style.opacity=en?'1':'0.45';
+  if(vC) vC.style.opacity=en?'1':'0.45';
+  if(tEl&&!en) tEl.textContent='$0.00';
+}
+$('chkTaxEnabled').addEventListener('change',function(){
+  applyTaxRowStyle();
+  updateSubtotal();
+});
+
+// ── Project #22: Refer a Friend ────────────────────────────────
+const REFERRAL_DISCOUNT = 100;
+
+function isReferralEnabled(){const chk=$('chkReferral');return chk?chk.checked:false;}
+function getReferralName(){const el=$('referralName');return el?el.value.trim():'';}
+
+function applyReferralUI() {
+  const enabled = isReferralEnabled();
+  const wrap = $('referralNameWrap');
+  const tag  = $('referralDiscountTag');
+  if (wrap) wrap.style.display = enabled ? 'block' : 'none';
+  if (tag)  tag.style.display  = enabled ? 'inline' : 'none';
+  if (!enabled) {
+    const inp = $('referralName');
+    if (inp) { inp.classList.remove('invalid'); }
+    const err = $('referralErr');
+    if (err) err.style.display = 'none';
+  }
+  updateSubtotal();
+}
+
+function validateReferral() {
+  if (!isReferralEnabled()) return true;
+  const name = getReferralName();
+  const inp = $('referralName');
+  const err = $('referralErr');
+  if (!name) {
+    if (inp) inp.classList.add('invalid');
+    if (err) err.style.display = 'block';
+    if (inp) inp.focus();
+    return false;
+  }
+  if (inp) inp.classList.remove('invalid');
+  if (err) err.style.display = 'none';
+  return true;
+}
+
+function applyReferralLock_(p) {
+  const chk      = $('chkReferral');
+  const inp      = $('referralName');
+  const wrap     = $('referralNameWrap');
+  const tag      = $('referralDiscountTag');
+  const lockNote = $('referralLockNote');
+
+  if (!p || !p.referralUsed) {
+    if (chk)      { chk.disabled = false; chk.checked = false; }
+    if (inp)      { inp.disabled = false; inp.value = ''; }
+    if (wrap)     wrap.style.display = 'none';
+    if (tag)      tag.style.display  = 'none';
+    if (lockNote) { lockNote.style.display = 'none'; lockNote.textContent = ''; }
+    return;
+  }
+
+  if (chk) { chk.checked = true; chk.disabled = true; }
+  if (inp) { inp.value = p.referralName || ''; inp.disabled = true; }
+  if (wrap) wrap.style.display = 'block';
+  if (tag)  tag.style.display  = 'inline';
+  if (lockNote) {
+    lockNote.style.display = 'inline';
+    lockNote.textContent   = '🔒 Already applied — ' + (p.referralName || '');
+  }
+  setTimeout(function(){ updateSubtotal(); }, 100);
+}
+
+$('chkReferral').addEventListener('change', function(){
+  applyReferralUI();
+});
+
+$('referralName').addEventListener('input', function() {
+  if (this.value.trim()) {
+    this.classList.remove('invalid');
+    const err = $('referralErr');
+    if (err) err.style.display = 'none';
+  }
+});
+
+// ── Line items ─────────────────────────────────────────────────
+const elLines=document.getElementById('lineItems');
+const elSubtotal=document.getElementById('linesSubtotal');
+
+function makeLine({desc='',qty=1,amt=''}={}){
+  const wrap=document.createElement('div');
+  wrap.style.cssText='display:grid;grid-template-columns:minmax(240px,0.5fr) 90px 120px 36px;gap:8px;align-items:center;margin:4px 0';
+  const d=document.createElement('textarea');d.rows=4;d.style.minHeight='96px';d.placeholder='e.g., Custom Ring Setting…';d.value=desc;
+  const q=document.createElement('input');q.type='number';q.step='1';q.min='1';q.value=qty;
+  const a=document.createElement('input');a.type='number';a.step='0.01';a.placeholder='0.00';a.value=(amt===''?'':amt);
+  const rm=document.createElement('button');rm.type='button';rm.textContent='×';rm.title='Remove line';rm.className='xbtn';
+  wrap.appendChild(d);wrap.appendChild(q);wrap.appendChild(a);wrap.appendChild(rm);
+  return wrap;
+}
+
+function readLines(){
+  return Array.from(elLines.children).map(row=>{
+    const[d,q,a]=row.querySelectorAll('textarea,input');
+    return{desc:d.value.trim(),qty:Math.max(1,parseInt(q.value,10)||1),amt:parseFloat(a.value)||0};
+  }).filter(r=>r.desc||r.amt);
+}
+
+function linesSubtotalFast(){
+  let s=0;
+  for(const row of elLines.children){
+    const p=row.querySelectorAll('textarea,input');
+    s+=(Math.max(1,parseInt(p[1].value,10)||1))*(parseFloat(p[2].value)||0);
+  }
+  return s;
+}
+
+const linesSubtotalNow=()=>readLines().reduce((t,r)=>t+(r.qty*r.amt),0);
+
+function updateSubtotal(){
+  const s = linesSubtotalFast();
+  const taxEn   = isTaxEnabled();
+  const tRate   = taxEn ? (window.__rp_taxRate || 0) : 0;
+  const refOn   = isReferralEnabled();
+  const disc    = refOn ? REFERRAL_DISCOUNT : 0;
+  const discSub = Math.max(0, s - disc);
+  const taxAmt  = Math.round(discSub * tRate * 100) / 100;
+  const totWT   = Math.round((discSub + taxAmt) * 100) / 100;
+
+  elSubtotal.textContent = fmtCurrency(totWT > 0 ? totWT : s);
+  $('fs_lines').textContent = fmtCurrency(s);
+
+  if (s > 0 && window.__rp_context) {
+    window.__rp_context.orderTotal = totWT > 0 ? totWT : s;
+  }
+
+  if (s > 0) {
+    try {
+      const newOT2  = totWT > 0 ? totWT : s;
+      const ptd2    = num((window.__rp_context || {}).paidToDate) || 0;
+      const newBal2 = Math.max(0, newOT2 - ptd2);
+      const kvDivs  = document.querySelectorAll('#prefillBox .kv div');
+      for (let i = 0; i < kvDivs.length - 1; i++) {
+        const bTag      = kvDivs[i].querySelector('b');
+        const labelText = bTag ? bTag.textContent.trim() : kvDivs[i].textContent.trim();
+        if (labelText === 'Order Total') {
+          kvDivs[i + 1].textContent   = fmtCurrency(newOT2);
+          kvDivs[i + 1].style.fontWeight = '600';
+          kvDivs[i + 1].style.color   = '';
+        }
+        if (labelText === 'Remaining Balance') {
+          kvDivs[i + 1].textContent   = fmtCurrency(newBal2);
+          kvDivs[i + 1].style.fontWeight = '600';
+          kvDivs[i + 1].style.color   = newBal2 > 0 ? '#dc2626' : '#16a34a';
+        }
+      }
+    } catch(_) {}
+  }
+
+  maybeShowConfirmOTPanel();
+  updateFinancialSummary();
+  scheduleFitDialog();
+}
+
+// ── Confirm Order Total ────────────────────────────────────────
+var __otConfirmed = false;
+
+function maybeShowConfirmOTPanel() {
+  var s     = linesSubtotalFast();
+  var panel = $('confirmOTPanel');
+  var msg   = $('confirmOTMsg');
+  if (!panel) return;
+
+  if (!(s > 0)) { panel.style.display = 'none'; return; }
+
+  var taxEn   = isTaxEnabled();
+  var tRate   = taxEn ? (window.__rp_taxRate || 0) : 0;
+  var refOn   = isReferralEnabled();
+  var disc    = refOn ? REFERRAL_DISCOUNT : 0;
+  var discSub = Math.max(0, s - disc);
+  var taxAmt  = Math.round(discSub * tRate * 100) / 100;
+  var newOT   = Math.round((discSub + taxAmt) * 100) / 100;
+
+  var ctx    = window.__rp_context || {};
+  var ptd    = num(ctx.paidToDate) || 0;
+  var newBal = Math.max(0, newOT - ptd);
+  var oldOT  = num(ctx.orderTotal) || 0;
+
+  if (__otConfirmed && Math.abs(newOT - oldOT) < 0.01) { panel.style.display = 'none'; return; }
+
+  if (__otConfirmed && Math.abs(newOT - oldOT) >= 0.01) {
+    __otConfirmed = false;
+    var oldBadge = document.querySelector('.ot-confirmed-badge');
+    if (oldBadge) oldBadge.remove();
+  }
+
+  var parts = ['New Order Total: <b>' + fmtCurrency(newOT) + '</b>'];
+  if (ptd > 0) {
+    parts.push('Paid: ' + fmtCurrency(ptd));
+    parts.push('&rarr; Balance: <b style="color:#dc2626;">' + fmtCurrency(newBal) + '</b>');
+  }
+  if (oldOT > 0 && Math.abs(newOT - oldOT) > 0.01) {
+    parts.push('<span style="color:#9a3412;font-size:11px;">(replaces ' + fmtCurrency(oldOT) + ')</span>');
+  }
+
+  if (msg) msg.innerHTML = parts.join('&nbsp;&nbsp;|&nbsp;&nbsp;');
+  panel.style.display = 'block';
+}
+
+function confirmOrderTotal() {
+  var s = linesSubtotalFast();
+  if (!(s > 0)) return;
+
+  var taxEn   = isTaxEnabled();
+  var tRate   = taxEn ? (window.__rp_taxRate || 0) : 0;
+  var refOn   = isReferralEnabled();
+  var disc    = refOn ? REFERRAL_DISCOUNT : 0;
+  var discSub = Math.max(0, s - disc);
+  var taxAmt  = Math.round(discSub * tRate * 100) / 100;
+  var newOT   = Math.round((discSub + taxAmt) * 100) / 100;
+
+  if (window.__rp_context) { window.__rp_context.orderTotal = newOT; }
+  var ptd    = num((window.__rp_context || {}).paidToDate) || 0;
+  var newBal = Math.max(0, newOT - ptd);
+
+  var chk = $('chkAssignOT');
+  if (chk) chk.checked = true;
+
+  __otConfirmed = true;
+  var panel = $('confirmOTPanel');
+  if (panel) panel.style.display = 'none';
+
+  if (!document.querySelector('.ot-confirmed-badge')) {
+    var badge = document.createElement('span');
+    badge.className = 'ot-confirmed-badge';
+    badge.textContent = '✓ confirmed';
+    var subEl = $('linesSubtotal');
+    if (subEl) subEl.parentNode.insertBefore(badge, subEl.nextSibling);
+  }
+
+  try {
+    var kvDivs = document.querySelectorAll('#prefillBox .kv div');
+    for (var i = 0; i < kvDivs.length - 1; i++) {
+      var bTag = kvDivs[i].querySelector('b');
+      var labelText = bTag ? bTag.textContent.trim() : kvDivs[i].textContent.trim();
+      if (labelText === 'Order Total') {
+        kvDivs[i + 1].textContent = fmtCurrency(newOT);
+        kvDivs[i + 1].style.fontWeight = '600';
+        kvDivs[i + 1].style.color = '';
+      }
+      if (labelText === 'Remaining Balance') {
+        kvDivs[i + 1].textContent = fmtCurrency(newBal);
+        kvDivs[i + 1].style.fontWeight = '600';
+        kvDivs[i + 1].style.color = newBal > 0 ? '#dc2626' : '#16a34a';
+      }
+    }
+  } catch(_) {}
+
+  updateFinancialSummary();
+
+  var toastMsg = 'Order Total: ' + fmtCurrency(newOT);
+  if (ptd > 0) toastMsg += '  |  Balance: ' + fmtCurrency(newBal);
+  toastMsg += ' — will save on Submit';
+  showToast(toastMsg);
+}
+
+if(!elLines.firstElementChild) elLines.appendChild(makeLine({}));
+try{updateSubtotal();}catch(_){setTimeout(()=>{try{updateSubtotal();}catch(_){}},0);}
+$('btnAddLine').addEventListener('click',()=>{elLines.appendChild(makeLine({}));updateSubtotal();});
+elLines.addEventListener('input',(e)=>{const t=e.target;if(t.matches('textarea')||(t.matches('input')&&t.type==='number')) updateSubtotal();});
+elLines.addEventListener('click',(e)=>{if(e.target.classList&&e.target.classList.contains('xbtn')){e.target.parentElement?.remove();updateSubtotal();}});
+
+// ── Build from 3D ──────────────────────────────────────────────
+function format3DToDescription(spec){
+  if(!spec) return '';
+  const b='✧',lines=[];
+  const rs=(spec.ringStyle||spec.style||'').trim(),mt=(spec.metalType||spec.metal||'').trim();
+  const ac=(spec.accentType||'').trim(),sz=(spec.ringSize||spec.usSize||'').trim();
+  const hs=!!(rs||mt||ac||sz);
+  if(hs){lines.push((rs?`${rs} `:'')+'Custom Ring Setting:');if(mt) lines.push(`${b} Metal Type: ${mt}`);if(ac) lines.push(`${b} Accent Diamond Type: ${ac}`);if(sz) lines.push(`${b} Ring Size: ${sz}`);}
+  const ct=(spec.centerType||spec.centerStoneType||'').trim(),di=(spec.dimensions||'').trim();
+  if(hs&&(ct||di)) lines.push('');
+  if(ct) lines.push(`${ct} Details:`);
+  if(di) lines.push(`${b} Dimensions: ${di}`);
+  return lines.join('\n');
+}
+
+function buildFrom3D(){
+  if(!(window.google&&google.script&&google.script.run)){showToast('Apps Script runtime not ready yet.');return;}
+  const p=window.__rp_prefill||{};
+  const btn=$('btnBuildFrom3D');btn.disabled=true;btn.textContent='Building…';
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled=false;btn.textContent='Build line from 3D';
+      if(!res||!res.ok||!res.spec){showToast('No 3D details found.');return;}
+      const desc=format3DToDescription(res.spec);
+      if(!desc){showToast('3D Log found, but no usable fields.');return;}
+      if(!elLines.firstElementChild) $('btnAddLine').click();
+      const ta=elLines.firstElementChild.querySelector('textarea');
+      if(ta){ta.value=desc;ta.dispatchEvent(new Event('input'));}
+      updateSubtotal();
+    })
+    .withFailureHandler(function(err){btn.disabled=false;btn.textContent='Build line from 3D';showToast('Error: '+(err&&err.message?err.message:err));})
+    .rp_getLatest3DFields({soNumber:p.soNumber||'',rootApptId:p.rootApptId||p.rootApptID||'',trackerUrl:p.trackerUrl||'',forceRefresh:true});
+}
+$('btnBuildFrom3D').addEventListener('click',buildFrom3D);
+
+// ── Financial summary ──────────────────────────────────────────
+function updateFinancialSummary(){
+  const amount=num(els.amount.value);
+  els.fs_payment.textContent=fmtCurrency(amount);
+  const dt=$('docType').value||'';
+  const isInv=/Invoice/i.test(dt),isRec=/Receipt/i.test(dt),isSI=/Sales Invoice/i.test(dt),isSR=/Sales Receipt/i.test(dt);
+  const sub=linesSubtotalFast(),ctx=window.__rp_context||{},ptd=num(ctx.paidToDate);
+  const taxEn=isTaxEnabled(),tRate=taxEn?(window.__rp_taxRate||0):0;
+
+  const referralOn = isReferralEnabled();
+  const discountAmt = referralOn ? REFERRAL_DISCOUNT : 0;
+  const discountedSub = Math.max(0, sub - discountAmt);
+
+  const taxAmt=Math.round(discountedSub*tRate*100)/100;
+  const totWT=Math.round((discountedSub+taxAmt)*100)/100;
+
+  const fL=$('fs_lines'),fT=$('fs_tax'),fTo=$('fs_total');
+  if(fL) fL.textContent=fmtCurrency(sub)+(referralOn?' − $'+REFERRAL_DISCOUNT.toFixed(2)+' = '+fmtCurrency(discountedSub):'');
+  if(fT) fT.textContent=fmtCurrency(taxAmt);
+  if(fTo) fTo.textContent=fmtCurrency(totWT);
+  applyTaxRowStyle();
+
+  const sub2 = linesSubtotalFast();
+  const bOT  = sub2 > 0 ? totWT : (num(ctx.orderTotal) > 0 ? num(ctx.orderTotal) : totWT);
+  const cBal = Math.max(0, bOT - ptd);
+  const rem  = isInv ? cBal : Math.round((cBal - amount) * 100) / 100;
+
+  const tag=$('roleTag');
+  if(tag){
+    let tx='';
+    if(isInv) tx=(Math.abs(cBal-num($('amount').value))<0.005)?'Tagged as: Final Invoice':'Tagged as: Progress Invoice';
+    else if(isSR) tx='Tagged as: Sales Receipt';
+    else if(isRec) tx='Tagged as: Payment Receipt';
+    else tx='Tagged as: Deposit Invoice';
+    tag.textContent=tx;
+  }
+  els.fs_remain.textContent=fmtCurrency(rem);
+
+  const w=$('overpayWarn'),se=$('srErr'),h=$('docTypeHint');
+  if(w) w.style.display='none';if(se) se.style.display='none';if(h) h.style.display='none';
+  const E=0.005;
+  if(!isInv&&rem<-E&&w){w.textContent=`Heads up: this overpays by ${fmtCurrency(Math.abs(rem))}. Overpayment is allowed.`;w.style.display='block';}
+  if(isSR&&rem>E&&se){se.textContent='Sales Receipt must cover the full remaining balance.';se.style.display='block';}
+  if (!isSR && amount > E && Math.abs(rem) < E && h) {
+    h.textContent = '💡 Tip: Remaining Balance will be $0 — consider using "Sales Receipt".';
+    h.style.display = 'block';
+  }
+  if (isInv && Math.abs(cBal - amount) < E && !isSI && !isSR && h && h.style.display === 'none') {
+    h.textContent = '💡 Tip: If this amount is paid, balance will be $0 — use "Sales Invoice".';
+    h.style.display = 'block';
+  }
+}
+$('amount').addEventListener('input',updateFinancialSummary);
+
+// ── Prefill ────────────────────────────────────────────────────
+function seedFirstLineAmountFromContext(){
+  try{
+    const first=elLines.firstElementChild;if(!first) return;
+    const ai=first.querySelectorAll('textarea,input')[2];if(num(ai.value)>0) return;
+    const ctx=window.__rp_context||{};
+    const cb=Math.max(0,num(ctx.orderTotal)-num(ctx.paidToDate));
+    if(cb>0){ai.value=cb;ai.dispatchEvent(new Event('input'));}
+  }catch(_){}
+}
+
+function renderPrefill(p){
+  window.__rp_prefill=p||{};
+  const box=$('prefillBox');
+  try{
+    if(!p){box.innerHTML='<div class="muted">No active row.</div>';fitDialogToContent(980);return;}
+    if(p&&p.error){box.innerHTML='<div class="card" style="background:#fff7ed;border-color:#fed7aa;"><div style="font-weight:600;color:#9a3412;">Prefill error</div><div class="muted">'+html(p.error)+'</div></div>';fitDialogToContent(980);return;}
+    const nP=(v)=>{const n=parseFloat(String(v||'').replace(/[^\d.\-]/g,''));return isFinite(n)?n:0;};
+    const fmt=(n)=>'$'+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    const brand=p.brand||p.Brand||'';
+    const so=(p.soNumber||p.so||p.SO||p['SO#']||'').toString();
+    const cust=p.customerName||p.customer||p.Customer||p['Customer Name']||'';
+    const ot  = nP(p.orderTotal ?? p.OrderTotal ?? 0);
+    const ptd = nP(p.paidToDate ?? p.paid_to_date ?? 0);
+    const savedSub = nP(p.savedSubtotal ?? 0);
+    const effectiveOT = ot > 0 ? ot : savedSub;
+    const bi = Math.max(0, effectiveOT - ptd);
+    const lpd=p.lastPaymentDate||p.LastPaymentDate||'',pfu=p.paymentsFolderURL||'';
+    const rows=[
+      ['Anchor',p.anchorType||(brand?'SO':'APPT')],
+      ['Brand',brand],['Customer',cust],['SO#',so||'—'],
+      ['Order Total',ot?fmt(ot):''],
+      ['Paid-To-Date',ptd?fmt(ptd):''],
+      ['Remaining Balance',fmt(bi)],
+      ['Last Payment Date',lpd||''],
+      ['Payments Folder',pfu?`<a target="_blank" href="${html(pfu)}">Open</a>`:'']
+    ];
+    box.innerHTML='<div class="kv">'+rows.map(r=>`<div><b>${html(r[0])}</b></div><div>${r[1]}</div>`).join('')+'</div>';
+    try{
+      const prev=Array.isArray(p.prevPayments)?p.prevPayments:[];
+      if(prev.length>0){
+        const rh=prev.map(it=>{const amt=typeof it.amount==='number'?fmt(it.amount):(it.amount||'');return`<tr><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;">${html(it.date||'')}</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;">${html(amt)}</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;">${html(it.method||'')}</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;color:#6a737d;font-size:11px;">${html(it.docNumber||'')}</td></tr>`;}).join('');
+        box.innerHTML+=`<div style="margin-top:10px;"><div style="font-weight:600;font-size:12px;margin-bottom:4px;color:#444;">Past Payments</div><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f3f4f6;"><th style="padding:4px 6px;text-align:left;font-weight:600;">Date</th><th style="padding:4px 6px;text-align:right;font-weight:600;">Amount</th><th style="padding:4px 6px;text-align:left;font-weight:600;">Method</th><th style="padding:4px 6px;text-align:left;font-weight:600;">Doc#</th></tr></thead><tbody>${rh}</tbody></table></div>`;
+      }
+    }catch(_){}
+
+    window.__rp_context = { orderTotal: effectiveOT, paidToDate: ptd, balance: bi, anchorType: p.anchorType||'APPT' };
+    try{if(p.phone) $('clientPhone').value=p.phone;if(p.email) $('clientEmail').value=p.email;}catch(_){}
+
+    window.__rp_hasSalesInvoice = undefined;
+    window.__rp_referralUsed = (p.referralUsed === true);
+
+    applyReferralLock_(p);
+
+    try {
+      google.script.run
+        .withSuccessHandler(function(res){ window.__rp_hasSalesInvoice = !!(res && res.hasSalesInvoice); })
+        .withFailureHandler(function(){ window.__rp_hasSalesInvoice = false; })
+        .rp_checkHasSalesInvoice({
+          anchorType: p.anchorType || 'APPT',
+          rootApptId: p.rootApptId || p.rootApptID || '',
+          soNumber:   p.soNumber || ''
+        });
+    } catch(_){ window.__rp_hasSalesInvoice = false; }
+
+    try{const chk=$('chkTaxEnabled');if(chk){chk.checked=(typeof p.taxEnabled==='boolean')?p.taxEnabled:true;}}catch(_){}
+    applyTaxToggleLock(ptd);
+
+    try{
+      if(Array.isArray(p.savedLines)&&p.savedLines.length){
+        elLines.innerHTML='';
+        p.savedLines.forEach(ln=>{elLines.appendChild(makeLine({desc:(ln&&ln.desc)||'',qty:Math.max(1,parseInt((ln&&ln.qty)||1,10)||1),amt:nP((ln&&ln.amt)||0)}));});
+        if(typeof updateSubtotal==='function') updateSubtotal();
+      }
+    }catch(_){}
+
+    try{
+      applyTaxRowStyle();
+      $('fs_lines').textContent=fmt(linesSubtotalFast());
+      $('fs_payment').textContent=fmt(nP($('amount').value));
+      if(typeof updateFinancialSummary==='function') updateFinancialSummary();
+    }catch(_){}
+
+    try{
+      const bft=brand||'';
+      if(bft){
+        google.script.run
+          .withSuccessHandler(function(rate){
+            window.__rp_taxRate=(typeof rate==='number'&&rate>0)?rate:0;
+            applyTaxRowStyle();
+            if(typeof updateSubtotal==='function') updateSubtotal();
+            else if(typeof updateFinancialSummary==='function') updateFinancialSummary();
+            if (window.__rp_prefill && window.__rp_prefill.referralUsed) {
+              applyReferralLock_(window.__rp_prefill);
+            }
+          })
+          .withFailureHandler(function(){
+            window.__rp_taxRate=0;
+            applyTaxRowStyle();
+          })
+          .rp_getTaxRateForBrand(bft);
+      }
+    }catch(_){}
+
+    try{
+      const a={anchorType:p.anchorType||'APPT',rootApptId:p.rootApptId||p.rootApptID||'',soNumber:p.soNumber||'',limit:20};
+      google.script.run
+        .withSuccessHandler(function(list){
+          const arr=Array.isArray(list)?list:(list&&list.items)||[];
+          const fill=(el,values)=>el.innerHTML='<option value="">(none)</option>'+values.map(v=>`<option value="${v}">${v}</option>`).join('');
+          fill($('supersedes'),arr);fill($('appliesTo'),arr);
+        })
+        .withFailureHandler(function(){})
+        .rp_listDocNumbersForAnchor(a);
+    }catch(_){}
+
+    fitDialogToContent(980);
+  }catch(e){
+    box.innerHTML='<div class="card" style="background:#fff7ed;border-color:#fed7aa;"><div style="font-weight:600;color:#9a3412;">Client JS error</div><div class="muted">'+html(e&&e.message?e.message:e)+'</div></div>';
+    fitDialogToContent(980);
+  }
+}
+
+// ── Boot prefill ───────────────────────────────────────────────
+(function bootPrefill(){
+  if(window.__rp_booted) return;
+  window.__rp_booted=true;
+  const box=$('prefillBox');
+  function set(msg){try{box.innerHTML='<div class="muted">'+msg+'</div>';}catch(_){}}
+  function start(){
+    if(window.__rp_prefill_started) return;
+    window.__rp_prefill_started=true;
+    set('Loading prefill…');
+    google.script.run
+      .withSuccessHandler(function(){
+        google.script.run
+          .withSuccessHandler(function(p){try{window.__rp_prefill=p;}catch(_){}renderPrefill(p);})
+          .withFailureHandler(function(err){var msg=(err&&err.message)?err.message:String(err||'Unknown error');box.innerHTML='<div class="card" style="background:#fff7ed;border-color:#fed7aa;"><div style="font-weight:600;color:#9a3412;">Prefill error</div><div class="muted">'+msg+'</div></div>';fitDialogToContent(980);})
+          .rp_init();
+      })
+      .withFailureHandler(function(e){set('Ping failed: '+(e&&e.message?e.message:e));})
+      .rp_ping();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+  var tries=0,timer=setInterval(function(){
+    if(window.google&&google.script&&google.script.run){clearInterval(timer);start();}
+    else if(++tries>50){clearInterval(timer);set('Failed to initialize (Apps Script runtime not ready).');}
+  },100);
+})();
+
+(function initDateNow(){try{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());$('date').value=d.toISOString().slice(0,16);}catch(_){}})();
+try{$('docType').value='Deposit Receipt';}catch(_){}
+
+function applyDocTypeBehavior(){
+  const val=$('docType').value||'';
+  const isInv=/Invoice/i.test(val),isRec=/Receipt/i.test(val);
+  const lbl=$('lblAmount'),m=$('method'),ref=$('reference'),me=$('methodErr');
+  if(isInv){lbl.textContent='Requested Amount';m.disabled=true;m.classList.remove('invalid');me.style.display='none';m.value='';ref.disabled=true;ref.value='';}
+  else{lbl.textContent='Amount';m.disabled=false;ref.disabled=false;}
+  $('fs_payment_label').textContent=isInv?'Requested Payment':'Payment';
+  const st=$('docStatus');
+  if(isRec){st.value='ISSUED';st.disabled=true;}else{st.disabled=false;}
+  updateFinancialSummary();
+  if(isInv) seedFirstLineAmountFromContext();
+}
+$('docType').addEventListener('change', function () {
+  applyDocTypeBehavior();
+  const h = $('docTypeHint');
+  if (h) { h.textContent = ''; h.style.display = 'none'; }
+  p21_checkPrerequisite(
+    $('docType').value,
+    function () { if (h) { h.textContent = ''; h.style.display = 'none'; } },
+    function (msg) {
+      if (h) { h.textContent = '⚠️ Please create an Invoice before generating a Sales Receipt.'; h.style.display = 'block'; }
+    }
+  );
+});
+applyDocTypeBehavior();
+
+$('method').addEventListener('change',function(){if(this.value){this.classList.remove('invalid');$('methodErr').style.display='none';}});
+
+function showToast(msg){
+  const n=document.createElement('div');n.textContent=msg;
+  n.style.cssText='position:fixed;bottom:16px;left:16px;background:#111;color:#fff;padding:10px 12px;border-radius:8px;z-index:99999;opacity:.95';
+  document.body.appendChild(n);setTimeout(()=>{n.remove();},3500);
+}
+
+// ── Print window ───────────────────────────────────────────────
+function openPrintWindow(printPayload) {
+  const btn = $('btnPrintStationery');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Opening…'; }
+  google.script.run
+    .withSuccessHandler(function (htmlStr) {
+      if (btn) { btn.disabled = false; btn.textContent = '🖨\u00a0 Print on Stationery'; }
+      try {
+        const w = window.open('', '_blank', 'width=920,height=720,scrollbars=yes,resizable=yes');
+        if (w) { w.document.open(); w.document.write(htmlStr); w.document.close(); }
+        else { showToast('⚠ Pop-up blocked. Allow pop-ups then click "Print on Stationery".'); }
+      } catch (err) { showToast('Print open error: ' + (err && err.message ? err.message : err)); }
+    })
+    .withFailureHandler(function (err) {
+      if (btn) { btn.disabled = false; btn.textContent = '🖨\u00a0 Print on Stationery'; }
+      showToast('Print template error: ' + (err && err.message ? err.message : String(err)));
+    })
+    .rp_openPrintReceipt(printPayload);
+}
+$('btnPrintStationery').addEventListener('click', function () {
+  if (window.__rp_lastPrintPayload) openPrintWindow(window.__rp_lastPrintPayload);
+});
+
+// ── Success overlay ────────────────────────────────────────────
+function renderSuccess(out, printPayload) {
+  const grid = $('successGrid');
+  const rows = [
+    ['Doc Number', out.docNumber || ''],
+    ['Doc',  out.docUrl  ? `<a target="_blank" href="${html(out.docUrl)}">Open Google Doc ↗</a>`  : ''],
+    ['PDF',  out.pdfUrl  ? `<a target="_blank" href="${html(out.pdfUrl)}">Open PDF ↗</a>`         : ''],
+    ['Payments Folder', out.paymentsFolderURL ? `<a target="_blank" href="${html(out.paymentsFolderURL)}">Open Folder ↗</a>` : ''],
+    ['AR Shortcut', out.arShortcutURL ? `<a target="_blank" href="${html(out.arShortcutURL)}">View ↗</a>` : '']
+  ].filter(r => r[1]);
+  grid.innerHTML = rows.map(r => `<div><b>${html(r[0])}</b></div><div>${r[1]}</div>`).join('');
+  const pBtn  = $('btnPrintStationery');
+  const pHint = $('printHint');
+  if (printPayload) {
+    window.__rp_lastPrintPayload = printPayload;
+    if (pBtn)  { pBtn.style.display  = 'inline-block'; pBtn.textContent = '🖨\u00a0 Print on Stationery'; pBtn.disabled = false; }
+    if (pHint) pHint.style.display = 'block';
+  } else {
+    if (pBtn)  pBtn.style.display  = 'none';
+    if (pHint) pHint.style.display = 'none';
+  }
+  $('successPanel').style.display = 'flex';
+}
+
+// ── Submit handler ─────────────────────────────────────────────
+$('btnSubmit').addEventListener('click', function () {
+  try {
+    const lines = readLines();
+    if (!lines.length) { showToast('Add at least one line.'); return; }
+    if (!validateReferral()) { showToast('Please enter the referrer\'s name.'); return; }
+
+    const docType = $('docType').value || '';
+    const isReceipt = /Receipt/i.test(docType);
+    const isSalesReceipt = /Sales Receipt/i.test(docType);
+
+    const methodSel = $('method'), methodErr = $('methodErr');
+    if (isReceipt && !methodSel.value) {
+      methodSel.classList.add('invalid'); methodErr.style.display = 'block'; methodSel.focus(); return;
+    } else { methodSel.classList.remove('invalid'); methodErr.style.display = 'none'; }
+
+    const amount = num($('amount').value);
+    if (isReceipt && !(amount > 0)) { showToast('Enter a payment amount for receipts.'); return; }
+
+    const subtotal = linesSubtotalNow();
+    const taxEnabled = isTaxEnabled();
+    const taxRate    = taxEnabled ? (window.__rp_taxRate || 0) : 0;
+
+    const referralOn2    = isReferralEnabled();
+    const discountAmt2   = referralOn2 ? REFERRAL_DISCOUNT : 0;
+    const discountedSub2 = Math.max(0, subtotal - discountAmt2);
+    const taxAmt         = Math.round(discountedSub2 * taxRate * 100) / 100;
+    const totalWithTax   = Math.round((discountedSub2 + taxAmt) * 100) / 100;
+
+    const ctx2 = window.__rp_context || {};
+    const sub3    = linesSubtotalNow();
+    const baseOT2 = sub3 > 0
+      ? totalWithTax
+      : (num(ctx2.orderTotal) > 0 ? num(ctx2.orderTotal) : totalWithTax);
+    const currentBal2 = Math.round(Math.max(0, baseOT2 - num(ctx2.paidToDate)) * 100) / 100;
+    const EPS = 0.005;
+    if (isSalesReceipt && Math.round((currentBal2 - amount) * 100) / 100 > EPS) {
+      const srEl = $('srErr');
+      if (srEl) { srEl.textContent = 'Sales Receipt must cover the full remaining balance.'; srEl.style.display = 'block'; }
+      showToast('Sales Receipt must cover the full remaining balance.'); return;
+    }
+
+    const p = window.__rp_prefill || {};
+    const anchorType = (p.anchorType || 'APPT');
+    const allocatedToSO = (anchorType === 'SO' && isReceipt) ? amount : 0;
+
+    const statusSel = $('docStatus');
+    if (!isReceipt && !(statusSel && statusSel.value)) { showToast('Pick a Status (Draft or Issue now).'); return; }
+
+    const phone = ($('clientPhone').value || '').trim();
+    const email = ($('clientEmail').value || '').trim();
+
+    const payload = {
+      anchorType,
+      brand:        p.brand || '',
+      rootApptId:   p.rootApptId || p.rootApptID || '',
+      soNumber:     p.soNumber || '',
+      customerName: p.customerName || '',
+      phone, email, docType, lines, taxEnabled,
+      pmt: {
+        amount,
+        dateTime:  $('date').value || '',
+        method:    methodSel.value || '',
+        reference: $('reference').value || '',
+        notes:     $('notes').value || '',
+        allocatedToSO
+      },
+      flags: { setOrderTotal: !!$('chkAssignOT')?.checked },
+      snapshots: {
+        orderTotal: baseOT2 || 0,
+        paidToDate: ctx2.paidToDate || 0,
+        balance:    currentBal2 || 0
+      },
+      docStatus:  $('docStatus')?.value || '',
+      docRole:    ($('docRole')?.value || '').toUpperCase(),
+      supersedes: $('supersedes')?.value.trim() || '',
+      appliesTo:  $('appliesTo')?.value.trim()  || '',
+      masterRowIndex:    p.masterRowIndex    || 0,
+      trackerUrl:        p.trackerUrl        || '',
+      paymentsFolderURL: p.paymentsFolderURL || '',
+      referralEnabled:  isReferralEnabled(),
+      referralName:     getReferralName(),
+      referralDiscount: isReferralEnabled() ? REFERRAL_DISCOUNT : 0
+    };
+
+    const btn = $('btnSubmit');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    freezeUI(true);
+
+    p21_checkPrerequisite(
+      docType,
+      function () {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (!res || !res.ok) {
+              freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+              showToast('Save failed.'); return;
+            }
+            google.script.run
+              .withSuccessHandler(function (out) {
+                freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+                const ok = !!(out && out.ok !== false);
+                if (!ok) {
+                  const hint = out && out.hint ? out.hint : (out && out.reason ? out.reason : 'check template/brand or folder settings');
+                  alert('❌ Doc/PDF Error:\n\nReason: ' + (out && out.reason || '') + '\n\nHint: ' + hint);
+                  showToast('Doc/PDF: ' + hint);
+                  renderSuccess({
+                    docNumber: out && out.docNumber ? out.docNumber : '(auto)',
+                    pdfUrl:  out && out.pdfUrl  ? out.pdfUrl  : '',
+                    docUrl:  out && out.docUrl  ? out.docUrl  : '',
+                    paymentsFolderURL: (out && out.paymentsFolderURL) || (p && p.paymentsFolderURL) || '',
+                    arShortcutURL: out && out.arShortcutURL ? out.arShortcutURL : ''
+                  }, null);
+                  return;
+                }
+                const isHPUSA = String(payload.brand || '').toUpperCase().includes('HPUSA');
+                let printPayload = null;
+                if (isHPUSA && isReceipt) {
+                  const prefill = window.__rp_prefill || {};
+                  const existingPrev = Array.isArray(prefill.prevPayments) ? prefill.prevPayments : [];
+                  const currentPayment = {
+                    date:   ($('date').value || '').slice(0, 10),
+                    amount: num($('amount').value),
+                    method: $('method').value || ''
+                  };
+                  const allPayments = (currentPayment.amount > 0) ? [currentPayment, ...existingPrev] : existingPrev;
+                  printPayload = Object.assign({}, payload, { docNumber: out.docNumber || '', prevPayments: allPayments });
+                  openPrintWindow(printPayload);
+                }
+                renderSuccess({
+                  docNumber: out.docNumber || '(auto)',
+                  pdfUrl:  out.pdfUrl  || '',
+                  docUrl:  out.docUrl  || '',
+                  paymentsFolderURL: out.paymentsFolderURL || (p && p.paymentsFolderURL) || '',
+                  arShortcutURL: out.arShortcutURL || ''
+                }, printPayload);
+              })
+              .withFailureHandler(function (err) {
+                freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+                showToast('Doc/PDF failed: ' + (err && err.message ? err.message : String(err)));
+              })
+              .rp_makeDocForPayment(res.row, payload);
+          })
+          .withFailureHandler(function (err) {
+            freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+            showToast('Error: ' + (err && err.message ? err.message : err));
+          })
+          .rp_submit(payload);
+      },
+      function (msg) {
+        freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
+        const h = $('docTypeHint');
+        if (h) { h.textContent = '⚠️ Please create an Invoice before generating a Sales Receipt.'; h.style.display = 'block'; }
+        showToast('Please create an Invoice before generating a Sales Receipt.');
+      }
+    );
+
+  } catch (e) {
+    freezeUI(false);
+    showToast('Unexpected error before submit: ' + (e && e.message ? e.message : e));
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font: 13px/1.4 Arial, sans-serif; padding: 16px 18px; }
+      h2 { margin: 0 0 8px; font-size: 20px; }
+      .muted { color: #666; margin: 4px 0 10px; }
+      ul { margin: 8px 0 12px 18px; padding: 0; }
+      li { margin: 3px 0; }
+      label { display:block; margin: 10px 0 6px; }
+      input[type="date"] { padding: 6px; }
+      .row { margin-top: 12px; }
+      button { margin-right: 8px; padding: 6px 10px; }
+    </style>
+  </head>
+  <body>
+    <h2>Snooze</h2>
+
+    <!-- show active chips -->
+    <? var a = (payload.active || []); ?>
+    <div style="margin:8px 0;">
+      <div><b>Active reminders for <?= payload.label ?>:</b>
+        <? if (!a.length) { ?>
+          <span style="color:#b00020;">None</span>
+        <? } else { ?>
+          <? for (var i=0;i<a.length;i++) { ?>
+            <span style="border:1px solid #ddd;padding:2px 6px;border-radius:10px;margin-right:6px;">
+              <?= a[i].type ?>
+            </span>
+          <? } ?>
+        <? } ?>
+      </div>
+    </div>
+
+    <script>
+      (function(){
+        const active = <?= JSON.stringify(a.map(function(x){return String(x.type||'').toUpperCase();})) ?>;
+        window.__verifySnooze = function(){
+          if (!active.length) {
+            alert('There are no active reminders to snooze for this order/customer.');
+            return false;
+          }
+          return true;
+        };
+      })();
+    </script>
+
+
+
+    <script>
+      // Injected by server opener
+      const DATA = <?!= JSON.stringify(payload) ?>;
+    </script>
+
+    <!-- SO + Customer line -->
+    <div class="muted" id="who"></div>
+
+    <div id="currentBox">
+      <strong>Current reminders:</strong>
+      <ul id="currentList"><li>Loading…</li></ul>
+    </div>
+
+    <label for="pickDate">Snooze until (resumes at 9:30 AM):</label>
+    <input type="date" id="pickDate">
+
+    <div class="row">
+      <button id="btnGo">Snooze</button>
+      <button id="btnClose">Close</button>
+    </div>
+
+    <script>
+      // Header: SO + Customer if available
+      const whoText = (DATA.so && DATA.cust) ? `SO#${DATA.so} — ${DATA.cust}`
+                    : (DATA.so ? `SO#${DATA.so}` : (DATA.cust || '(unknown)'));
+      document.getElementById('who').textContent = whoText;
+
+      // Pre-fill date (today if <9:30, else tomorrow) provided by server
+      const pick = document.getElementById('pickDate');
+      pick.min = DATA.todayStr;
+      pick.value = DATA.defaultDateStr;
+
+      // Disable Snooze until value present; prevent double clicks
+      const btn = document.getElementById('btnGo');
+      function toggleBtn(){ btn.disabled = !pick.value; }
+      pick.addEventListener('input', toggleBtn);
+      toggleBtn();
+
+      // Load current schedule with nice formatting (server computes pretty strings in PT)
+      google.script.run
+        .withSuccessHandler(items => {
+          const ul = document.getElementById('currentList');
+          ul.innerHTML = '';
+          if (!items || !items.length) { ul.innerHTML = '<li>No active reminders.</li>'; return; }
+          items.forEach(it => {
+            const typeLabel = (it.type === 'COS') ? 'COS' : (it.type === 'FOLLOWUP' ? 'Follow‑Up' : it.type);
+            const parts = [];
+            parts.push(typeLabel);
+            if (it.prettyNext)   parts.push('next: ' + it.prettyNext);
+            if (it.prettySnooze) parts.push('snoozed until: ' + it.prettySnooze);
+            const li = document.createElement('li');
+            li.textContent = parts.join(' — ');
+            ul.appendChild(li);
+          });
+        })
+        .withFailureHandler(err => {
+          const ul = document.getElementById('currentList');
+          ul.innerHTML = '<li style="color:#b00;">Error loading: ' + (err && err.message ? err.message : err) + '</li>';
+        })
+        .remind__getActiveSummaryForTarget(DATA.so, DATA.cust, DATA.tz);
+
+      // Submit
+      document.getElementById('btnGo').addEventListener('click', () => {
+        if (typeof window.__verifySnooze === 'function' && !window.__verifySnooze()) return;
+        if (!pick.value) return;
+        btn.disabled = true; btn.textContent = 'Snoozing…';
+        const val = pick.value; // YYYY-MM-DD
+        google.script.run
+          .withSuccessHandler(res => {
+            // Show a short success summary, then close
+            const msg = (res && res.ok)
+              ? `Snoozed ${res.changed || 0} reminder(s) for ${whoText} until ${res.untilPretty}.`
+              : 'Snoozed.';
+            alert(msg);
+            google.script.host.close();
+          })
+          .withFailureHandler(err => {
+            alert(err && err.message ? err.message : err);
+            btn.disabled = false; btn.textContent = 'Snooze';
+          })
+          .remind__snoozeTarget_do(DATA.so, DATA.cust, val);
+      });
+
+      document.getElementById('btnClose').addEventListener('click', () => google.script.host.close());
+    </script>
+  </body>
+</html>

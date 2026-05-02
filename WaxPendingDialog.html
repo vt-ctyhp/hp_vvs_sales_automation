@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    body { font: 13px/1.35 Arial, Helvetica, sans-serif; margin: 14px; }
+    .toolbar { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
+    table { width:100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border:1px solid #ddd; padding:6px 8px; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
+    td { white-space: nowrap; }                        /* keep rows compact */
+    th { white-space: normal; line-height: 1.2; }      /* allow wrapping in header row */
+    th { background:#f7f7f7; text-align:left; }
+    .small { opacity:.75; font-size:12px; }
+    .right { margin-left:auto; }
+    button { padding:6px 12px; }
+    /* slimmer date inputs (both while text and date) */
+    input.date-field { width: 13ch; }                 /* ~half the previous size */
+    input[type="date"].date-field { width: 13ch; }    /* keep width when flipped to date */
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label><input type="checkbox" id="selectAll"> Select all</label>
+    <span class="small">Tip: Sort is already by Admin Deadline, then Rep Needed-By.</span>
+    <span id="debug" class="small" style="margin-left:12px; opacity:.7;"></span>
+    <button id="commitBtn" type="button" class="right">Commit Updates</button>
+  </div>
+
+  <table id="tbl">
+    <colgroup>
+      <!-- [✓] -->                 <col style="width:40px">
+      <!-- WaxRequestID -->        <col style="width:150px">
+      <!-- SO/MO Number -->        <col style="width:110px">
+      <!-- Customer Name -->       <col style="width:170px">
+      <!-- Priority -->            <col style="width:72px">
+      <!-- Wax Print Status -->    <col style="width:150px">
+      <!-- Rep Needed-By -->       <col style="width:140px">
+      <!-- Wax Deadline (Admin) --><col style="width:140px">
+      <!-- Estimated Print Date --> <col style="width:140px">
+      <!-- Completed Print Date --> <col style="width:140px">
+      <!-- Status Notes -->         <col style="width:auto">
+      <!-- Link -->                 <col style="width:85px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>[✓]</th><th>WaxRequestID</th><th>SO/MO Number</th><th>Customer Name</th>
+        <th>Priority</th><th>Wax Print Status</th><th>Needed By (Rep)</th><th>Wax Deadline (Admin)</th>
+        <th>Estimated Print Date</th><th>Completed Print Date</th><th>Status Notes</th><th>Link</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <script>
+    // catch any runtime errors
+    window.onerror = function(msg, src, line, col, err){
+      try { google.script.run.wax__traceObj('window.onerror', {msg, src, line, col, stack: err && err.stack}); } catch(e){}
+    };
+
+    // small helper to show inline debug text
+    function setDbg(t){ var el = document.getElementById('debug'); if (el) el.textContent = t; }
+
+    // prove JS parsed
+    try { google.script.run
+      .withFailureHandler(function(e){ setDbg('trace fail: ' + (e && e.message || e)); })
+      .wax__trace('JS parsed'); 
+    } catch(e) {}
+
+    var STATUS_OPTS = [];
+    var __wax_booted = false;
+
+    function esc(x){ return String(x == null ? '' : x); }
+    function dateVal(x){ return x ? x : ''; }
+
+    // --- Date helpers (top-level so addRow() can use them) ---
+    function toISO(val){
+      if (!val) return '';
+      // Date object → ISO (YYYY-MM-DD)
+      if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val)) {
+        const y = val.getFullYear();
+        const m = String(val.getMonth()+1).padStart(2,'0');
+        const d = String(val.getDate()).padStart(2,'0');
+        return `${y}-${m}-${d}`;
+      }
+      // Normalize string: tolerate NBSP, separators / . -, and 2-digit years
+      const s = String(val).replace(/\u00A0/g,' ').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;  // already ISO
+      const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+      if (m) {
+        const y  = m[3].length === 2 ? ('20' + m[3]) : m[3];
+        const mm = m[1].padStart(2,'0');
+        const dd = m[2].padStart(2,'0');
+        return `${y}-${mm}-${dd}`;
+      }
+      return ''; // unrecognized → blank (safe for <input type="date">
+    }
+
+    function toMDY(iso){
+      const s = String(iso || '').trim();
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return s;
+      return `${m[2]}/${m[3]}/${m[1]}`;
+    }
+
+    function addRow(r){
+      try {
+        // If this ID already exists in the table, skip (prevents any accidental duplicates)
+        if (document.querySelector('#tbody tr[data-id="'+ String(r.id) +'"]')) return;
+        if (!document.querySelector('#tbody tr')) {
+          try { google.script.run.wax__traceObj('first row to render', r); } catch(e){}
+        }
+        const tr = document.createElement('tr');
+        tr.dataset.id = r.id;
+
+         const sel = document.createElement('select');
+         const ph = document.createElement('option');
+         ph.value = ''; ph.textContent = 'Select...';
+         sel.appendChild(ph);
+         // Seed options
+         (STATUS_OPTS || []).forEach(o => {
+           const opt = document.createElement('option');
+           opt.value = o; opt.textContent = o;
+           sel.appendChild(opt);
+         });
+         // If the record has a status not in the list, inject it so it shows
+         const cur = (r.status || '').trim();
+         if (cur && !Array.from(sel.options).some(op => String(op.value).trim() === cur)) {
+           const extra = document.createElement('option');
+           extra.value = cur; extra.textContent = cur;
+           sel.appendChild(extra);
+         }
+         sel.value = cur || '';
+
+        tr.innerHTML = `
+          <td><input type="checkbox" class="ck"></td>
+          <td title="${esc(r.id)}">${esc(r.id)}</td>
+          <td title="${esc(r.so||'')}">${esc(r.so||'')}</td>
+          <td title="${esc(r.customer||'')}">${esc(r.customer||'')}</td>
+          <td title="${esc(r.priority||'')}">${esc(r.priority||'')}</td>
+          <td class="status"></td>
+          <td><input type="date" class="nr date-field" value="${toISO(dateVal(r.repNeed))}" placeholder="" disabled></td> 
+          <td><input type="date" class="ad date-field" value="${toISO(dateVal(r.adminDeadline))}" placeholder=""></td>
+          <td><input type="date" class="ep date-field" value="${toISO(dateVal(r.estPrint))}"      placeholder=""></td>
+          <td><input type="date" class="cp date-field" value="${toISO(dateVal(r.completed))}"     placeholder=""></td>
+          <td><input type="text" class="notes" value="${esc(r.notes||'')}"></td>
+          <td style="text-align:center"><a href="${esc(r.link||'#')}" target="_blank">open</a></td>
+        `;
+        tr.querySelector('td.status').appendChild(sel);
+        document.getElementById('tbody').appendChild(tr);
+
+        // ✅ Auto-check the row only when a NON-checkbox field changes.
+        //    If the change originated from the row's own checkbox, do nothing
+        tr.addEventListener('change', function (e) {
+          // If the user is toggling the row checkbox or the header checkbox, do not force-check
+          if (e && e.target && (e.target.classList.contains('ck') || e.target.id === 'selectAll')) return;
+
+          const ck = tr.querySelector('input.ck');
+          if (ck && !ck.checked) {
+            ck.checked = true;
+            if (typeof updateSelectAllState === 'function') updateSelectAllState();
+          }
+        });
+
+
+      } catch(err) {
+        try { google.script.run.wax__trace('addRow error: ' + (err && (err.stack || String(err)))); } catch(e){}
+      }
+    }
+
+    // wait for the GAS bridge (google.script.run) to exist, then call fetch
+    function waitForBridge_(tries){
+      tries = tries || 0;
+      var hasBridge = !!(window.google && google.script && google.script.run);
+      setDbg('loading…  bridge=' + (hasBridge ? 'ok' : 'missing') + ' try#' + tries);
+      if (hasBridge) {
+     // Guard so we boot once even if waitForBridge_ runs again
+     if (window.__wax_booted) return;
+     window.__wax_booted = true;
+     try { google.script.run.wax__trace('bridge ready; sending ping'); } catch(e){}
+     google.script.run
+       .withSuccessHandler(function(info){
+         try { google.script.run.wax__traceObj('ping success', info); } catch(e){}
+         setDbg('ping ok; fetching…');
+         fetchData_(); // fetch exactly once
+       })
+       .withFailureHandler(function(err){
+         try { google.script.run.wax__traceObj('ping failure', {message: (err && err.message) || String(err)}); } catch(e){}
+         setDbg('ping failed: '   ((err && err.message) || err));
+         alert('Ping failed: '   ((err && err.message) || err));
+       })
+       .wax__ping('init');
+     return;
+      }
+      if (tries > 40) { setDbg('bridge never ready'); return; }
+      setTimeout(function(){ waitForBridge_(tries + 1); }, 150);
+    }
+
+    var __wax_fetching = false;
+
+    function fetchData_(){
+      if (__wax_fetching) return;   // ignore overlap
+      __wax_fetching = true;
+
+      // clear previous render to avoid duplicates
+      const tb = document.getElementById('tbody');
+      if (tb) tb.innerHTML = '';
+
+      google.script.run
+        .withSuccessHandler(function(data){
+          __wax_fetching = false;
+          try { google.script.run.wax__traceObj('fetch success payload', {rows:(data.rows||[]).length, opts:(data.statusOptions||[]).length}); } catch(e){}
+          const list = data.rows || [];
+          const opts = data.statusOptions || [];
+          setDbg('rows: ' + list.length + ', opts: ' + opts.length);
+          STATUS_OPTS = opts;
+
+          if (!list.length) {
+            tb.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:14px;">No pending WAX requests found.</td></tr>';
+            updateSelectAllState();
+            return;
+          }
+          list.forEach(addRow);
+          enhanceDateInputs();
+          updateSelectAllState();
+        })
+        .withFailureHandler(function(err){
+          __wax_fetching = false;
+          try { google.script.run.wax__traceObj('fetch failure', {message:(err && err.message) || String(err)}); } catch(e){}
+          setDbg('fetch failed');
+          alert('Load error: ' + ((err && err.message) || err));
+        })
+        .wax_adminGetPendingData();
+    }
+
+    // Let a click on the table cell open the date picker of its child input
+    function bindCellToOpenDate_(){
+      const tbody = document.getElementById('tbody');
+      if (!tbody) return;
+
+      // Delegate clicks anywhere in date columns to their input
+      tbody.addEventListener('click', function(e){
+        const td = e.target.closest('td');
+        if (!td) return;
+        const input = td.querySelector('input.date-field');
+        if (!input) return;
+        // If they clicked the input, let native behavior run; if they clicked the cell, focus & open picker.
+        if (e.target !== input) input.focus();
+        if (typeof input.showPicker === 'function') {
+          try { input.showPicker(); } catch(_) {}
+        }
+      }, {capture:true});
+    }
+
+    // Make date inputs look blank until clicked; open native calendar immediately.
+    // Converts display (MM/DD/YYYY) <-> ISO (YYYY-MM-DD) for the date picker.
+    function enhanceDateInputs(){
+      const nodes = document.querySelectorAll('input.date-field');
+
+      // helpers – use the global converters already defined above
+      const toISO = window.toISO;
+      const toMDY = window.toMDY; // kept for completeness; not used below
+
+
+      nodes.forEach((el) => {
+        const toDate = () => { try { el.type = 'date'; } catch(_) { el.setAttribute('type','date'); } };
+        const toText = () => { try { el.type = 'text'; } catch(_) { el.setAttribute('type','text'); } };
+        const openPicker = () => {
+          if (typeof el.showPicker === 'function') {
+            requestAnimationFrame(() => { try { el.showPicker(); } catch(_){} });
+          }
+        };
+
+        // Keep ISO for <input type="date">. If a legacy MM/DD/YYYY sneaks in, normalize to ISO.
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(el.value)) el.value = toISO(el.value);
+
+        el.addEventListener('pointerdown', () => { /* ... */ });
+        const onActivate = () => { /* ... */ };
+        el.addEventListener('focus', onActivate);
+        el.addEventListener('click', onActivate);
+
+        // Commit as soon as the user picks a date (or types a valid ISO)
+        el.addEventListener('change', () => {
+          // Keep the ISO in the control (type=date expects ISO),
+          // but for safety convert any accidental MM/DD/YYYY typing to ISO.
+          if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(el.value)) el.value = toISO(el.value);
+        });
+
+        // Allow pressing Enter to commit the value & blur
+        el.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.blur();
+          }
+        });
+      });
+    }
+
+
+
+    // --- Select-all wiring (works with dynamically added rows) ---
+    function updateSelectAllState() {
+      const boxes = document.querySelectorAll('#tbody input.ck');
+      const selAll = document.getElementById('selectAll');
+      if (!boxes.length) { selAll.checked = false; selAll.indeterminate = false; return; }
+      const checked = Array.from(boxes).filter(b => b.checked).length;
+      selAll.checked = (checked === boxes.length);
+      selAll.indeterminate = (checked > 0 && checked < boxes.length);
+    }
+
+    function bindSelectAll() {
+      const selAll = document.getElementById('selectAll');
+      if (!selAll) return;
+
+      // Toggle all rows when header box changes
+      selAll.addEventListener('change', function() {
+        const boxes = document.querySelectorAll('#tbody input.ck');
+        boxes.forEach(b => { b.checked = selAll.checked; });
+        updateSelectAllState();
+      });
+
+      // Delegate row checkbox changes back to header state
+      const tbody = document.getElementById('tbody');
+      tbody.addEventListener('change', function(e){
+        if (e.target && e.target.classList && e.target.classList.contains('ck')) {
+          updateSelectAllState();
+        }
+      });
+    }
+
+    // Build updates from checked rows
+    function collectUpdates_(){
+      const updates = [];
+      document.querySelectorAll('#tbody tr').forEach(tr => {
+        const ck = tr.querySelector('input.ck');
+        if (!ck || !ck.checked) return;
+
+        updates.push({
+          id:            tr.dataset.id,
+          status:        (tr.querySelector('td.status select')?.value || '').trim(),
+          adminDeadline: (tr.querySelector('input.ad')?.value || '').trim(),
+          estPrint:      (tr.querySelector('input.ep')?.value || '').trim(),
+          completed:     (tr.querySelector('input.cp')?.value || '').trim(),
+          notes:         (tr.querySelector('input.notes')?.value || '').trim()
+        });
+      });
+      return updates;
+    }
+
+    // Bind the Commit button (direct) and add a delegated fallback with strong logging
+    function bindCommit_(){
+      const btn = document.getElementById('commitBtn');
+
+      const onCommit = function(){
+        try { setDbg('collecting…'); } catch(_) {}
+        const updates = collectUpdates_();
+
+        // Trace what's about to be sent
+        try { google.script.run.wax__traceObj('onCommit -> updates', updates); } catch(_){}
+
+        if (!updates.length) { alert('Please check at least one row to update.'); return; }
+
+        try { setDbg('committing ' + updates.length + ' row(s)…'); } catch(_){}
+
+        // Disable button to prevent double-submits
+        if (btn) btn.disabled = true;
+
+        google.script.run
+          .withSuccessHandler(function(res){
+            try { google.script.run.wax__traceObj('commit success', res); } catch(_){}
+            alert(res && res.message ? res.message : 'Updates committed.');
+            if (btn) btn.disabled = false;
+            fetchData_(); // reload fresh rows
+          })
+          .withFailureHandler(function(err){
+            try { google.script.run.wax__traceObj('commit failure', {message:(err && err.message)||String(err)}); } catch(_){}
+            alert('Commit failed: ' + ((err && err.message) || err));
+            if (btn) btn.disabled = false;
+          })
+          .wax_adminCommitFromDialog({ updates: updates });
+      };
+
+      if (btn) btn.addEventListener('click', onCommit);
+
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      // JS parsed – this line itself is a probe
+      try { google.script.run.wax__trace('DOMContentLoaded'); } catch(e){}
+      waitForBridge_(0);
+      bindSelectAll();  // wire up the Select all control
+      bindCellToOpenDate_();
+      bindCommit_();  
+      try { setDbg('ready'); } catch(_){}
+    });
+    
+  </script>
+
+</body>
+</html>

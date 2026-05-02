@@ -1,0 +1,254 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root{ --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --primary:#1f6feb; --panel:#f9fafb; --danger:#b3261e; }
+    *{box-sizing:border-box}
+    body{margin:0; font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial; color:var(--fg); background:#fff}
+    h2{margin:16px 16px 8px 16px; font-size:22px}
+    h3{margin:0 0 10px 0; font-size:14px}
+    .chips{display:flex; gap:8px; flex-wrap:wrap; margin:8px 16px}
+    .chip{display:inline-flex; gap:6px; align-items:center; padding:4px 8px; border-radius:999px; background:#fff; border:1px solid var(--line); font-weight:600}
+    .dot{width:10px; height:10px; border-radius:50%; border:1px solid #0002}
+    .wrap{padding:0 16px 16px 16px}
+    .grid{display:grid; grid-template-columns:1.15fr .85fr; gap:14px}
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px}
+    .row{display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center}
+    .muted{color:var(--muted)}
+    .dash{color:var(--muted)}
+    .divider{height:1px; background:var(--line); margin:10px -12px}
+    .quick a{color:var(--primary); text-decoration:none}
+    .quick a:hover{text-decoration:underline}
+    .btns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+    button{padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer}
+    .primary{background:var(--primary); border-color:var(--primary); color:#fff}
+    .fine{font-size:12px; color:var(--muted)}
+    .err{color:var(--danger)}
+  </style>
+</head>
+<body>
+  <h2 id="title">Client Summary</h2>
+  <div id="topErr" class="fine err" style="display:none; margin:0 16px 8px 16px;"></div>
+  <div class="chips" id="chips"></div>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="panel">
+        <h3>At a glance</h3>
+        <div class="row"><div>Appt ID</div>       <div id="f_apptId" class="dash">—</div></div>
+        <div class="row"><div>Appt Time</div>     <div id="f_apptTime" class="dash">—</div></div>
+        <div class="row"><div>Assigned Rep</div>  <div id="f_assigned" class="dash">—</div></div>
+        <div class="row"><div>Assisted Rep</div>  <div id="f_assisted" class="dash">—</div></div>
+        <div class="row"><div>SO#</div>           <div id="f_so" class="dash">—</div></div>
+        <div class="row"><div>Short Tag</div>     <div id="f_shortTag" class="dash">—</div></div>
+        <div class="row"><div>Customer</div>      <div id="f_customer" class="dash">—</div></div>
+        <div class="row"><div>Contact</div>       <div id="f_contact" class="dash">—</div></div>
+        <div class="row"><div>Next Steps</div>    <div id="f_next" class="dash">—</div></div>
+
+        <div class="divider"></div>
+        <h3>Deadlines</h3>
+        <div class="row"><div>3D Deadline</div>    <div id="f_3dDeadline" class="dash">—</div></div>
+        <div class="row"><div>Prod. Deadline</div> <div id="f_prodDeadline" class="dash">—</div></div>
+
+        <div class="divider"></div>
+        <h3>Quick links</h3>
+        <div class="row quick"><div>Odoo SO URL</div>        <div id="q_odoo"    class="dash">—</div></div>
+        <div class="row quick"><div>Client Folder</div>      <div id="q_client"  class="dash">—</div></div>
+        <div class="row quick"><div>Order Folder</div>       <div id="q_order"   class="dash">—</div></div>
+        <div class="row quick"><div>Client Status Report</div><div id="q_status" class="dash">—</div></div>
+        <div class="row quick"><div>05‑3D Folder</div>       <div id="q_3d"      class="dash">—</div></div>
+        <div class="row quick"><div>3D Revision Log</div>    <div id="q_tracker" class="dash">—</div></div>
+        <div class="row quick"><div>00‑Intake</div>          <div id="q_intake"  class="dash">—</div></div>
+        <div class="row quick"><div>Checklist</div>          <div id="q_check"   class="dash">—</div></div>
+        <div class="row quick"><div>Quotation</div>          <div id="q_quote"   class="dash">—</div></div>
+
+        <div class="divider"></div>
+        <div class="btns">
+          <button id="btnStart3d"  class="primary">Start 3D</button>
+          <button id="btnAssignSO">Assign SO</button>
+          <button id="btnRev3d">3D Revision</button>
+          <button id="btnClientSt">Client Status Update</button>
+          <button id="btnPay">Record Payment</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Design preview</h3>
+        <div id="designBrief" class="muted">Loading…</div>
+        <div class="btns"><button id="btn3dSpec">Show latest 3D spec</button></div>
+
+        <div class="divider"></div>
+        <h3>Appointment history</h3>
+        <div id="histBox" class="muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function $(sel){ return document.querySelector(sel); }
+    function el(tag, attrs, text){ var n=document.createElement(tag); attrs=attrs||{}; for(var k in attrs){ if(attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]); } if(text!=null) n.textContent=text; return n; }
+    function fit(w){ try{ google.script.host.setWidth(w||1040); setTimeout(function(){ var h=Math.max(460, Math.min(760, document.body.scrollHeight+20)); google.script.host.setHeight(h); },0);}catch(_){ } }
+    function asLink(href, label){ return href ? '<a href="'+href+'" target="_blank">'+(label||'Open')+'</a>' : '—'; }
+    function showError(msg){ var e=$('#topErr'); e.style.display='block'; e.textContent=msg; fit(); }
+    window.addEventListener('error', function(e){ showError('Client error: ' + (e && e.message ? e.message : e)); });
+
+    function applyChips(statuses, colors){
+      var root = $('#chips'); root.innerHTML = '';
+      var spec = [
+        ['salesStage','Sales Stage', colors && colors.salesStage],
+        ['convStatus','Conversion Status', colors && colors.convStatus],
+        ['customOrder','Custom Order', colors && colors.customOrder],
+        ['centerStone','Center Stone', colors && colors.centerStone]
+      ];
+      for (var i=0;i<spec.length;i++){
+        var key=spec[i][0], label=spec[i][1], cmap=spec[i][2]||{};
+        var text = (statuses && statuses[key]) ? statuses[key] : '(blank)';
+        var chip = el('span', {class:'chip'});
+        var dot  = el('span', {class:'dot'});
+        if (cmap[text]) dot.style.background = cmap[text];
+        chip.appendChild(dot);
+        chip.appendChild(el('span', {}, label + ': ' + text));
+        root.appendChild(chip);
+      }
+    }
+
+    function applyQuick(id, url){ var box=$(id); if(!box) return; box.innerHTML = url ? asLink(url) : '<span class="dash">—</span>'; }
+
+    function renderBootstrap(d){
+      if(!d || !d.ok){ showError('Failed to load summary: ' + (d && d.error ? d.error : 'Unknown error')); return; }
+
+      $('#title').textContent = 'Client Summary — ' + (d.atGlance.customer || '(No name)');
+
+      applyChips(d.statuses, d.colors);
+
+      $('#f_apptId').textContent   = d.atGlance.apptId || '—';
+      $('#f_apptTime').textContent = d.atGlance.apptTime || '—';
+      $('#f_assigned').textContent = d.atGlance.assignedRep || '—';
+      $('#f_assisted').textContent = d.atGlance.assistedRep || '—';
+      $('#f_so').textContent       = d.atGlance.so || '—';
+      $('#f_shortTag').textContent = d.atGlance.shortTag || '—';
+      $('#f_customer').textContent = d.atGlance.customer || '—';
+      var contact = [];
+      if (d.atGlance.emailLower) contact.push(d.atGlance.emailLower);
+      if (d.atGlance.phoneNorm) contact.push(d.atGlance.phoneNorm);
+      $('#f_contact').textContent  = contact.length ? contact.join(' | ') : '—';
+      $('#f_next').textContent     = d.atGlance.nextSteps || '—';
+      var dl = d.deadlines || {};
+      $('#f_3dDeadline').textContent  = dl.d3d  || '—';
+      $('#f_prodDeadline').textContent = dl.prod || '—';
+
+      applyQuick('#q_odoo',    d.links.odooSO);
+      applyQuick('#q_client',  d.links.clientFolder);
+      applyQuick('#q_order',   d.links.orderFolder);
+      applyQuick('#q_status',  d.links.statusReport);
+      applyQuick('#q_3d',      d.links.folder3d);
+      applyQuick('#q_tracker', d.links.tracker3d);
+      applyQuick('#q_intake',  d.links.intake00);
+      applyQuick('#q_check',   d.links.checklist);
+      applyQuick('#q_quote',   d.links.quotation);
+
+      // Wire footer actions to your existing functions
+      $('#btnStart3d').onclick  = function(){ google.script.run.openStart3D(); };
+      $('#btnAssignSO').onclick = function(){ google.script.run.openAssignSO(); };
+      $('#btnRev3d').onclick    = function(){ google.script.run.open3DRevision(); };
+      $('#btnClientSt').onclick = function(){ google.script.run.csu_openClientStatus_(); };
+      $('#btnPay').onclick      = function(){ google.script.run.openRecordPayment(); };
+
+      // 3D spec (lazy)
+      $('#btn3dSpec').onclick = function(){
+        var btn=this; btn.disabled=true;
+        google.script.run
+          .withSuccessHandler(function(res){
+            if (res && res.ok){
+              var html=[];
+              if (res.latest && (res.latest.html || res.latest.revNo || res.latest.when || res.latest.who)){
+                var meta = [];
+                if (res.latest.revNo) meta.push('Rev ' + res.latest.revNo);
+                if (res.latest.when)  meta.push(res.latest.when);
+                if (res.latest.who)   meta.push(res.latest.who);
+                if (meta.length) html.push('<div><b>Latest 3D spec</b> — ' + meta.join(' · ') + '</div>');
+                if (res.latest.html) html.push(res.latest.html);
+              }
+              if (res.trackerUrl) html.push('<div>Revision Log: ' + asLink(res.trackerUrl) + '</div>');
+              if (res.folderUrl)  html.push('<div>05‑3D Folder: ' + asLink(res.folderUrl) + '</div>');
+              if (res.info)       html.push('<div class="fine">'+res.info+'</div>');
+              $('#designBrief').innerHTML = html.join('');
+            } else {
+              $('#designBrief').innerHTML = '<span class="err">Could not fetch 3D spec.</span>';
+            }
+            fit();
+          })
+          .withFailureHandler(function(err){
+            $('#designBrief').innerHTML = '<span class="err">Error: ' + (err && err.message ? err.message : err) + '</span>';
+            fit();
+          })
+          .csu_last3DSnapshot();
+      };
+
+
+      // History (lazy)
+      google.script.run
+        .withSuccessHandler(renderHistory)
+        .withFailureHandler(function(err){
+          $('#histBox').innerHTML = '<span class="err">Failed to load history: ' + (err && err.message ? err.message : err) + '</span>';
+          fit();
+        })
+        .csu_apptHistory();
+
+      fit();
+    }
+
+    function renderHistory(payload){
+      var box = $('#histBox');
+      if (!payload || !payload.ok){ box.innerHTML = '<span class="err">No history available.</span>'; fit(); return; }
+      var items = payload.items || [];
+      if (!items.length){ box.textContent = 'No prior appointments found for this contact.'; fit(); return; }
+
+      var frag = document.createDocumentFragment();
+      for (var i=0;i<items.length;i++){
+        var it = items[i];
+        var row = el('div', { class:'fine' });
+        row.innerHTML =
+          '<div><b>' + (it.time || '(no time)') + '</b> — ' +
+          (it.apptId ? ('APPT_ID ' + it.apptId + ' · ') : '') +
+          (it.brand ? it.brand + ' · ' : '') +
+          (it.so ? ('SO ' + it.so + ' · ') : '') +
+          '<a href="'+it.link+'" target="_blank">Open</a></div>' +
+          '<div>' + [
+            it.statuses && it.statuses.salesStage,
+            it.statuses && it.statuses.convStatus,
+            it.statuses && it.statuses.customOrder,
+            it.statuses && it.statuses.centerStone
+          ].filter(function(x){return !!x;}).join(' · ') + '</div>';
+        frag.appendChild(row);
+        frag.appendChild(el('div', { class:'divider' }));
+      }
+      box.innerHTML = '';
+      box.appendChild(frag);
+      fit();
+    }
+
+    function bootstrap(){
+      // Optional sanity ping (kept here to help diagnose in the future)
+      google.script.run
+        .withSuccessHandler(function(){ /* ok */ })
+        .withFailureHandler(function(err){ showError('Ping failed: ' + (err && err.message ? err.message : err)); })
+        .csu_ping();
+
+      google.script.run
+        .withSuccessHandler(renderBootstrap)
+        .withFailureHandler(function(err){
+          showError('Failed to load summary: ' + (err && err.message ? err.message : err));
+        })
+        .csu_bootstrap();
+      fit();
+    }
+
+    document.addEventListener('DOMContentLoaded', bootstrap);
+  })();
+  </script>
+</body>
+</html>

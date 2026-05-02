@@ -1,0 +1,262 @@
+<!doctype html>
+<html>
+<head>
+ <base target="_top">
+ <meta charset="utf-8">
+ <title>Payment Summary</title>
+ <style>
+   .title { margin-bottom: 0px;}
+   :root{ --ink:#0f172a; --muted:#64748b; --line:#e5e7eb; --brand:#1f6feb; }
+   body{ margin:16px; font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink);}
+   h2{ margin:0 0 8px; }
+   .sub{ color:#555; margin:0 0 12px; }
+   fieldset{ border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+   legend{ padding:0 6px; font-weight:700; }
+   .grid2{ display:grid; grid-template-columns: 320px 1fr; gap:14px; align-items:start; }
+   .kv{ display:grid; grid-template-columns: 150px 1fr; gap:6px 10px; }
+   .muted{ color:var(--muted); font-size:12px;}
+   .btns{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+   button{ padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; cursor:pointer; }
+   .primary{ background:var(--brand); color:#fff; border-color:transparent; }
+   table{ width:100%; border-collapse:collapse; }
+   th{ position:sticky; top:0; background:#fff; border-bottom:1px solid #ddd; text-align:left; padding:6px 8px; }
+   td{ border-bottom:1px solid #f1f1f1; padding:6px 8px; vertical-align:top; }
+   details{ background:#fafafa; border:1px solid #eee; border-radius:8px; padding:8px; }
+   .chip{ display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; background:#fafafa; margin-right:6px; }
+   .doc-toolbar{
+     display:flex; justify-content:space-between; align-items:center;
+     gap:12px; margin:-4px 0 8px 0;
+   }
+   .doc-toolbar .left, .doc-toolbar .right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+
+ </style>
+ <script>
+   function fitDialogToContent(w){
+     try{ google.script.host.setWidth(w||1040); }catch(e){}
+     requestAnimationFrame(()=> {
+       const h = Math.max(560, Math.min(920, document.body.scrollHeight + 24));
+       try{ google.script.host.setHeight(h); }catch(e){}
+     });
+   }
+   function html(s){ return String(s==null?'':s).replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+   function $id(id){ return document.getElementById(id); }
+   function fmt$(n){ return '$' + (isFinite(n)? Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '0.00'); }
+   function num(v){ const n = parseFloat(String(v||'').replace(/[^\d.\-]/g,'')); return isFinite(n)?n:0; }
+
+
+   let __state = { entries:[], totals:{}, prefill:null, filter:'ALL', sort:'ASC' };
+
+
+   function renderPrefill(p){
+     const kv = [
+       ['Anchor', p.anchorType || (p.brand ? 'SO' : 'APPT')],
+       ['Brand', p.brand || ''],
+       ['Customer', p.customerName || p.Customer || ''],
+       ['SO#', p.soNumber || p.SO || p['SO#'] || ''],
+       ['Order Total', p.orderTotal ? fmt$(p.orderTotal) : ''],
+       ['Paid-To-Date', p.paidToDate ? fmt$(p.paidToDate) : ''],
+       ['Remaining (OT − PTD)', fmt$(Math.max(0, num(p.orderTotal)-num(p.paidToDate)))],
+       ['Payments Folder', p.paymentsFolderURL ? `<a target="_blank" href="${html(p.paymentsFolderURL)}">Open</a>` : '']
+     ];
+     $id('prefillBox').innerHTML = '<div class="kv">' + kv.map(([k,v])=>`<div><b>${html(k)}</b></div><div>${v||''}</div>`).join('') + '</div>';
+   }
+
+
+   function applyFilterAndSort(){
+     let rows = __state.entries.slice();
+     if (__state.filter === 'INV') rows = rows.filter(e=>/invoice/i.test(e.docType));
+     if (__state.filter === 'RCPT') rows = rows.filter(e=>/receipt/i.test(e.docType));
+     rows.sort((a,b)=> __state.sort==='ASC'
+       ? String(a.when).localeCompare(String(b.when))
+       : String(b.when).localeCompare(String(a.when)));
+     return rows;
+   }
+
+
+   function renderEntries(){
+     const rows = applyFilterAndSort();
+     // Map docNumber → docUrl for inline linking
+    const docUrlByNo = {};
+    __state.entries.forEach(e => { if (e.docNumber && e.docUrl) docUrlByNo[e.docNumber] = e.docUrl; });
+
+     const wrap = $id('entriesWrap');
+     if (!rows.length){ wrap.innerHTML = '<div class="muted">No documents for this anchor yet.</div>'; return; }
+     const head = ['Date/Time','Doc Type','Status','Role','Doc #','Lines Subtotal','Payment','Method','Reference','Links','PDF','Doc','Lines'];
+     const thead = '<thead><tr>'+head.map(h=>`<th>${html(h)}</th>`).join('')+'</tr></thead>';
+     const trs = rows.map(e=>{
+       const lines = (e.lines||[]);
+       const linesHtml = lines.length
+         ? `<details><summary>${lines.length} line(s)</summary><div style="margin-top:6px;">
+              <table style="width:100%; border-collapse:collapse;">
+                <thead><tr><th>Description</th><th style="width:70px;text-align:right;">Qty</th><th style="width:110px;text-align:right;">Amount</th></tr></thead>
+                <tbody>${
+                  lines.map(L=>`<tr><td>${html(L.desc||'')}</td><td style="text-align:right;">${html(L.qty||1)}</td><td style="text-align:right;">${fmt$(L.amt||0)}</td></tr>`).join('')
+                }</tbody>
+              </table>
+            </div></details>`
+         : '<span class="muted">—</span>';
+        const statusHtml = e.docStatus ? `<span class="chip">${html(e.docStatus)}</span>` : '<span class="muted">—</span>';
+        const roleHtml   = e.docRole   ? `<span class="chip">${html(e.docRole)}</span>`   : '<span class="muted">—</span>';
+
+        // Build relation links
+        const relParts = [];
+        if (e.supersedes) relParts.push('Replaces: ' + html(e.supersedes));
+        if (e.appliesTo) {
+          const at = String(e.appliesTo);
+          const link = docUrlByNo[at] ? `<a target="_blank" href="${html(docUrlByNo[at])}">${html(at)}</a>` : html(at);
+          relParts.push('Applies to: ' + link);
+        }
+        const relHtml = relParts.length ? relParts.join('<br>') : '<span class="muted">—</span>';
+
+       const pdf = e.pdfUrl ? `<a target="_blank" href="${html(e.pdfUrl)}">Open</a>` : '—';
+       const doc = e.docUrl ? `<a target="_blank" href="${html(e.docUrl)}">Open</a>` : '—';
+       const docNo = e.docNumber || '—';
+        return `<tr>
+          <td>${html(e.dateDisplay||'')}</td>
+          <td>${html(e.docType||'')}</td>
+          <td>${statusHtml}</td>
+          <td>${roleHtml}</td>
+          <td>${html(docNo)}</td>
+          <td style="text-align:right;">${fmt$(e.linesSubtotal||0)}</td>
+          <td style="text-align:right;">${e.payment?fmt$(e.payment):'—'}</td>
+          <td>${html(e.method||'')}</td>
+          <td>${html(e.reference||'')}</td>
+          <td>${relHtml}</td>
+          <td>${pdf}</td>
+          <td>${doc}</td>
+          <td>${linesHtml}</td>
+        </tr>`;
+     }).join('');
+     wrap.innerHTML = `<table>${thead}<tbody>${trs}</tbody></table>`;
+   }
+
+
+   function renderTotals(){
+     const t = __state.totals || {};
+     const byMethod = t.byMethod || {};
+     const chips = Object.keys(byMethod).sort().map(k=>`<span class="chip">${html(k)}: ${fmt$(byMethod[k])}</span>`).join(' ');
+     $id('totalsBox').innerHTML =
+       `<div class="kv">
+          <div><b>Invoice Lines Subtotal</b></div><div>${fmt$(t.invoicesLinesSubtotal||0)}</div>
+          <div><b>Total Payments</b></div><div>${fmt$(t.totalPayments||0)}</div>
+          <div><b>Net (Lines − Payments)</b></div><div>${fmt$(t.netLinesMinusPayments||0)}</div>
+        </div>
+        <div style="margin-top:8px;"><b>Payments by Method:</b> ${chips || '<span class="muted">—</span>'}</div>`;
+   }
+
+
+   function onFilter(btn, kind){
+     __state.filter = kind; renderEntries(); fitDialogToContent();
+     document.querySelectorAll('[data-filter]').forEach(b=>b.disabled = (b===btn));
+   }
+   function onSort(btn, dir){
+     __state.sort = dir; renderEntries(); fitDialogToContent();
+     document.querySelectorAll('[data-sort]').forEach(b=>b.disabled = (b===btn));
+   }
+
+
+   function boot(){
+     $id('entriesWrap').innerHTML = '<div class="muted">Loading…</div>';
+     google.script.run
+       .withSuccessHandler(function(res){
+         if (!res || !res.ok) {
+           $id('entriesWrap').innerHTML = '<div class="muted">Server error: ' + html(res && res.error || 'Unknown') + '</div>';
+           return;
+         }
+         __state.prefill = res.prefill || null;
+         __state.entries = (res.history && res.history.entries) || [];
+         __state.totals  = (res.history && res.history.totals) || {};
+         renderPrefill(__state.prefill || {});
+         renderTotals();
+         renderEntries();
+         fitDialogToContent(1040);
+       })
+       .withFailureHandler(function(err){
+         $id('entriesWrap').innerHTML = '<div class="muted">Server error: ' + html(err && err.message || err) + '</div>';
+       })
+       .ps_init();
+   }
+   document.addEventListener('DOMContentLoaded', function(){
+     fitDialogToContent(1040);
+     boot();
+   });
+   function exportPdf(){
+     const btn = document.getElementById('btnExport');
+     if (!btn) return;
+     btn.disabled = true; btn.textContent = 'Exporting…';
+     document.getElementById('exportMsg').textContent = '';
+
+
+     google.script.run
+       .withSuccessHandler(function(res){
+         btn.disabled = false; btn.textContent = 'Export PDF Report';
+         if (!res || !res.ok) {
+           document.getElementById('exportMsg').textContent = 'Export failed: ' + (res && res.error || 'Unknown');
+           return;
+         }
+         document.getElementById('exportMsg').innerHTML =
+           `<a target="_blank" href="${String(res.url).replace(/&/g,'&amp;').replace(/</g,'&lt;')}">Open PDF</a>`;
+         try { window.open(res.url, '_blank'); } catch(_) {}
+       })
+       .withFailureHandler(function(err){
+         btn.disabled = false; btn.textContent = 'Export PDF Report';
+         document.getElementById('exportMsg').textContent = 'Error: ' + (err && err.message || err);
+       })
+       .ps_exportPdf();
+   }
+
+
+ </script>
+</head>
+<body>
+ <div class="sub">Read‑only view of all Invoices & Receipts for the selected customer/anchor.</div>
+
+
+ <div class="grid2">
+   <fieldset>
+     <legend>Prefill</legend>
+     <div id="prefillBox"><div class="muted">Loading…</div></div>
+     <div style="margin-top:10px;" class="btns">
+       <button id="btnExport" type="button" onclick="exportPdf()">Export PDF Report</button>
+       <span id="exportMsg" class="muted"></span>
+       <button type="button" onclick="google.script.host.close()">Close</button>
+     </div>
+   </fieldset>
+
+
+   <fieldset>
+     <legend>Totals</legend>
+     <div id="totalsBox"><div class="muted">Loading…</div></div>
+   </fieldset>
+ </div>
+
+
+ <fieldset style="margin-top:14px;">
+   <legend>Documents</legend>
+
+
+   <!-- NEW toolbar just under the legend -->
+   <div class="doc-toolbar">
+     <div class="left">
+       <button data-filter type="button" onclick="onFilter(this,'ALL')">All</button>
+       <button data-filter type="button" onclick="onFilter(this,'INV')">Invoices</button>
+       <button data-filter type="button" onclick="onFilter(this,'RCPT')">Receipts</button>
+     </div>
+     <div class="right">
+       <span class="muted">Sort:</span>
+       <button data-sort type="button" onclick="onSort(this,'ASC')">Oldest→Newest</button>
+       <button data-sort type="button" onclick="onSort(this,'DESC')">Newest→Oldest</button>
+     </div>
+   </div>
+
+
+   <div id="entriesWrap"><div class="muted">Loading…</div></div>
+ </fieldset>
+</body>
+</html>
+
+
+
+
+

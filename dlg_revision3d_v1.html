@@ -1,0 +1,474 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root{
+      --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --primary:#1f6feb;
+      --warn-bg:#fff7ed; --warn-bd:#fdba74; --danger:#b3261e;
+      --bg:#ffffff; --panel:#f9fafb;
+    }
+    html,body{height:auto}
+    body{font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial; color:var(--fg); margin:0; background:var(--bg);}
+    .wrap{padding:14px 16px; max-width:720px;}
+    h2{margin:0 0 10px 0; font-size:16px; font-weight:700}
+    h3{margin:0 0 10px 0; font-size:15px; font-weight:700}
+    label{display:block; margin:8px 0 4px; font-weight:600}
+    input,select,textarea{width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:6px; background:#fff}
+    textarea{resize:vertical}
+    .row{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
+    .btns{margin-top:14px; display:flex; gap:8px; justify-content:flex-end}
+    button{padding:8px 12px; border:0; border-radius:6px; cursor:pointer}
+    .primary{background:var(--primary); color:#fff}
+    .ghost{background:#fff; border:1px solid var(--line)}
+    .muted{color:var(--muted)}
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px}
+    .warn{background:var(--warn-bg); border:1px solid var(--warn-bd)}
+    .danger{color:var(--danger)}
+    .grid2{display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center}
+    .inline-check{display:flex; align-items:center; gap:8px}
+    .checkline{display:inline-flex; align-items:center; gap:8px; margin:8px 0 6px 0; padding:0}
+    .checkline span{white-space:nowrap}
+    .help{font-size:12px; color:var(--muted); margin-top:-6px}
+    .err{font-size:12px; color:var(--danger); display:none}
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%); bottom:12px;
+      background:#111827; color:#fff; padding:8px 12px; border-radius:6px; opacity:0; pointer-events:none; transition:opacity .18s;
+    }
+    .toast.show{opacity:1}
+    .topwarn{margin:-4px 0 10px 0; padding:10px; border-radius:8px}
+    .copy-box{white-space:pre-wrap; background:#fff; border:1px dashed var(--line); padding:8px; border-radius:8px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .xDisabled{opacity:.55; pointer-events:none}
+
+    /* Softer gray-out for disabled inputs while prefill runs */
+    input:disabled, select:disabled, textarea:disabled { background:#f3f4f6; color:#6b7280; }
+  </style>
+</head>
+<body>
+<div class="wrap" id="root">
+
+  <!-- Warnings/Guidance -->
+  <div id="topWarn" class="topwarn warn" style="display:none"></div>
+
+  <div class="panel" id="step1">
+    <h3>Step 1 — Design Details</h3>
+    <div class="muted" style="margin-bottom:8px">
+      Mode is fixed to <b>3D Revision Request</b>.
+    </div>
+
+    <!-- Loading banner shown during prefill -->
+    <div id="prefillMsg" class="topwarn" style="display:none; background:#eef2ff; border:1px solid #93c5fd">
+      Auto-prefilling from the latest <b>3D Specifications</b> in the 3D Tracker Log…
+    </div>
+
+    <div id="ctxBox" class="panel" style="margin-bottom:10px; display:none"></div>
+
+    <div class="row">
+      <div>
+        <label>Accent Diamond Type</label>
+        <select id="accType" disabled>
+          <option value="" selected></option>
+          <option>LAB</option><option>NATURAL</option>
+        </select>
+      </div>
+      <div>
+        <label>Metal</label>
+        <input id="metal" placeholder="e.g., 14K YG / 18K WG / Pt950" disabled>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Ring Style</label>
+        <input id="ringStyle" placeholder="e.g., Solitaire / Pavé / Cathedral" disabled>
+      </div>
+      <div>
+        <label>US Size</label>
+        <input id="size" placeholder="e.g., 6.25" disabled>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Band Width (mm)</label>
+        <input id="band" placeholder="e.g., 1.8" disabled>
+      </div>
+      <div></div>
+    </div>
+
+    <label>Design Notes (3 bullets)</label>
+    <textarea id="notes" rows="4" placeholder="- note 1&#10;- note 2&#10;- note 3" disabled></textarea>
+
+    <hr style="margin:12px 0">
+
+    <h3 style="margin-top:0">Center Stone</h3>
+    <div class="row">
+      <div>
+        <label>Diamond Type</label>
+        <select id="centerType" disabled>
+          <option value="" selected></option>
+          <option>LAB</option><option>NATURAL</option>
+        </select>
+      </div>
+      <div>
+        <label>Shape</label>
+        <input id="shape" placeholder="e.g., Oval" disabled>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Diamond Dimension</label>
+        <input id="dim" placeholder="e.g., 10.3 x 7.4" disabled>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="btns">
+      <button type="button" class="ghost" onclick="google.script.host.close()">Cancel</button>
+      <button id="nextBtn" type="button" class="primary xDisabled" disabled>Loading…</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  // Helpers
+  const $ = sel => document.querySelector(sel);
+  const on = (el, ev, fn) => { if (el) el.addEventListener(ev, fn); };
+  const val = sel => { const e=$(sel); return e ? (e.value||'').trim() : ''; };
+  const setv = (sel, v) => { const e=$(sel); if (e) e.value = v==null?'':String(v); };
+
+  // Dialog fit + throttler (optimization only; same visual result)
+  const fitDialog = (w=650)=>{ try{
+    google.script.host.setWidth(w);
+    requestAnimationFrame(()=>{
+      const h = Math.max(360, Math.min(720, document.body.scrollHeight+16));
+      google.script.host.setHeight(h);
+    });
+  }catch(_){/* ignore */}};
+  const scheduleFit = (()=>{ let t=0; return ()=>{ if (t) return; t=setTimeout(()=>{ t=0; fitDialog(); }, 60); }; })();
+
+  const toast = txt => {
+    const t=$('#toast'); t.textContent=txt; t.classList.add('show');
+    scheduleFit(); setTimeout(()=>t.classList.remove('show'),1600);
+  };
+
+  const titleCase = s => String(s||'').toLowerCase().replace(/\b[\p{L}’']+/gu, w => w[0].toUpperCase()+w.slice(1));
+  const truncate = (s,n)=>{s=String(s||''); return s.length<=n?s:s.slice(0,n).replace(/\s+\S*$/,'').trim();};
+
+  // Toggle Step‑1 enabled/disabled state
+  function setStep1Enabled(on){
+    const ids = ['accType','metal','ringStyle','size','band','notes','centerType','shape','dim','nextBtn'];
+    ids.forEach(id=>{
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.disabled = !on;
+      if (id === 'nextBtn'){
+        if (on){
+          el.classList.remove('xDisabled');
+          if (/loading/i.test(el.textContent)) el.textContent='Next';
+        } else {
+          el.classList.add('xDisabled');
+          el.textContent='Loading…';
+        }
+      }
+    });
+  }
+  function setPrefillBanner(show, msg){
+    const b = document.getElementById('prefillMsg');
+    if (!b) return;
+    if (msg) b.innerHTML = msg;
+    b.style.display = show ? 'block' : 'none';
+  }
+
+  // State snapshot for Step 2 / Step 3 navigation
+  let bootstrap = null;
+
+  // ---------- Step 2 (Copy into Odoo) ----------
+  function renderStep2(form){
+    google.script.run
+      .withSuccessHandler(function(paste){
+        $('#root').innerHTML = `
+          <div class="panel">
+            <h3>Step 2 — Copy into Odoo</h3>
+            <div class="muted" style="margin-bottom:8px">
+              Copy the text below into the Odoo Sales Order <b>Description / Design details</b> field,
+              then return to submit this revision.
+            </div>
+            <div class="copy-box" id="copyBox"></div>
+            <div class="btns">
+              <button type="button" class="ghost" id="backBtn">Back</button>
+              <button type="button" class="ghost" id="copyBtn">Copy</button>
+              <button type="button" class="primary" id="nextReview">Next: Review Summary</button>
+            </div>
+          </div>
+        `;
+        $('#copyBox').textContent = paste;
+
+        on($('#copyBtn'),'click', async ()=>{
+          try{ await navigator.clipboard.writeText(paste); }
+          catch(e){
+            const ta=document.createElement('textarea'); ta.value=paste; document.body.appendChild(ta);
+            ta.select(); document.execCommand('copy'); ta.remove();
+          }
+          toast('Copied to clipboard.');
+        });
+        on($('#backBtn'),'click', ()=> history.back());
+        on($('#nextReview'),'click',  ()=> renderStep2Compare(form));
+        scheduleFit();
+      })
+      .previewRevOdooPaste(form);
+  }
+
+  // --- Step 2.5 — Review Summary (Previous vs Current) ---
+  function renderStep2Compare(form){
+    // If no previous form exists, keep behavior identical and jump straight to Submit.
+    const prev = (bootstrap && bootstrap.lastForm) ? bootstrap.lastForm : null;
+    if (!prev){
+      renderStep3Submit(form);
+      return;
+    }
+
+    const fields = [
+      ['Accent Diamond Type','AccentDiamondType'],
+      ['Ring Style','RingStyle'],
+      ['Metal','Metal'],
+      ['US Size','USSize'],
+      ['Band Width (mm)','BandWidthMM'],
+      ['Design Notes','DesignNotes'],
+      ['Center Type','CenterDiamondType'],
+      ['Shape','Shape'],
+      ['Diamond Dimension','DiamondDimension']
+    ];
+
+    const rowHtml = (label, key)=>{
+      const p = (prev[key] || '').toString().trim();
+      const c = (form[key] || '').toString().trim();
+      const changed = p !== c;
+      return `
+        <tr>
+          <th>${label}</th>
+          <td class="${changed?'diff':''}">${p || '<span class="muted">—</span>'}</td>
+          <td class="${changed?'diff':''}">${c || '<span class="muted">—</span>'}</td>
+        </tr>
+      `;
+    };
+
+    $('#root').innerHTML = `
+      <div class="panel">
+        <h3>Step 3 — Review Summary</h3>
+        <div class="muted" style="margin-bottom:8px">
+          Compare the <b>Previous</b> 3D Specifications (from the last tracker entry) with your <b>Current</b> inputs.
+          Differences are highlighted.
+        </div>
+        <div class="panel" style="padding:0">
+          <table style="width:100%; border-collapse:collapse; font-size:13px">
+            <thead>
+              <tr style="background:#f3f4f6">
+                <th style="text-align:left; padding:8px; border-bottom:1px solid var(--line); width:34%">Field</th>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid var(--line); width:33%">Previous</th>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid var(--line); width:33%">Current</th>
+              </tr>
+            </thead>
+            <tbody id="cmpBody">
+              ${fields.map(([label,key])=>rowHtml(label,key)).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="btns">
+          <button type="button" class="ghost" id="backToStep2">Back</button>
+          <button type="button" class="primary" id="goSubmit">Next: Submit Revision</button>
+        </div>
+      </div>
+    `;
+
+    // lightweight diff styling (inline once)
+    const style = document.createElement('style');
+    style.textContent = `
+      #cmpBody th{padding:8px;border-bottom:1px solid var(--line);background:#fff}
+      #cmpBody td{padding:8px;border-bottom:1px solid var(--line);background:#fff}
+      #cmpBody td.diff{background:#fffbeb} /* soft amber for changes */
+    `;
+    document.head.appendChild(style);
+
+    on($('#backToStep2'),'click', ()=> history.back());        // returns to Step 2 (Copy text)
+    on($('#goSubmit'),'click',   ()=> renderStep3Submit(form)); // continue to Submit
+
+    scheduleFit();
+  }
+
+  // ---------- Step 3 (Submit Revision) ----------
+  function renderStep3Submit(form){
+    const ctx = bootstrap || {};
+    const brand = (ctx.brand||'');
+    const so    = (ctx.so||'');
+    const odoo  = (ctx.odooUrl||'');
+    $('#root').innerHTML = `
+      <div class="panel">
+        <h3>Step 3 — Submit Revision</h3>
+
+        <div class="panel" style="margin-bottom:10px">
+          ${brand && so ? `<div><b>Brand / SO:</b> ${brand} · ${so}</div>` : ''}
+          ${odoo ? `<div><b>Odoo SO URL:</b> <a href="${odoo}" target="_blank">Open</a></div>` : ''}
+          ${ctx.masterLink ? `<div style="margin-top:6px;"><b>100_Master row:</b> <a href="${ctx.masterLink}" target="_blank">Open</a></div>` : ''}
+        </div>
+
+        <div id="matchWarn" class="topwarn warn" style="display:none"></div>
+        <label class="checkline">
+          <input id="chkMatch" type="checkbox"><span>This matches the customer and SO</span>
+        </label>
+
+        <div class="btns">
+          <button type="button" class="ghost" id="back2">Back</button>
+          <button type="button" class="primary" id="btnSubmit">Submit</button>
+        </div>
+      </div>
+    `;
+
+    const btnSubmit = $('#btnSubmit'), back2 = $('#back2'), chk = $('#chkMatch'), matchWarn = $('#matchWarn');
+    const setSubmitting = on => {
+      if (on){ btnSubmit.disabled=true; btnSubmit.classList.add('xDisabled'); btnSubmit.textContent='Submitting…'; back2.disabled=true; chk.disabled=true; }
+      else {  btnSubmit.disabled=false; btnSubmit.classList.remove('xDisabled'); btnSubmit.textContent='Submit'; back2.disabled=false; chk.disabled=false; }
+    };
+    const needConfirm = ()=>{
+      matchWarn.innerHTML = `<b>Confirmation needed:</b> Please check “This matches the customer and SO”.`;
+      matchWarn.style.display = 'block'; scheduleFit();
+    };
+
+    on(back2,'click', ()=> history.back());
+    on(chk,'change', ()=>{ if (chk.checked){ matchWarn.style.display='none'; } });
+
+    on(btnSubmit,'click', ()=>{
+      if (!chk.checked){ needConfirm(); return; }
+      setSubmitting(true);
+      const payload = { form: form };
+
+      google.script.run
+        .withSuccessHandler(function(res){
+          if (res && res.ok && res.summary){
+            const s = res.summary || {};
+            $('#root').innerHTML = `
+              <div class="panel">
+                <h3>✅ Revision logged</h3>
+                ${(s.brand && s.so) ? `<div><b>Brand / SO:</b> ${s.brand} · ${s.so}</div>` : ''}
+                ${s.masterLink ? `<div style="margin-top:6px;"><b>100_Master row:</b> <a href="${s.masterLink}" target="_blank">Open</a></div>` : '' }
+                ${s.trackerUrl ? `<div><b>3D Revision Log:</b> <a href="${s.trackerUrl}" target="_blank">Open</a></div>` : '' }
+                ${s.orderFolderLink ? `<div><b>Order Folder:</b> <a href="${s.orderFolderLink}" target="_blank">Open</a></div>` : '' }
+                ${s.threeDFolderLink ? `<div><b>05-3D Folder:</b> <a href="${s.threeDFolderLink}" target="_blank">Open</a></div>` : '' }
+                <div class="btns" style="margin-top:12px">
+                  <button type="button" class="primary" onclick="google.script.host.close()">Close</button>
+                </div>
+              </div>
+            `;
+            scheduleFit();
+          } else {
+            setSubmitting(false);
+            alert('Submitted, but no summary returned.');
+            google.script.host.close();
+          }
+        })
+        .withFailureHandler(function(err){
+          setSubmitting(false);
+          alert('Failed: ' + (err && err.message ? err.message : err));
+        })
+        .submit3DRevision(payload);
+    });
+
+    scheduleFit();
+  }
+
+  // ---------- Step 1 (prefill + navigation) ----------
+  document.addEventListener('DOMContentLoaded', function(){
+    setPrefillBanner(true, 'Auto-prefilling from the latest <b>3D Specifications</b> in the 3D Tracker Log…');
+    setStep1Enabled(false);
+
+    google.script.run
+      .withSuccessHandler(function(info){
+        bootstrap = info || {};
+        const warn = $('#topWarn');
+        const ctx  = $('#ctxBox');
+
+        // Show context and links (Master/Orders/Tracker)
+        const bits = [];
+        if (bootstrap.customer) bits.push(`<div><b>Customer:</b> ${bootstrap.customer}</div>`);
+        if (bootstrap.email || bootstrap.phone) bits.push(`<div><b>Contact:</b> ${(bootstrap.email||'')}${(bootstrap.email&&bootstrap.phone?' | ':'')+(bootstrap.phone||'')}</div>`);
+        if (bootstrap.masterLink) bits.push(`<div style="margin-top:6px;"><a href="${bootstrap.masterLink}" target="_blank">Open 100_Master row</a></div>`);
+        if (bootstrap.trackerUrl) bits.push(`<div><a href="${bootstrap.trackerUrl}" target="_blank">Open 3D Revision Log</a></div>`);
+        if (bits.length){
+          ctx.innerHTML = bits.join('');
+          ctx.style.display = 'block';
+        }
+
+        // Warn if SO missing
+        if (!bootstrap.hasSO){
+          warn.innerHTML =
+            `<div><b>SO# not linked for this row.</b> Please use <b>Assign SO</b> first.</div>
+             <div class="btns" style="justify-content:flex-start; margin-top:8px">
+               <button class="primary" id="btnAssignSO">Assign SO#</button>
+             </div>`;
+          warn.style.display = 'block';
+          on($('#btnAssignSO'),'click', ()=>{
+            const b = $('#btnAssignSO'); b.disabled=true; b.classList.add('xDisabled'); b.textContent='Opening…';
+            try { google.script.run.openAssignSOWithDesign_(''); } catch(_){}
+          });
+        }
+
+        // Prefill from last tracker entry
+        if (bootstrap.lastForm){
+          const f = bootstrap.lastForm;
+          setv('#accType', f.AccentDiamondType || '');
+          setv('#ringStyle', f.RingStyle || '');
+          setv('#metal', f.Metal || '');
+          setv('#size', f.USSize || '');
+          setv('#band', f.BandWidthMM || '');
+          setv('#notes', f.DesignNotes || '');
+          setv('#centerType', f.CenterDiamondType || '');
+          setv('#shape', f.Shape || '');
+          setv('#dim', f.DiamondDimension || '');
+        }
+
+        setPrefillBanner(false);
+        setStep1Enabled(true);
+        scheduleFit();
+      })
+      .withFailureHandler(function(err){
+        try{ setPrefillBanner(false); setStep1Enabled(true); }catch(_){}
+        alert('Init failed: ' + (err && err.message ? err.message : err));
+      })
+      .rev3d_init();
+
+    on($('#nextBtn'),'click', function(){
+      // Collect Step-1 fields (same IDs/keys as Start 3D)
+      const form = {
+        AccentDiamondType: val('#accType'),
+        RingStyle:         val('#ringStyle'),
+        Metal:             val('#metal'),
+        USSize:            val('#size'),
+        BandWidthMM:       val('#band'),
+        DesignNotes:       val('#notes'),
+        CenterDiamondType: val('#centerType'),
+        Shape:             val('#shape'),
+        DiamondDimension:  val('#dim')
+      };
+      const btn = $('#nextBtn'); btn.disabled = true; btn.classList.add('xDisabled'); btn.textContent='Preparing…';
+      google.script.run
+        .withSuccessHandler(function(_){
+          history.pushState({step:1},'');  // enable Back to Step 1
+          renderStep2(form);
+        })
+        .withFailureHandler(function(err){
+          btn.disabled=false; btn.classList.remove('xDisabled'); btn.textContent='Next';
+          alert('Server error: ' + (err && err.message ? err.message : err));
+        })
+        .previewRevOdooPaste(form);
+    });
+
+    scheduleFit();
+  });
+})();
+</script>
+</body>
+</html>

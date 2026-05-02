@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>HPUSA Sales Receipt — No Tax</title>
+<style>
+@page { size:8in 10in; margin:0; }
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:8in; height:10in; font-family:"Cardo", serif;
+  color:#000; background:transparent;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+@media screen {
+  body { background:#94a3b8; min-height:100vh; display:flex;
+         flex-direction:column; align-items:center; }
+  .tb { width:100%; background:#1e293b; color:#f1f5f9; padding:10px 20px;
+        display:flex; align-items:center; gap:12px; font-family:"Cardo", serif;
+        font-size:13px; position:sticky; top:0; z-index:999; }
+  .tb button { padding:7px 18px; border:0; border-radius:6px;
+               cursor:pointer; font-size:13px; font-weight:700; }
+  .p{background:#e0006a;color:#fff;} .c{background:#475569;color:#fff;}
+  .tb .h{color:#94a3b8;font-size:11px;}
+  .page{background:#fff;box-shadow:0 6px 32px rgba(0,0,0,.28);margin:24px 0 48px;}
+}
+@media print {
+  .tb{display:none!important;} html,body{background:transparent!important;}
+  .page{box-shadow:none!important;margin:0!important;}
+}
+.page{position:relative;width:8in;height:10in;overflow:hidden;}
+.fh{position:absolute;overflow:hidden;font-size:8.5pt;color:#000;
+    display:flex;align-items:flex-end;padding-bottom:2px;}
+.fw{position:absolute;overflow:hidden;white-space:pre-wrap;font-size:8pt;
+    line-height:1.35;color:#000;word-break:break-word;
+    display:flex;align-items:flex-start;padding:5px 2px 0 4px;}
+.amt{position:absolute;overflow:hidden;white-space:nowrap;font-size:8pt;color:#000;
+     display:flex;align-items:center;justify-content:flex-end;padding-right:4px;}
+.fin{position:absolute;overflow:hidden;white-space:nowrap;font-size:8pt;color:#000;
+     display:flex;align-items:center;justify-content: flex-start;padding-left: 6px;}
+.chk{position:absolute;font-size:6pt;line-height:1;
+     color:#E0006A;font-family:Arial,sans-serif;font-weight:700;}
+.b{font-weight:700;}
+.guide{position:absolute;left:0;top:0;width:8in;height:10in;pointer-events:none;z-index:0;}
+.fh,.fw,.amt,.fin,.chk{z-index:1;}
+</style></head>
+<body>
+<div class="tb">
+  <button class="p" onclick="window.print()">🖨&nbsp;Print</button>
+  <button class="c" onclick="window.close()">✕ Close</button>
+  <span class="h">Paper: 8×10 in · Scale: 100% · Margins: None · Headers/footers: Off</span>
+</div>
+<div class="page">
+<svg class="guide" viewBox="0 0 8 10" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- HEADER SEPARATOR LINES -->
+  <line x1="1.56" y1="2.51" x2="6.45" y2="2.51" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.56" y1="2.73" x2="6.45" y2="2.73" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.56" y1="2.94" x2="6.45" y2="2.94" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.56" y1="3.18" x2="6.45" y2="3.18" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+
+  <!-- TABLE OUTER BORDER (5 rows) -->
+  <line x1="1.55" y1="3.44" x2="6.45" y2="3.44" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.55" y1="5.85" x2="6.45" y2="5.85" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.55" y1="3.44" x2="1.55" y2="5.85" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="6.45" y1="3.44" x2="6.45" y2="5.85" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+
+  <!-- VERTICAL COLUMN DIVIDERS -->
+  <line x1="4.75" y1="3.44" x2="4.75" y2="5.85" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="5.29" y1="3.44" x2="5.29" y2="5.85" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+
+  <!-- ROW SEPARATORS: header + 5 data rows (exact Y from image) -->
+  <line x1="1.55" y1="3.91" x2="6.45" y2="3.91" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.55" y1="4.30" x2="6.45" y2="4.30" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.55" y1="4.70" x2="6.45" y2="4.70" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.55" y1="5.09" x2="6.45" y2="5.09" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  <line x1="1.55" y1="5.48" x2="6.45" y2="5.48" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+
+  <!-- FINANCIAL SECTION UNDERLINES -->
+  <line x1="5.05" y1="6.22" x2="6.45" y2="6.22" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+  
+
+  <line x1="2.64" y1="7.34" x2="3.67" y2="7.34" stroke="rgba(156,163,175,0.3)" stroke-width="0.008"/>
+
+</svg>
+
+  <!-- ── HEADER FIELDS – positions from image ─────────────────────────── -->
+  <div class="fh" style="left:2.27in;top:2.51in;width:1.96in;height:0.22in;"><?= customerName ?></div>
+  <div class="fh" style="left:4.54in;top:2.51in;width:1.98in;height:0.22in;"><?= docDate ?></div>
+  <div class="fh" style="left:1.93in;top:2.73in;width:2.22in;height:0.22in;"><?= phone ?></div>
+  <div class="fh" style="left:4.54in;top:2.73in;width:1.98in;height:0.22in;"><?= email ?></div>
+  <div class="fh" style="left:1.93in;top:2.97in;width:4.53in;height:0.22in;"><?= paymentNotes ?></div>
+
+  <!-- ── LINE ITEMS (5 rows, exact Y positions from image) ─────────────── -->
+  <!-- Row 1 (Y=3.91) -->
+  <div class="fw"  style="left:1.55in;top:3.91in;width:3.12in;height:0.39in;"><?= line1_desc ?></div>
+  <div class="amt" style="left:4.75in;top:3.91in;width:0.54in;height:0.39in;"><?= line1_qty ?></div>
+  <div class="amt" style="left:5.29in;top:3.91in;width:1.16in;height:0.39in;"><?= line1_amt ?></div>
+
+  <!-- Row 2 (Y=4.30) -->
+  <div class="fw"  style="left:1.55in;top:4.30in;width:3.12in;height:0.39in;"><?= line2_desc ?></div>
+  <div class="amt" style="left:4.75in;top:4.30in;width:0.54in;height:0.39in;"><?= line2_qty ?></div>
+  <div class="amt" style="left:5.29in;top:4.30in;width:1.16in;height:0.39in;"><?= line2_amt ?></div>
+
+  <!-- Row 3 (Y=4.70) -->
+  <div class="fw"  style="left:1.55in;top:4.70in;width:3.12in;height:0.39in;"><?= line3_desc ?></div>
+  <div class="amt" style="left:4.75in;top:4.70in;width:0.54in;height:0.39in;"><?= line3_qty ?></div>
+  <div class="amt" style="left:5.29in;top:4.70in;width:1.16in;height:0.39in;"><?= line3_amt ?></div>
+
+  <!-- Row 4 (Y=5.09) -->
+  <div class="fw"  style="left:1.55in;top:5.09in;width:3.12in;height:0.39in;"><?= line4_desc ?></div>
+  <div class="amt" style="left:4.75in;top:5.09in;width:0.54in;height:0.39in;"><?= line4_qty ?></div>
+  <div class="amt" style="left:5.29in;top:5.09in;width:1.16in;height:0.39in;"><?= line4_amt ?></div>
+
+  <!-- Row 5 (Y=5.48) -->
+  <div class="fw"  style="left:1.55in;top:5.48in;width:3.12in;height:0.39in;"><?= line5_desc ?></div>
+  <div class="amt" style="left:4.75in;top:5.48in;width:0.54in;height:0.39in;"><?= line5_qty ?></div>
+  <div class="amt" style="left:5.29in;top:5.48in;width:1.16in;height:0.39in;"><?= line5_amt ?></div>
+
+  <!-- ── PREVIOUS PAYMENTS – exact from image ─────────────────────────── -->
+  <div class="fw" style="left:1.5in;top:6.08in;width:3.00in;height:0.55in;font-size:7pt;padding:3px 2px 0 2px;color:rgb(227 27 120);}"><?= previousPaymentsBlock ?>
+  </div>
+
+  <!-- ── FINANCIAL VALUES (subtotal, tax, total) – adjusted to align with underlines ── -->
+  <div class="fin b" style="left:5.09in;top:6.07in;width:1.35in;height:0.18in;"><?= invoiceTotal ?></div>
+  
+  <!-- CHECKBOXES -->
+  <div class="chk" style="left:1.54in;top:6.81in;"><?= chk_cash ?></div>
+  <div class="chk" style="left:2.28in;top:6.81in;"><?= chk_wire ?></div>
+  <div class="chk" style="left:1.53in;top:6.96in;"><?= chk_zelle ?></div>
+  <div class="chk" style="left:2.28in;top:6.96in;"><?= chk_card ?></div>
+  <div class="chk" style="left:1.53in;top:7.11in;"><?= chk_check ?></div>
+  <div class="chk" style="left:2.28in;top:7.11in;"><?= chk_deposit_credit ?></div>
+  <div class="chk" style="left:1.53in;top:7.27in;"><?= chk_trade ?></div>
+  <div class="chk" style="left:2.28in;top:7.28in;"><?= chk_other ?></div>
+</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},700);};</script>
+</body></html>

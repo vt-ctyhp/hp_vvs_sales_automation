@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font: 13px/1.35 Arial, Helvetica, sans-serif; margin: 0; color: #222; }
+    header { padding: 14px 18px; border-bottom: 1px solid #e5e5e5; background: #fafafa; }
+    h1 { font-size: 16px; margin: 0 0 6px; }
+    .chip { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 12px; background: #f0f3f7; border: 1px solid #e3e8ee; font-size: 12px; margin-right: 6px; }
+    .muted { color: #666; }
+    .wrap { padding: 0 18px 18px; }
+    .msg { margin: 12px 18px; padding: 10px; border: 1px solid #e5e5e5; background: #f8f9fb; border-radius: 6px; display:none; }
+    .msg.warn { background: #fff7e6; border-color: #ffd591; display:block; }
+    .msg.success { background: #f6ffed; border-color: #b7eb8f; display:block; }
+    .btn { border: 1px solid #d0d7de; background: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+    .btn.primary { background: #0b5cff; border-color: #0b5cff; color: #fff; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #f0f0f0; padding: 6px; vertical-align: top; }
+    th { background: #fafafa; position: sticky; top: 94px; z-index: 2; }
+    .sticky { position: sticky; top: 0; z-index: 3; background: #fafafa; border-bottom: 1px solid #eee; padding: 10px 18px; }
+    .pill { display:inline-block; padding:2px 6px; border-radius:10px; border:1px solid #e5e5e5; background:#f4f7fb; margin-right:4px; }
+    .w-160 { width: 160px; } .w-120 { width: 120px; } .w-90 { width: 90px; }
+    .center { text-align:center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>💎 Client Stone Decisions</h1>
+  <span class="chip">Customer: <b id="cust">…</b></span>
+  <span class="chip">SO#: <b id="so">—</b></span>
+  <span class="chip">Appt: <b id="appt">—</b></span>
+  <span class="chip">RootApptID: <b id="root">—</b></span>
+  <span class="chip">Company: <b id="company">—</b></span>
+  <span class="chip">Rep: <b id="rep">—</b></span>
+  <span class="chip muted">200_: <a id="file" href="#" target="_blank">open</a> <span class="muted" id="tab"></span></span>
+</header>
+
+<div class="sticky">
+  <button id="btnSave" class="btn primary" disabled>Save (0)</button>
+  <span id="saveHint" class="muted" style="margin-left:8px;">Select a decision or toggle Hold to enable save.</span>
+</div>
+
+<div id="msg" class="msg"></div>
+
+<div class="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="w-160">Decision</th>
+        <th class="w-90">Hold</th>
+        <th>Vendor</th>
+        <th>Type</th>
+        <th>Shape</th>
+        <th>Carat</th>
+        <th>Color</th>
+        <th>Clarity</th>
+        <th>LAB</th>
+        <th>Cert #</th>
+        <th class="w-120">Order Status</th>
+        <th>Stone Status</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div id="result" class="msg success" style="display:none;"></div>
+</div>
+
+<script>
+  // Boot payload
+  const BOOTSTRAP = <?!= JSON.stringify(bootstrap) ?>;
+  const CTX = BOOTSTRAP.context || {};
+  const META = BOOTSTRAP.meta || {};
+  const DROPS = BOOTSTRAP.dropdowns || {};
+  let ITEMS = BOOTSTRAP.items || [];
+
+  // Track edits: rowIndex -> { decision?, hold? }
+  const EDITS = new Map();
+
+  // Init header chips
+  document.getElementById('cust').textContent = CTX.customerName || '—';
+  document.getElementById('so').textContent = CTX.soNumber || '—';
+  document.getElementById('appt').textContent = CTX.apptAt || '—';
+  document.getElementById('root').textContent = CTX.rootApptId || '—';
+  document.getElementById('company').textContent = CTX.companyBrand || '—';
+  document.getElementById('rep').textContent = CTX.assignedRep || '—';
+  document.getElementById('file').href = META.spreadsheetUrl || '#';
+  document.getElementById('tab').textContent = META.tab ? `(Tab: ${META.tab})` : '';
+
+  function showMsg(text, cls) {
+    const m = document.getElementById('msg');
+    m.className = 'msg ' + (cls || '');
+    m.textContent = text || '';
+    m.style.display = 'block';
+  }
+  function hideMsg() { document.getElementById('msg').style.display = 'none'; }
+
+  function td(t) { const x = document.createElement('td'); x.textContent = t || ''; return x; }
+
+  function syncSaveButton() {
+    let n = 0;
+    EDITS.forEach(v => { if (v && (typeof v.hold === 'boolean' || (v.decision && v.decision !== ''))) n++; });
+    const btn = document.getElementById('btnSave');
+    btn.textContent = `Save (${n})`;
+    btn.disabled = (n === 0);
+    document.getElementById('saveHint').style.display = n ? 'none' : 'inline';
+  }
+
+  function setEdit(rowIndex, patch) {
+    const r = Number(rowIndex);
+    const cur = EDITS.get(r) || {};
+    Object.assign(cur, patch);
+    EDITS.set(r, cur);
+    syncSaveButton();
+  }
+
+  function render() {
+    const tb = document.getElementById('rows');
+    tb.innerHTML = '';
+
+    if (!ITEMS.length) {
+      showMsg('No stones found for this client (RootApptID).', 'warn');
+      return;
+    }
+
+    ITEMS.forEach(it => {
+      const tr = document.createElement('tr');
+      tr.dataset.rowIndex = it.rowIndex;
+
+      // Decision select
+      const tdDec = document.createElement('td');
+      const sel = document.createElement('select');
+      const opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='— choose —'; sel.appendChild(opt0);
+      (DROPS.decisions || []).forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); });
+      // default shows current decision but doesn't count as an edit until changed
+      sel.value = it.decision || '';
+      sel.onchange = () => setEdit(it.rowIndex, { decision: sel.value });
+      tdDec.appendChild(sel);
+      tr.appendChild(tdDec);
+
+      // Hold toggle
+      const tdHold = document.createElement('td'); tdHold.className = 'center';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!it.hold;
+      cb.onchange = () => setEdit(it.rowIndex, { hold: cb.checked });
+      tdHold.appendChild(cb);
+      tr.appendChild(tdHold);
+
+      tr.appendChild(td(it.vendor));
+      tr.appendChild(td(it.stoneType));
+      tr.appendChild(td(it.shape));
+      tr.appendChild(td(it.carat));
+      tr.appendChild(td(it.color));
+      tr.appendChild(td(it.clarity));
+      tr.appendChild(td(it.lab));
+      tr.appendChild(td(it.certNo));
+      tr.appendChild(td(it.orderStatus));
+
+      const tdStatus = document.createElement('td');
+      // show chips for current Stone Status
+      (String(it.stoneStatus || '').split(/\s*[;|,]\s*|\s*•\s*/g).filter(Boolean)).forEach(tok => {
+        const span = document.createElement('span'); span.className='pill'; span.textContent = tok; tdStatus.appendChild(span);
+      });
+      tr.appendChild(tdStatus);
+
+      tb.appendChild(tr);
+    });
+
+    syncSaveButton();
+  }
+
+  function submit() {
+    hideMsg();
+    const items = [];
+    EDITS.forEach((v, rowIndex) => {
+      // Only send rows that changed something
+      if (!v) return;
+      if (typeof v.hold !== 'boolean' && (!v.decision || v.decision === '')) return;
+      const itm = ITEMS.find(x => x.rowIndex === rowIndex);
+      if (!itm) return;
+      items.push({
+        rowIndex: rowIndex,
+        rootApptId: itm.rootApptId,
+        decision: v.decision || '',
+        hold: (typeof v.hold === 'boolean' ? v.hold : undefined)
+      });
+    });
+
+    if (!items.length) { showMsg('Nothing to save.', 'warn'); return; }
+
+    const btn = document.getElementById('btnSave');
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    google.script.run
+      .withSuccessHandler(res => {
+        btn.disabled = false; btn.textContent = 'Save (0)';
+        EDITS.clear();
+        const s = document.getElementById('result');
+        s.style.display = 'block';
+        s.innerHTML = `<b>Saved.</b> Updated ${res.updatedCount || 0} row(s).` +
+          (res.meta && res.meta.spreadsheetUrl ? ` <a href="${res.meta.spreadsheetUrl}" target="_blank">Open 200_ workbook</a> (Tab: ${res.meta.tab || ''})` : '');
+        showMsg('Decisions recorded successfully.', 'success');
+      })
+      .withFailureHandler(err => {
+        btn.disabled = false; btn.textContent = 'Save (0)';
+        showMsg((err && err.message) ? err.message : String(err), 'warn');
+      })
+      .dp_submitStoneDecisions({ items });
+  }
+
+  document.getElementById('btnSave').addEventListener('click', submit);
+  render();
+</script>
+</body>
+</html>

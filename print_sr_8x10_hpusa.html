@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>HPUSA Sales Receipt</title>
+<style>
+@page { size:8in 10in; margin:0; }
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:8in; height:10in; font-family:"Cardo", serif;
+  color:#000; background:transparent;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+@media screen {
+  body { background:#94a3b8; min-height:100vh; display:flex;
+         flex-direction:column; align-items:center; }
+  .tb { width:100%; background:#1e293b; color:#f1f5f9; padding:10px 20px;
+        display:flex; align-items:center; gap:12px; font-family:"Cardo", serif;
+        font-size:13px; position:sticky; top:0; z-index:999; }
+  .tb button { padding:7px 18px; border:0; border-radius:6px;
+               cursor:pointer; font-size:13px; font-weight:700; }
+  .p{background:#e0006a;color:#fff;} .c{background:#475569;color:#fff;}
+  .tb .h{color:#94a3b8;font-size:11px;}
+  .page{background:#fff;box-shadow:0 6px 32px rgba(0,0,0,.28);margin:24px 0 48px;}
+}
+@media print {
+  .tb{display:none!important;} html,body{background:transparent!important;}
+  .page{box-shadow:none!important;margin:0!important;}
+}
+.page{position:relative;width:8in;height:10in;overflow:hidden;}
+.fh{position:absolute;overflow:hidden;font-size:8.5pt;color:#000;
+    display:flex;align-items:flex-end;padding-bottom:2px;}
+.fw{position:absolute;overflow:hidden;white-space:pre-wrap;font-size:8pt;
+    line-height:1.35;color:#000;word-break:break-word;
+    display:flex;align-items:flex-start;padding:5px 2px 0 4px;}
+.amt{position:absolute;overflow:hidden;white-space:nowrap;font-size:8pt;color:#000;
+     display:flex;align-items:center;justify-content:flex-end;padding-right:4px;}
+.fin{
+    position:absolute;
+    overflow:hidden;
+    white-space:nowrap;
+    font-size:8pt;
+    color:#000;
+    display:flex;
+    align-items:center;
+    justify-content: flex-end;
+    padding-right: 6px;
+    padding-left: 0;
+}
+.b{font-weight:700;}
+.fh,.fw,.amt,.fin{z-index:1;}
+</style></head>
+<body>
+<div class="tb">
+  <button class="p" onclick="window.print()">🖨&nbsp;Print</button>
+  <button class="c" onclick="window.close()">✕ Close</button>
+  <span class="h">Paper: 8×10 in · Scale: 100% · Margins: None · Headers/footers: Off</span>
+</div>
+<div class="page">
+
+  <!-- HEADER FIELDS -->
+  <div class="fh" style="left:1.62in;top:2.34in;width:2.42in;height:0.22in;"><?= customerName ?></div>
+  <div class="fh" style="left:4.68in;top:2.34in;width:2.32in;height:0.22in;"><?= docDate ?></div>
+  <div class="fh" style="left:1.62in;top:2.56in;width:2.42in;height:0.22in;"><?= phone ?></div>
+  <div class="fh" style="left:4.68in;top:2.56in;width:2.32in;height:0.22in;"><?= email ?></div>
+  <div class="fh" style="left:1.82in;top:2.79in;width:2.42in;height:0.22in;"><?= soNumber ?></div>
+
+  <!-- LINE ITEMS - 5 rows (căn giữa dọc) -->
+  <!-- Row 1 -->
+  <div class="fw"  style="left:1.18in;top:3.74in;width:3.61in;height:0.39in; align-items: center; padding: 0;"><?= line1_desc ?></div>
+  <div class="amt" style="left:4.74in;top:3.75in;width:0.53in;height:0.39in;"><?= line1_qty ?></div>
+  <div class="amt" style="left:5.27in;top:3.75in;width:1.60in;height:0.39in;"><?= line1_amt ?></div>
+  <!-- Row 2 -->
+  <div class="fw"  style="left:1.18in;top:4.14in;width:3.61in;height:0.39in; align-items: center; padding: 0;"><?= line2_desc ?></div>
+  <div class="amt" style="left:4.74in;top:4.14in;width:0.53in;height:0.39in;"><?= line2_qty ?></div>
+  <div class="amt" style="left:5.27in;top:4.14in;width:1.60in;height:0.39in;"><?= line2_amt ?></div>
+  <!-- Row 3 -->
+  <div class="fw"  style="left:1.18in;top:4.55in;width:3.61in;height:0.39in; align-items: center; padding: 0;"><?= line3_desc ?></div>
+  <div class="amt" style="left:4.74in;top:4.54in;width:0.53in;height:0.39in;"><?= line3_qty ?></div>
+  <div class="amt" style="left:5.27in;top:4.54in;width:1.60in;height:0.39in;"><?= line3_amt ?></div>
+  <!-- Row 4 -->
+  <div class="fw"  style="left:1.18in;top:4.94in;width:3.61in;height:0.39in; align-items: center; padding: 0;"><?= line4_desc ?></div>
+  <div class="amt" style="left:4.74in;top:4.93in;width:0.53in;height:0.39in;"><?= line4_qty ?></div>
+  <div class="amt" style="left:5.27in;top:4.93in;width:1.60in;height:0.39in;"><?= line4_amt ?></div>
+  <!-- Row 5 -->
+  <div class="fw"  style="left:1.18in;top:5.35in;width:3.61in;height:0.39in; align-items: center; padding: 0;"><?= line5_desc ?></div>
+  <div class="amt" style="left:4.74in;top:5.33in;width:0.53in;height:0.39in;"><?= line5_qty ?></div>
+  <div class="amt" style="left:5.27in;top:5.33in;width:1.60in;height:0.39in;"><?= line5_amt ?></div>
+
+  <!-- PREVIOUS PAYMENTS BLOCK -->
+  <div class="fh" style="left:1.14in;top:5.82in;width:2.55in;height:0.22in;font-family: 'Cardo', serif; font-size: 7.5pt; color: #e31b78; font-weight: bold;"><?= paymentsLabel ?></div>+
+  <div class="fw" style="left:1.15in;top:6.06in;width:2.55in;height:0.72in;
+       font-size:7pt;padding:3px 2px 0 2px;"><?= previousPaymentsBlock ?></div>
+
+  <!-- FINANCIAL SUMMARY -->
+  <div class="fin"   style="left:5.60in;top:5.82in;width:1.29in;height:0.22in;"><?= linesSubtotal ?></div>
+  <div class="fin"   style="left:5.60in;top:6.05in;width:1.29in;height:0.22in;"><?= taxAmount ?></div>
+  <div class="fin b" style="left:5.60in;top:6.27in;width:1.29in;height:0.22in;"><?= invoiceTotal ?></div>
+
+</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},700);};</script>
+</body></html>

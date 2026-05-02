@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f1f5f9; --surface:#fff; --elevated:#f8fafc; --border:#e2e8f0; --border-strong:#cbd5e1;
+  --txt:#1e293b; --muted:#64748b; --dim:#94a3b8;
+  --blue:#1d4ed8; --blue-bg:#eff6ff; --blue-border:#bfdbfe;
+  --green:#059669; --green-bg:#ecfdf5; --green-border:#a7f3d0;
+  --amber:#d97706; --amber-bg:#fffbeb; --amber-border:#fde68a;
+  --red:#dc2626; --red-bg:#fef2f2; --red-border:#fecaca;
+  --purple:#7c3aed; --purple-bg:#f5f3ff; --purple-border:#ddd6fe;
+  --teal:#0d9488; --teal-bg:#f0fdfa; --teal-border:#99f6e4;
+  --mono:'JetBrains Mono',monospace; --ui:'Inter',sans-serif;
+  --radius:8px; --radius-lg:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--ui);font-size:12px;color:var(--txt);background:var(--bg);display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+
+/* Header */
+.hdr{height:44px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border);}
+.hdr-title{font-size:14px;font-weight:600;letter-spacing:-.3px;}
+.hdr-pill{padding:2px 10px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--mono);background:var(--elevated);border:1px solid var(--border-strong);color:var(--muted);}
+.hdr-pill.live{background:var(--green-bg);border-color:var(--green-border);color:var(--green);}
+.btn-x{width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--elevated);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.btn-x:hover{background:var(--red-bg);border-color:var(--red-border);color:var(--red);}
+
+/* Filter strip */
+.fstrip{padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;}
+.fg{display:flex;flex-direction:column;gap:3px;}
+.fg-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+.fg-row{display:flex;gap:3px;align-items:center;}
+.qp{padding:3px 9px;border-radius:4px;font-size:10.5px;font-weight:500;font-family:var(--ui);border:1px solid var(--border-strong);background:var(--elevated);color:var(--muted);cursor:pointer;}
+.qp.active,.qp:hover{background:var(--blue-bg);border-color:var(--blue-border);color:var(--blue);}
+input[type=date]{padding:3px 8px;border:1px solid var(--border-strong);border-radius:4px;font-size:11px;font-family:var(--ui);color:var(--txt);background:var(--elevated);outline:none;color-scheme:light;}
+input[type=date]:focus{border-color:#93c5fd;}
+.brand-btns{display:flex;gap:3px;}
+.bbtn{padding:3px 10px;border-radius:4px;font-size:10.5px;font-weight:600;font-family:var(--ui);border:1px solid var(--border-strong);background:var(--elevated);color:var(--muted);cursor:pointer;}
+.bbtn.active{background:var(--blue-bg);border-color:var(--blue-border);color:var(--blue);}
+.bbtn[data-brand=VVS].active{background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber);}
+.fdrp{position:relative;}
+.fdrp-btn{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:4px;font-size:11px;font-family:var(--ui);border:1px solid var(--border-strong);background:var(--elevated);color:var(--muted);cursor:pointer;white-space:nowrap;}
+.fdrp-btn.sel{border-color:var(--blue-border);color:var(--blue);background:var(--blue-bg);}
+.fdrp-badge{background:var(--blue);color:#fff;border-radius:10px;padding:0 5px;font-size:9px;font-weight:700;font-family:var(--mono);}
+.fdrp-panel{position:absolute;top:calc(100% + 3px);left:0;z-index:100;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;padding:6px;min-width:160px;max-height:200px;overflow-y:auto;display:none;flex-direction:column;gap:2px;box-shadow:0 4px 16px rgba(0,0,0,.12);}
+.fdrp-panel.open{display:flex;}
+.fdrp-hd{display:flex;justify-content:space-between;padding-bottom:4px;margin-bottom:2px;border-bottom:1px solid var(--border);}
+.fdrp-a{font-size:10px;color:var(--blue);cursor:pointer;font-weight:500;}
+.cb-row{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;}
+.cb-row input[type=checkbox]{width:12px;height:12px;cursor:pointer;accent-color:var(--blue);flex-shrink:0;}
+.cb-row span{font-size:11px;color:var(--txt);}
+.btn-run{padding:5px 16px;border-radius:5px;font-size:12px;font-weight:600;font-family:var(--ui);cursor:pointer;border:none;background:var(--blue);color:#fff;margin-left:4px;}
+.btn-run:hover{background:#1e40af;}
+.btn-run:disabled{opacity:.4;cursor:not-allowed;}
+
+/* Tabs */
+.tabs{display:flex;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.tab{padding:8px 14px;font-size:11.5px;font-weight:600;cursor:pointer;border:none;background:none;color:var(--muted);font-family:var(--ui);border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:4px;}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.tab-badge{background:var(--elevated);border:1px solid var(--border);border-radius:10px;padding:0 5px;font-size:9px;font-family:var(--mono);color:var(--muted);}
+.tab.active .tab-badge{background:var(--blue-bg);border-color:var(--blue-border);color:var(--blue);}
+
+/* Panels */
+.tab-panel{flex:1;overflow:auto;display:none;}
+.tab-panel.active{display:flex;flex-direction:column;}
+
+/* States */
+.state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);}
+.state-icon{font-size:32px;opacity:.5;}
+.state-title{font-size:13px;}
+.state-sub{font-size:11px;color:var(--dim);}
+.spinner{width:24px;height:24px;border:2px solid var(--border-strong);border-top-color:var(--blue);border-radius:50%;animation:spin .65s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Dashboard content */
+.dash{padding:12px 16px;display:flex;flex-direction:column;gap:10px;}
+.section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.sec-hdr{padding:7px 12px;border-bottom:1px solid var(--border);background:var(--elevated);display:flex;align-items:center;gap:6px;}
+.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+.sec-body{padding:12px;}
+
+/* Hero KPIs */
+.hero-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.hero{border-radius:var(--radius);padding:12px 14px;}
+.hero.blue{background:var(--blue-bg);border:1px solid var(--blue-border);}
+.hero.amber{background:var(--amber-bg);border:1px solid var(--amber-border);}
+.hero.green{background:var(--green-bg);border:1px solid var(--green-border);}
+.hero-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;}
+.hero.blue  .hero-lbl{color:#1e40af;}
+.hero.amber .hero-lbl{color:#92400e;}
+.hero.green .hero-lbl{color:#065f46;}
+.hero-val{font-size:26px;font-weight:700;font-family:var(--mono);letter-spacing:-1px;line-height:1.1;margin:4px 0 2px;}
+.hero.blue  .hero-val{color:var(--blue);}
+.hero.amber .hero-val{color:var(--amber);}
+.hero.green .hero-val{color:var(--green);}
+.hero-sub{font-size:10px;color:var(--muted);}
+
+/* Two col */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+
+/* Activity KPI grid */
+.act-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
+.kpi{border-radius:var(--radius);padding:10px 10px;background:var(--elevated);border:1px solid var(--border);}
+.kpi.blue{background:var(--blue-bg);border-color:var(--blue-border);}
+.kpi.purple{background:var(--purple-bg);border-color:var(--purple-border);}
+.kpi.green{background:var(--green-bg);border-color:var(--green-border);}
+.kpi.red{background:var(--red-bg);border-color:var(--red-border);}
+.kpi-icon{font-size:13px;margin-bottom:3px;}
+.kpi-val{font-size:20px;font-weight:700;font-family:var(--mono);color:var(--txt);line-height:1;}
+.kpi.blue .kpi-val{color:var(--blue);}
+.kpi.purple .kpi-val{color:var(--purple);}
+.kpi.green .kpi-val{color:var(--green);}
+.kpi.red .kpi-val{color:var(--red);}
+.kpi-lbl{font-size:9.5px;color:var(--muted);margin-top:3px;}
+
+/* Conversion funnel */
+.funnel-section{margin-bottom:10px;}
+.funnel-sec-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px;}
+.frow{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.frow-lbl{font-size:11px;color:var(--txt);min-width:130px;}
+.frow-bar{flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;}
+.frow-fill{height:7px;border-radius:4px;transition:width .4s ease;}
+.frow-n{font-size:11px;font-weight:600;font-family:var(--mono);min-width:28px;text-align:right;color:var(--txt);}
+.frow-pct{font-size:10px;color:var(--muted);min-width:38px;text-align:right;}
+.funnel-div{height:1px;background:var(--border);margin:8px 0;}
+
+/* Revenue */
+.rev-kpi{padding:14px 12px;}
+.rev-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
+.rev-kpi.blue .rev-lbl{color:#1e40af;}
+.rev-kpi.green .rev-lbl{color:#065f46;}
+.rev-val{font-size:22px;font-weight:700;font-family:var(--mono);letter-spacing:-.5px;color:var(--txt);}
+.rev-kpi.blue .rev-val{color:var(--blue);}
+.rev-kpi.green .rev-val{color:var(--green);}
+.rev-sub{font-size:10px;color:var(--muted);margin-top:3px;}
+
+/* Pipeline */
+.pipe-kpi{padding:12px;}
+.pipe-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:4px;}
+.pipe-val{font-size:20px;font-weight:700;font-family:var(--mono);color:var(--txt);}
+.pipe-sub{font-size:10px;color:var(--muted);margin-top:3px;}
+.section.hot{border-color:var(--green-border);}
+.section.hot .sec-hdr{background:var(--green-bg);}
+.section.hot .sec-title{color:#065f46;}
+.section.hot .pipe-lbl{color:#065f46;}
+.section.hot .pipe-val{color:var(--green);}
+
+/* Briefing */
+.brief-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.brief-card{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.brief-card-hdr{padding:5px 10px;background:var(--elevated);font-size:10px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);}
+.brief-ta{width:100%;padding:8px 10px;font-size:11px;color:var(--txt);background:transparent;border:none;resize:none;height:56px;font-family:var(--ui);line-height:1.5;outline:none;}
+.brief-ta::placeholder{color:var(--dim);}
+.brief-saved{font-size:10px;color:var(--green);text-align:right;margin-top:4px;height:14px;transition:opacity .4s;opacity:0;}
+.btn-save-brief{padding:5px 14px;border-radius:5px;font-size:11px;font-weight:600;font-family:var(--ui);cursor:pointer;border:1px solid var(--green-border);background:var(--green-bg);color:var(--green);}
+.btn-save-brief:hover{background:#bbf7d0;border-color:#86efac;}
+.btn-save-brief:disabled{opacity:.4;cursor:not-allowed;}
+.brief-saved.show{opacity:1;}
+
+/* Appointments table */
+.tbl-wrap{overflow:auto;flex:1;}
+table{width:100%;border-collapse:collapse;font-size:11.5px;}
+thead th{position:sticky;top:0;z-index:9;background:#f8fafc;color:#475569;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:6px 10px;text-align:left;white-space:nowrap;border-bottom:2px solid var(--border-strong);}
+tbody tr{border-bottom:1px solid var(--border);}
+tbody tr:hover{background:var(--elevated);}
+td{padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+td.r{text-align:right;font-family:var(--mono);font-size:11px;}
+td.dim{color:var(--muted);}
+td.mono{font-family:var(--mono);font-size:10.5px;}
+tr.row-closed{background:#f0fdf4!important;}
+tr.row-noshow{background:#fef2f2!important;opacity:.8;}
+.pill{display:inline-flex;align-items:center;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;white-space:nowrap;}
+.p-green{background:#dcfce7;color:#15803d;border:1px solid #86efac;}
+.p-amber{background:#fef3c7;color:#b45309;border:1px solid #fcd34d;}
+.p-blue{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;}
+.p-red{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;}
+.p-purple{background:#f5f3ff;color:#6d28d9;border:1px solid #c4b5fd;}
+.p-dim{background:#f1f5f9;color:var(--muted);border:1px solid var(--border);}
+
+/* Action bar */
+.abar{display:flex;align-items:center;gap:8px;padding:6px 16px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.abar-info{font-size:10.5px;color:var(--muted);flex:1;}
+.abar-info span{color:var(--txt);font-weight:600;font-family:var(--mono);}
+.btn-sec{padding:4px 12px;border-radius:4px;font-size:11px;font-weight:500;font-family:var(--ui);cursor:pointer;border:1px solid var(--border-strong);background:var(--elevated);color:var(--muted);}
+.btn-sec:hover{border-color:var(--blue);color:var(--blue);}
+.btn-sec:disabled{opacity:.35;cursor:not-allowed;}
+.btn-print{padding:4px 12px;border-radius:4px;font-size:11px;font-weight:500;font-family:var(--ui);cursor:pointer;border:1px solid var(--border-strong);background:var(--elevated);color:var(--muted);}
+.btn-print:hover{border-color:#7c3aed;color:#7c3aed;}
+.btn-print:disabled{opacity:.35;cursor:not-allowed;}
+
+/* Error bar */
+.err-bar{display:none;padding:5px 16px;flex-shrink:0;background:var(--red-bg);border-bottom:1px solid var(--red-border);color:var(--red);font-size:11px;}
+.err-bar.on{display:block;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <span style="font-size:18px">📅</span>
+  <div class="hdr-title">Appointment Sales Report</div>
+  <div style="flex:1"></div>
+  <span class="hdr-pill" id="hdrPill">No data loaded</span>
+  <button class="btn-x" onclick="google.script.host.close()">✕</button>
+</div>
+
+<!-- FILTER STRIP -->
+<div class="fstrip">
+  <div class="fg">
+    <div class="fg-lbl">Visit Date</div>
+    <div class="fg-row">
+      <button class="qp" data-qp="today">Today</button>
+      <button class="qp" data-qp="thisWeek">This Week</button>
+      <button class="qp" data-qp="thisMonth">This Month</button>
+      <button class="qp" data-qp="last30">Last 30d</button>
+      <button class="qp" data-qp="all">All Time</button>
+      <input type="date" id="dateFrom">
+      <span style="color:var(--dim);font-size:11px">→</span>
+      <input type="date" id="dateTo">
+    </div>
+  </div>
+  <div class="fg">
+    <div class="fg-lbl">Brand</div>
+    <div class="brand-btns">
+      <button class="bbtn active" data-brand="ALL"   onclick="setBrand('ALL')">All</button>
+      <button class="bbtn"        data-brand="HPUSA" onclick="setBrand('HPUSA')">HPUSA</button>
+      <button class="bbtn"        data-brand="VVS"   onclick="setBrand('VVS')">VVS</button>
+    </div>
+  </div>
+  <div class="fg">
+    <div class="fg-lbl">Filters</div>
+    <div class="fg-row">
+      <div class="fdrp" id="drp-rep">
+        <button class="fdrp-btn" onclick="toggleDrp('rep')">
+          Rep <span class="fdrp-badge" id="badge-rep" style="display:none">0</span> ▾
+        </button>
+        <div class="fdrp-panel" id="panel-rep">
+          <div class="fdrp-hd">
+            <span class="fdrp-a" onclick="allDrp('rep')">All</span>
+            <span class="fdrp-a" onclick="clrDrp('rep')">Clear</span>
+          </div>
+          <div id="list-rep"></div>
+        </div>
+      </div>
+      <div class="fdrp" id="drp-vt">
+        <button class="fdrp-btn" onclick="toggleDrp('vt')">
+          Visit Type <span class="fdrp-badge" id="badge-vt" style="display:none">0</span> ▾
+        </button>
+        <div class="fdrp-panel" id="panel-vt">
+          <div class="fdrp-hd">
+            <span class="fdrp-a" onclick="allDrp('vt')">All</span>
+            <span class="fdrp-a" onclick="clrDrp('vt')">Clear</span>
+          </div>
+          <div id="list-vt"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="fg" style="margin-left:auto">
+    <div class="fg-lbl">&nbsp;</div>
+    <button class="btn-run" id="runBtn" onclick="runReport()">▶ Run Report</button>
+  </div>
+</div>
+
+<!-- ERROR -->
+<div class="err-bar" id="errBar"></div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" data-tab="dash" onclick="switchTab('dash')">📊 Dashboard</button>
+  <button class="tab" data-tab="appts" onclick="switchTab('appts')">
+    📋 Appointments <span class="tab-badge" id="appt-count">—</span>
+  </button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TAB: DASHBOARD
+═══════════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-dash">
+
+  <div class="state" id="dash-idle">
+    <div class="state-icon">📅</div>
+    <div class="state-title">Set date range and click Run Report</div>
+    <div class="state-sub">Track appointments · conversions · revenue</div>
+  </div>
+  <div class="state" id="dash-load" style="display:none">
+    <div class="spinner"></div>
+    <div class="state-title">Loading…</div>
+  </div>
+
+  <div class="dash" id="dash-content" style="display:none">
+
+    <!-- Zone A: Hero KPIs -->
+    <div class="section">
+      <div class="sec-hdr"><span class="sec-title">KPIs</span></div>
+      <div class="sec-body">
+        <div class="hero-grid" id="heroKpis"></div>
+      </div>
+    </div>
+
+    <!-- Zone B: Activity + Funnel -->
+    <div class="two-col">
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Activity</span></div>
+        <div class="sec-body">
+          <div class="act-grid" id="actKpis"></div>
+          <div id="actOther" style="margin-top:8px;font-size:10.5px;color:var(--muted);"></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Conversion Funnel</span></div>
+        <div class="sec-body" id="funnelBody"></div>
+      </div>
+    </div>
+
+    <!-- Zone C: Revenue -->
+    <div class="two-col">
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Total Deposits Collected</span></div>
+        <div class="rev-kpi blue">
+          <div class="rev-lbl">Cash-in (Gross)</div>
+          <div class="rev-val" id="revDeposit">—</div>
+          <div class="rev-sub" id="revDepositSub">—</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Closed Sales Value</span></div>
+        <div class="rev-kpi green">
+          <div class="rev-lbl">Full Order Total — Remaining Balance = $0</div>
+          <div class="rev-val" id="revClosed">—</div>
+          <div class="rev-sub" id="revClosedSub">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone D: Pipeline -->
+    <div class="three-col" id="pipelineRow">
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Next 2nd View Booked</span></div>
+        <div class="pipe-kpi">
+          <div class="pipe-lbl">Scheduled for Diamond Viewing</div>
+          <div class="pipe-val" id="pipeNext">—</div>
+          <div class="pipe-sub">upcoming appointments</div>
+        </div>
+      </div>
+      <div class="section hot">
+        <div class="sec-hdr"><span class="sec-title">🔥 Deposit — Awaiting 2nd View</span></div>
+        <div class="pipe-kpi">
+          <div class="pipe-lbl">Deposited, no Diamond Viewing booked yet</div>
+          <div class="pipe-val" id="pipeDeposit">—</div>
+          <div class="pipe-sub">hot pipeline — follow up now</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Needs Follow-Up</span></div>
+        <div class="pipe-kpi">
+          <div class="pipe-lbl">Ack status requires action</div>
+          <div class="pipe-val" id="pipeFollowUp">—</div>
+          <div class="pipe-sub">action required</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone E: Briefing -->
+    <div class="section">
+      <div class="sec-hdr">
+        <span class="sec-title">Appointment Sales Briefing</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--dim);">auto-saved per date</span>
+      </div>
+      <div class="sec-body">
+        <div class="brief-grid">
+          <div class="brief-card">
+            <div class="brief-card-hdr">Reason for No-Show</div>
+            <textarea class="brief-ta" id="brief-noshow" placeholder="Enter the reason for the customer's no-show..."></textarea>
+          </div>
+          <div class="brief-card">
+            <div class="brief-card-hdr">Common Objections</div>
+            <textarea class="brief-ta" id="brief-objection" placeholder="Enter the customer's objections..."></textarea>
+          </div>
+          <div class="brief-card">
+            <div class="brief-card-hdr">Effective Strategies Today</div>
+            <textarea class="brief-ta" id="brief-worked"    placeholder="Closing techniques, key products..."></textarea>
+          </div>
+          <div class="brief-card">
+            <div class="brief-card-hdr">Blockers / Operational Issues</div>
+            <textarea class="brief-ta" id="brief-blockers"  placeholder="Issues affecting conversion..."></textarea>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px">
+          <div class="brief-saved" id="briefSavedMsg">✓ Saved</div>
+          <button class="btn-save-brief" id="btnSaveBrief" onclick="briefSave()">💾 Save Briefing</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TAB: APPOINTMENTS (drill-down)
+═══════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-appts">
+  <div class="state" id="appt-idle">
+    <div class="state-icon">📋</div>
+    <div class="state-title">Run Report to see appointments</div>
+  </div>
+  <div id="appt-filter-bar" style="display:none;padding:6px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;display:none;gap:6px;align-items:center;">
+    <span style="font-size:10.5px;color:var(--muted);">Filter table:</span>
+    <button class="qp active" data-tf="all" onclick="filterTable('all')">All</button>
+    <button class="qp" data-tf="first" onclick="filterTable('first')">1st Visit</button>
+    <button class="qp" data-tf="second" onclick="filterTable('second')">2nd View</button>
+    <button class="qp" data-tf="closed" onclick="filterTable('closed')">Closed</button>
+    <button class="qp" data-tf="noshow" onclick="filterTable('noshow')">No-Show</button>
+    <button class="qp" data-tf="deposit" onclick="filterTable('deposit')">Has Deposit</button>
+    <span id="tbl-count" style="margin-left:auto;font-size:10.5px;color:var(--muted);font-family:var(--mono);"></span>
+  </div>
+  <div class="tbl-wrap" id="appt-tbl-wrap" style="display:none">
+    <table>
+      <thead><tr>
+        <th>#</th>
+        <th>Visit Date</th>
+        <th>Customer</th>
+        <th>Brand</th>
+        <th>Visit Type</th>
+        <th>Status</th>
+        <th>Rep</th>
+        <th>Sales Stage</th>
+        <th>SO#</th>
+        <th>Order Total</th>
+        <th>Remaining</th>
+        <th>Cash-in</th>
+        <th>Closed?</th>
+        <th>Last Payment</th>
+        <th>Next Steps</th>
+      </tr></thead>
+      <tbody id="apptBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ACTION BAR -->
+<div class="abar">
+  <div class="abar-info" id="abarInfo">Ready — set filters and click Run Report</div>
+  <button class="btn-sec" id="expBtn" onclick="exportReport()" disabled>Export → New Tab</button>
+  <button class="btn-print" id="printBtn" onclick="printReport()" disabled>🖨 Print / PDF</button>
+  <button class="btn-sec" onclick="google.script.host.close()">Close</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCRIPT
+═══════════════════════════════════════════════════════════ -->
+<script>
+var _rows = [], _summary = {}, _activeBrand = 'ALL', _activeQp = null, _lastFilters = {};
+var _tableFilter = 'all', _briefTimer = null;
+
+// ── INIT ─────────────────────────────────────────────────────
+(function() {
+  setQp('today');
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.fdrp')) closeAllDrp();
+  });
+  google.script.run
+    .withSuccessHandler(onOptionsLoaded)
+    .withFailureHandler(function(e) { showErr(e.message || String(e)); })
+    .appt_getFilterOptions();
+})();
+
+function onOptionsLoaded(res) {
+  if (!res || !res.ok) { showErr(res && res.error || 'Failed to load options'); return; }
+  buildDrp('rep', res.reps || []);
+  buildDrp('vt',  res.visitTypes || []);
+}
+
+// ── DATE QUICK PICK ───────────────────────────────────────────
+function setQp(qp) {
+  _activeQp = qp;
+  document.querySelectorAll('.qp[data-qp]').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.qp === qp);
+  });
+  var today = new Date(), from, to = today;
+  if (qp === 'all') {
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value   = '';
+    return;
+  }
+  if      (qp === 'today')     { from = new Date(today); }
+  else if (qp === 'thisWeek')  { from = new Date(today); from.setDate(today.getDate() - today.getDay()); }
+  else if (qp === 'thisMonth') { from = new Date(today.getFullYear(), today.getMonth(), 1); }
+  else if (qp === 'last30')    { from = new Date(+today - 30 * 864e5); }
+  if (from) document.getElementById('dateFrom').value = dfmt(from);
+  document.getElementById('dateTo').value = dfmt(to);
+}
+
+document.querySelectorAll('.qp[data-qp]').forEach(function(el) {
+  el.addEventListener('click', function() {
+    if (el.dataset.qp && el.dataset.qp !== _activeQp) setQp(el.dataset.qp);
+  });
+});
+['dateFrom', 'dateTo'].forEach(function(id) {
+  document.getElementById(id).addEventListener('change', function() {
+    _activeQp = null;
+    document.querySelectorAll('.qp[data-qp]').forEach(function(el) { el.classList.remove('active'); });
+  });
+});
+
+// ── BRAND ─────────────────────────────────────────────────────
+function setBrand(b) {
+  _activeBrand = b;
+  document.querySelectorAll('.bbtn').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.brand === b);
+  });
+}
+
+// ── DROPDOWNS ────────────────────────────────────────────────
+function buildDrp(key, values) {
+  var list = document.getElementById('list-' + key);
+  if (!values.length) { list.innerHTML = '<span style="color:var(--muted);font-size:10px">None found</span>'; return; }
+  list.innerHTML = values.map(function(v) {
+    return '<label class="cb-row">'
+      + '<input type="checkbox" data-drp="' + key + '" value="' + esc(v) + '" onchange="updateBadge(\'' + key + '\')">'
+      + '<span>' + esc(v) + '</span></label>';
+  }).join('');
+}
+function toggleDrp(key) {
+  var panel = document.getElementById('panel-' + key);
+  var open  = panel.classList.contains('open');
+  closeAllDrp();
+  if (!open) panel.classList.add('open');
+}
+function closeAllDrp() { document.querySelectorAll('.fdrp-panel').forEach(function(el) { el.classList.remove('open'); }); }
+function allDrp(key)   { document.querySelectorAll('input[data-drp="' + key + '"]').forEach(function(el) { el.checked = true;  }); updateBadge(key); }
+function clrDrp(key)   { document.querySelectorAll('input[data-drp="' + key + '"]').forEach(function(el) { el.checked = false; }); updateBadge(key); }
+function getDrp(key)   { return Array.from(document.querySelectorAll('input[data-drp="' + key + '"]:checked')).map(function(el) { return el.value; }); }
+function updateBadge(key) {
+  var n     = getDrp(key).length;
+  var badge = document.getElementById('badge-' + key);
+  var btn   = document.querySelector('#drp-' + key + ' .fdrp-btn');
+  badge.style.display = n > 0 ? '' : 'none';
+  if (n > 0) badge.textContent = n;
+  btn.classList.toggle('sel', n > 0);
+}
+
+// ── TABS ─────────────────────────────────────────────────────
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach(function(el)       { el.classList.toggle('active', el.dataset.tab === t); });
+  document.querySelectorAll('.tab-panel').forEach(function(el) { el.classList.toggle('active', el.id === 'tab-' + t); });
+}
+
+// ── RUN REPORT ────────────────────────────────────────────────
+function runReport() {
+  clearErr();
+  setDashState('load');
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('expBtn').disabled = true;
+  document.getElementById('abarInfo').textContent = 'Running…';
+
+  var brands = [];
+  if (_activeBrand === 'HPUSA') brands = ['HPUSA', 'HP'];
+  else if (_activeBrand === 'VVS') brands = ['VVS'];
+
+  _lastFilters = {
+    dateFrom:   document.getElementById('dateFrom').value || null,
+    dateTo:     document.getElementById('dateTo').value   || null,
+    brands:     brands,
+    visitTypes: getDrp('vt'),
+    reps:       getDrp('rep')
+  };
+
+  google.script.run
+    .withSuccessHandler(onResult)
+    .withFailureHandler(function(e) {
+      showErr('Backend error: ' + (e.message || String(e)));
+      setDashState('idle');
+      document.getElementById('runBtn').disabled = false;
+      document.getElementById('abarInfo').textContent = 'Error — see message above';
+    })
+    .appt_getReportData(_lastFilters);
+}
+
+function onResult(res) {
+  document.getElementById('runBtn').disabled = false;
+  if (!res || !res.ok) { showErr(res && res.error || 'Unknown error'); setDashState('idle'); return; }
+
+  _rows    = res.rows    || [];
+  _summary = res.summary || {};
+
+  if (!_rows.length) {
+    setDashState('idle');
+    document.getElementById('abarInfo').innerHTML = '<span>0</span> appointments matched';
+    document.getElementById('appt-count').textContent = '0';
+    return;
+  }
+
+  renderDashboard();
+  renderTable(_rows);
+  setDashState('content');
+
+  document.getElementById('expBtn').disabled = false;
+  document.getElementById('printBtn').disabled = false;
+  document.getElementById('appt-count').textContent = _rows.length.toLocaleString();
+
+  var pill = document.getElementById('hdrPill');
+  pill.textContent = _rows.length.toLocaleString() + ' appointments';
+  pill.classList.add('live');
+
+  var f = _lastFilters.dateFrom, t = _lastFilters.dateTo;
+  var range = (f || t) ? ((f ? fmtD(f) : '?') + ' → ' + (t ? fmtD(t) : '?')) : 'All dates';
+  document.getElementById('abarInfo').innerHTML =
+    '<span>' + _rows.length.toLocaleString() + '</span> appointments · <span>' + range + '</span>';
+
+  // Load briefing for this date
+  var briefKey = _lastFilters.dateFrom || 'LATEST';
+  google.script.run
+    .withSuccessHandler(function(br) {
+      if (!br || !br.ok || !br.data) return;
+      var d = br.data;
+      if (d.noshow)    document.getElementById('brief-noshow').value    = d.noshow;
+      if (d.objection) document.getElementById('brief-objection').value = d.objection;
+      if (d.worked)    document.getElementById('brief-worked').value    = d.worked;
+      if (d.blockers)  document.getElementById('brief-blockers').value  = d.blockers;
+    })
+    .appt_loadBriefing(briefKey);
+}
+
+// ── DASHBOARD RENDER ─────────────────────────────────────────
+function renderDashboard() {
+  var s   = _summary;
+  var pct = function(n)    { return Math.round(n * 100) + '%'; };
+  var f$  = function(v)    { return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
+  var f$d = function(v)    { return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var pctColor = function(v, good, ok) {
+    if (v >= good) return 'green';
+    if (v >= ok)   return 'amber';
+    return 'red'; // used only for hero bg class
+  };
+
+  // Zone A: Hero KPIs
+  document.getElementById('heroKpis').innerHTML =
+    heroCard('Show Rate',              pct(s.showRate),        'completed ÷ scheduled',        pctColor(s.showRate, .75, .55),        'blue')
+  + heroCard('1st Visit → Deposit',   pct(s.firstConvRate),   'of completed 1st visits',       pctColor(s.firstConvRate, .5, .3),     'amber')
+  + heroCard('2nd View → Closed',     pct(s.secondCloseRate), 'remaining balance = $0',         pctColor(s.secondCloseRate, .5, .3),   'green');
+
+  // Zone B: Activity
+  document.getElementById('actKpis').innerHTML =
+    kpiBox('',       s.totalScheduled,  'Total scheduled',  '')
+  + kpiBox('🔵',    s.firstScheduled,  '1st visits',       'blue')
+  + kpiBox('💎',    s.secondScheduled, '2nd views',        'purple')
+  + kpiBox('✅',    s.totalCompleted,  'Completed',        'green')
+  + kpiBox('❌',    s.totalNoShow,     'No-shows',         'red');
+
+  var otherParts = [];
+  if (s.walkInCount  > 0) otherParts.push('Walk-in: ' + s.walkInCount);
+  if (s.onlineCount  > 0) otherParts.push('Online: '  + s.onlineCount);
+  document.getElementById('actOther').textContent = otherParts.length
+    ? 'Also included — ' + otherParts.join(' · ') + ' (activity only, not in funnel)'
+    : '';
+
+  // Zone B: Funnel
+  var f1  = s.firstScheduled,  f1c = s.firstCompleted,  f1d = s.firstWithDeposit;
+  var f2  = s.secondScheduled, f2c = s.secondCompleted, f2x = s.secondClosed;
+  var safeMax = function(a) { return Math.max(a, 1); };
+
+  document.getElementById('funnelBody').innerHTML =
+    '<div class="funnel-section">'
+  + '<div class="funnel-sec-lbl">First-time visit path</div>'
+  + frow('Scheduled',           f1,  f1,           safeMax(f1),  '#93c5fd', '—')
+  + frow('Completed (showed up)', f1c, f1c,         safeMax(f1),  '#3b82f6', pct(f1 > 0 ? f1c / f1 : 0))
+  + frow('Got deposit',          f1d, f1d,          safeMax(f1),  '#1d4ed8', pct(f1c > 0 ? f1d / f1c : 0))
+  + '</div>'
+  + '<div class="funnel-div"></div>'
+  + '<div class="funnel-section">'
+  + '<div class="funnel-sec-lbl">Second view path</div>'
+  + frow('Scheduled',           f2,  f2,           safeMax(f2),  '#86efac', '—')
+  + frow('Completed (showed up)', f2c, f2c,         safeMax(f2),  '#22c55e', pct(f2 > 0 ? f2c / f2 : 0))
+  + frow('Closed sale (bal=0)',  f2x, f2x,          safeMax(f2),  '#15803d', pct(f2c > 0 ? f2x / f2c : 0))
+  + '</div>';
+
+  // Zone C: Revenue
+  document.getElementById('revDeposit').textContent    = f$d(s.totalDeposits);
+  document.getElementById('revDepositSub').textContent = s.firstWithDeposit + ' customers deposited';
+  document.getElementById('revClosed').textContent     = f$d(s.totalClosedValue);
+  document.getElementById('revClosedSub').textContent  = s.closedOrderCount + ' orders fully paid · dedup by SO#';
+
+  // Zone D: Pipeline
+  document.getElementById('pipeNext').textContent      = s.nextSecondView;
+  document.getElementById('pipeDeposit').textContent   = s.depositAwaitingSecondView;
+  document.getElementById('pipeFollowUp').textContent  = s.needsFollowUp;
+}
+
+function heroCard(label, val, sub, _colorUnused, colorClass) {
+  return '<div class="hero ' + colorClass + '">'
+    + '<div class="hero-lbl">' + esc(label) + '</div>'
+    + '<div class="hero-val">' + esc(val)   + '</div>'
+    + '<div class="hero-sub">' + esc(sub)   + '</div>'
+    + '</div>';
+}
+function kpiBox(icon, val, label, cls) {
+  return '<div class="kpi ' + cls + '">'
+    + (icon ? '<div class="kpi-icon">' + icon + '</div>' : '')
+    + '<div class="kpi-val">' + val + '</div>'
+    + '<div class="kpi-lbl">' + esc(label) + '</div>'
+    + '</div>';
+}
+function frow(label, _n, val, max, color, rate) {
+  var pctW = Math.round((val / max) * 100);
+  return '<div class="frow">'
+    + '<div class="frow-lbl">' + esc(label) + '</div>'
+    + '<div class="frow-bar"><div class="frow-fill" style="width:' + pctW + '%;background:' + color + '"></div></div>'
+    + '<div class="frow-n">'   + val  + '</div>'
+    + '<div class="frow-pct">' + rate + '</div>'
+    + '</div>';
+}
+
+// ── APPOINTMENTS TABLE ────────────────────────────────────────
+function renderTable(rows) {
+  document.getElementById('appt-idle').style.display    = 'none';
+  document.getElementById('appt-filter-bar').style.display = 'flex';
+  document.getElementById('appt-tbl-wrap').style.display   = '';
+  _tableFilter = 'all';
+  document.querySelectorAll('[data-tf]').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.tf === 'all');
+  });
+  buildTable(rows);
+}
+
+function filterTable(tf) {
+  _tableFilter = tf;
+  document.querySelectorAll('[data-tf]').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.tf === tf);
+  });
+  var filtered = _rows.filter(function(r) {
+    if (tf === 'all')     return true;
+    if (tf === 'first')   return r.isFirstTime;
+    if (tf === 'second')  return r.isSecondView;
+    if (tf === 'closed')  return r.isClosed;
+    if (tf === 'noshow')  return r.isNoShow;
+    if (tf === 'deposit') return r.hasDeposit;
+    return true;
+  });
+  buildTable(filtered);
+}
+
+function buildTable(rows) {
+  document.getElementById('tbl-count').textContent = rows.length + ' rows';
+  var f$ = function(v) { return v ? '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—'; };
+  document.getElementById('apptBody').innerHTML = rows.map(function(r, i) {
+    var rc = r.isClosed ? ' class="row-closed"' : r.isNoShow ? ' class="row-noshow"' : '';
+    return '<tr' + rc + '>'
+      + '<td class="dim">'                + (i + 1) + '</td>'
+      + '<td class="mono">'               + esc(r.visitDate)           + '</td>'
+      + '<td><strong>'                    + esc(r.customerName || '—') + '</strong></td>'
+      + '<td>'                            + brandBadge(r.brand)        + '</td>'
+      + '<td>'                            + vtPill(r)                  + '</td>'
+      + '<td>'                            + stPill(r)                  + '</td>'
+      + '<td class="dim">'                + esc(r.assignedRep)         + '</td>'
+      + '<td class="dim">'                + esc(r.salesStage)          + '</td>'
+      + '<td class="mono dim">'           + esc(r.soNum || '—')        + '</td>'
+      + '<td class="r">'                  + (r.orderTotal   ? f$(r.orderTotal)   : '—') + '</td>'
+      + '<td class="r">'                  + (r.remainingBalance !== undefined ? f$(r.remainingBalance) : '—') + '</td>'
+      + '<td class="r">'                  + (r.cashInGross   ? f$(r.cashInGross)   : '—') + '</td>'
+      + '<td>'                            + (r.isClosed ? '<span class="pill p-green">✅ Closed</span>' : '<span class="pill p-dim">Open</span>') + '</td>'
+      + '<td class="mono dim">'           + esc(r.lastPaymentDate || '—')  + '</td>'
+      + '<td title="' + esc(r.nextSteps) + '" class="dim">' + esc(trunc(r.nextSteps, 28)) + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function vtPill(r) {
+  if (r.isFirstTime)  return '<span class="pill p-blue">1st Visit</span>';
+  if (r.isSecondView) return '<span class="pill p-green">2nd View</span>';
+  if (r.isWalkIn)     return '<span class="pill p-amber">Walk-In</span>';
+  if (r.isOnline)     return '<span class="pill p-purple">Online</span>';
+  return '<span class="pill p-dim">' + esc(r.visitType) + '</span>';
+}
+function stPill(r) {
+  if (r.isNoShow)    return '<span class="pill p-red">No-Show</span>';
+  if (r.isCompleted) return '<span class="pill p-green">Completed</span>';
+  return '<span class="pill p-amber">' + esc(r.status || 'Scheduled') + '</span>';
+}
+function brandBadge(b) {
+  b = String(b || '').toUpperCase();
+  if (!b) return '';
+  var c = b === 'VVS' ? 'p-amber' : (b === 'HPUSA' || b === 'HP') ? 'p-blue' : 'p-dim';
+  return '<span class="pill ' + c + '">' + esc(b) + '</span>';
+}
+
+function briefSave() {
+  var btn = document.getElementById('btnSaveBrief');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  var data = {
+    noshow:    document.getElementById('brief-noshow').value,
+    objection: document.getElementById('brief-objection').value,
+    worked:    document.getElementById('brief-worked').value,
+    blockers:  document.getElementById('brief-blockers').value
+  };
+  var dateKey = (_lastFilters && _lastFilters.dateFrom) || 'LATEST';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      btn.textContent = '💾 Save Briefing';
+      if (res && res.ok) {
+        var msg = document.getElementById('briefSavedMsg');
+        msg.classList.add('show');
+        setTimeout(function() { msg.classList.remove('show'); }, 3000);
+      } else {
+        alert('Lưu thất bại: ' + (res && res.error || 'Unknown error'));
+      }
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled = false;
+      btn.textContent = '💾 Save Briefing';
+      alert('Lỗi: ' + (e.message || String(e)));
+    })
+    .appt_saveBriefing({ dateKey: dateKey, data: data });
+}
+
+// ── EXPORT ────────────────────────────────────────────────────
+
+// ── SHARED REPORT RENDERER ────────────────────────────────────
+// Dùng chung cho cả Export HTML và Print/PDF
+function buildReportHtml(forPrint) {
+  var s   = _summary;
+  var pct = function(n) { return Math.round(n * 100) + '%'; };
+  var f$  = function(v) { return v ? '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '$0.00'; };
+  var e   = function(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+  var dateF = _lastFilters.dateFrom, dateT = _lastFilters.dateTo;
+  var range = (dateF||dateT) ? ((dateF?fmtD(dateF):'?')+' — '+(dateT?fmtD(dateT):'?')) : 'All Dates';
+  var brand = _activeBrand==='ALL' ? 'All Brands' : _activeBrand;
+  var generated = new Date().toLocaleString('en-US', {dateStyle:'long', timeStyle:'short'});
+
+  var noshow    = document.getElementById('brief-noshow').value    || '';
+  var objection = document.getElementById('brief-objection').value || '';
+  var worked    = document.getElementById('brief-worked').value    || '';
+  var blockers  = document.getElementById('brief-blockers').value  || '';
+
+  var tblRows = _rows.map(function(r, i) {
+    var bg = r.isClosed ? '#f0fdf4' : r.isNoShow ? '#fff5f5' : '#fff';
+    var closedTxt = r.isClosed
+      ? '<span style="color:#059669;font-weight:700">Closed</span>'
+      : '<span style="color:#94a3b8">Open</span>';
+    return '<tr style="background:'+bg+'">'
+      +'<td style="color:#94a3b8">'+(i+1)+'</td>'
+      +'<td>'+e(r.visitDate)+'</td>'
+      +'<td><strong>'+e(r.customerName||'—')+'</strong></td>'
+      +'<td>'+e(r.brand)+'</td>'
+      +'<td>'+e(r.visitType)+'</td>'
+      +'<td>'+e(r.status)+'</td>'
+      +'<td>'+e(r.assignedRep)+'</td>'
+      +'<td style="color:#64748b">'+e(r.soNum||'—')+'</td>'
+      +'<td style="text-align:right">'+(r.orderTotal    ? f$(r.orderTotal)        : '—')+'</td>'
+      +'<td style="text-align:right">'+(r.cashInGross   ? f$(r.cashInGross)       : '—')+'</td>'
+      +'<td style="text-align:right">'+(r.remainingBalance!=null ? f$(r.remainingBalance) : '—')+'</td>'
+      +'<td style="text-align:center">'+closedTxt+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var printBtn = forPrint
+    ? '<button class="print-btn no-print" onclick="window.print()">🖨 Print / Save PDF</button>'
+    : '';
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    +'<title>Appointment Sales Report — '+e(range)+'</title>'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0}'
+    +'body{font-family:"Helvetica Neue",Arial,sans-serif;font-size:9pt;color:#1e293b;background:#fff}'
+    +'@page{size:A4 landscape;margin:10mm 12mm}'
+    +'@media print{.no-print{display:none!important} tr{page-break-inside:avoid}}'
+    +'.report{padding:16px 20px}'
+
+    // Header
+    +'.rpt-hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;border-bottom:2px solid #1e293b;margin-bottom:14px}'
+    +'.rpt-brand{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:3px}'
+    +'.rpt-title{font-size:17pt;font-weight:700;color:#1e293b;letter-spacing:-.3px}'
+    +'.rpt-period{font-size:10pt;color:#475569;margin-top:2px}'
+    +'.rpt-meta{text-align:right;font-size:8pt;color:#64748b;line-height:1.7}'
+
+    // Section label
+    +'.sec-lbl{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin:12px 0 6px}'
+
+    // KPI strip
+    +'.kpi-strip{display:grid;grid-template-columns:repeat(3,1fr) 2px repeat(2,1fr) 2px repeat(3,1fr);gap:0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}'
+    +'.kpi-div{background:#e2e8f0}'
+    +'.kc{padding:10px 12px;border-right:1px solid #e2e8f0}'
+    +'.kc:last-child{border-right:none}'
+    +'.kc.blue{background:#eff6ff}.kc.amber{background:#fffbeb}.kc.green{background:#ecfdf5}.kc.red{background:#fef2f2}'
+    +'.kl{font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8}'
+    +'.kc.blue .kl{color:#3b82f6}.kc.amber .kl{color:#d97706}.kc.green .kl{color:#059669}.kc.red .kl{color:#ef4444}'
+    +'.kv{font-size:14pt;font-weight:700;color:#1e293b;margin-top:3px;line-height:1}'
+    +'.kc.blue .kv{color:#1d4ed8}.kc.amber .kv{color:#b45309}.kc.green .kv{color:#059669}.kc.red .kv{color:#dc2626}'
+    +'.ks{font-size:7pt;color:#94a3b8;margin-top:2px}'
+
+    // Funnel
+    +'.funnel-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}'
+    +'.funnel-box{border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px}'
+    +'.funnel-path-lbl{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}'
+    +'.path-first{color:#1d4ed8}.path-second{color:#059669}'
+    +'.frow{display:flex;align-items:center;gap:8px;margin-bottom:5px}'
+    +'.frow-name{font-size:8pt;color:#475569;min-width:130px}'
+    +'.frow-bar{flex:1;height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden}'
+    +'.frow-fill{height:6px;border-radius:3px}'
+    +'.frow-n{font-size:8.5pt;font-weight:700;min-width:24px;text-align:right;color:#1e293b}'
+    +'.frow-pct{font-size:8pt;color:#94a3b8;min-width:32px;text-align:right}'
+
+    // Revenue + Pipeline
+    +'.rev-pipe{display:grid;grid-template-columns:1fr 1fr 1px 1fr 1fr 1fr;gap:0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}'
+    +'.rp-div{background:#e2e8f0}'
+    +'.rp-card{padding:10px 12px;border-right:1px solid #e2e8f0}'
+    +'.rp-card:last-child{border-right:none}'
+    +'.rp-lbl{font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8}'
+    +'.rp-val{font-size:13pt;font-weight:700;color:#1e293b;margin-top:3px;line-height:1}'
+    +'.rp-sub{font-size:7pt;color:#94a3b8;margin-top:2px}'
+    +'.rp-card.green{background:#ecfdf5}.rp-card.green .rp-lbl{color:#059669}.rp-card.green .rp-val{color:#059669}'
+    +'.rp-card.blue{background:#eff6ff}.rp-card.blue .rp-lbl{color:#3b82f6}.rp-card.blue .rp-val{color:#1d4ed8}'
+    +'.rp-card.hot{background:#ecfdf5;border-color:#a7f3d0}.rp-card.hot .rp-lbl{color:#059669}.rp-card.hot .rp-val{color:#059669}'
+
+    // Briefing
+    +'.brief-section{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}'
+    +'.brief-hdr{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}'
+    +'.brief-hdr-title{font-size:8pt;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px}'
+    +'.brief-hdr-date{font-size:7.5pt;color:#94a3b8}'
+    +'.brief-grid{display:grid;grid-template-columns:1fr 1fr}'
+    +'.brief-box{padding:8px 12px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;min-height:52px}'
+    +'.brief-box:nth-child(even){border-right:none}'
+    +'.brief-box:nth-child(3),.brief-box:nth-child(4){border-bottom:none}'
+    +'.brief-box-lbl{font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}'
+    +'.brief-box-val{font-size:8.5pt;color:#334155;line-height:1.5;white-space:pre-wrap}'
+    +'.brief-box-empty{font-size:8pt;color:#cbd5e1;font-style:italic}'
+
+    // Table
+    +'table{width:100%;border-collapse:collapse;font-size:7.5pt}'
+    +'thead th{background:#1e293b;color:#f8fafc;padding:5px 8px;text-align:left;font-size:7pt;font-weight:600;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}'
+    +'thead th.r{text-align:right}'
+    +'tbody tr{border-bottom:1px solid #f1f5f9}'
+    +'tbody td{padding:4px 8px;vertical-align:middle}'
+
+    // Footer
+    +'.rpt-footer{margin-top:14px;padding-top:8px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:7pt;color:#94a3b8}'
+
+    // Print button
+    +'.print-btn{position:fixed;bottom:24px;right:24px;padding:10px 22px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:11pt;font-weight:700;cursor:pointer}'
+
+    +'</style></head><body><div class="report">'
+
+    // ── HEADER ──
+    +'<div class="rpt-hdr">'
+    +  '<div>'
+    +    '<div class="rpt-brand">'+e(brand)+'</div>'
+    +    '<div class="rpt-title">Appointment Sales Report</div>'
+    +    '<div class="rpt-period">'+e(range)+'</div>'
+    +  '</div>'
+    +  '<div class="rpt-meta">'
+    +    'Generated: '+e(generated)+'<br>'
+    +    'Total appointments: <strong>'+s.totalScheduled+'</strong>'
+    +  '</div>'
+    +'</div>'
+
+    // ── KPIs ──
+    +'<div class="sec-lbl">Key Performance Indicators</div>'
+    +'<div class="kpi-strip">'
+    +  '<div class="kc blue"><div class="kl">Show Rate</div><div class="kv">'+pct(s.showRate)+'</div><div class="ks">completed ÷ scheduled</div></div>'
+    +  '<div class="kc amber"><div class="kl">1st Visit Conv.</div><div class="kv">'+pct(s.firstConvRate)+'</div><div class="ks">deposit ÷ completed</div></div>'
+    +  '<div class="kc green"><div class="kl">2nd View Close</div><div class="kv">'+pct(s.secondCloseRate)+'</div><div class="ks">closed ÷ completed</div></div>'
+    +  '<div class="kpi-div"></div>'
+    +  '<div class="kc"><div class="kl">1st Visits</div><div class="kv">'+s.firstScheduled+'</div><div class="ks">of '+s.totalScheduled+' total</div></div>'
+    +  '<div class="kc"><div class="kl">2nd Views</div><div class="kv">'+s.secondScheduled+'</div><div class="ks">of '+s.totalScheduled+' total</div></div>'
+    +  '<div class="kpi-div"></div>'
+    +  '<div class="kc green"><div class="kl">Completed</div><div class="kv">'+s.totalCompleted+'</div><div class="ks">showed up</div></div>'
+    +  '<div class="kc red"><div class="kl">No-Shows</div><div class="kv">'+s.totalNoShow+'</div><div class="ks">did not attend</div></div>'
+    +  '<div class="kc"><div class="kl">Total Scheduled</div><div class="kv">'+s.totalScheduled+'</div><div class="ks">all appointments</div></div>'
+    +'</div>'
+
+    // ── FUNNEL ──
+    +'<div class="sec-lbl">Conversion Funnel</div>'
+    +'<div class="funnel-grid">'
+    +  rptFunnelBox('First-Time Visit Path','path-first',[
+        ['Scheduled',            s.firstScheduled,   Math.max(s.firstScheduled,1),  '#bfdbfe', '—'],
+        ['Completed',            s.firstCompleted,   Math.max(s.firstScheduled,1),  '#3b82f6', pct(s.firstScheduled>0?s.firstCompleted/s.firstScheduled:0)],
+        ['Got Deposit',          s.firstWithDeposit, Math.max(s.firstScheduled,1),  '#1d4ed8', pct(s.firstCompleted>0?s.firstWithDeposit/s.firstCompleted:0)]
+      ])
+    +  rptFunnelBox('Second View Path','path-second',[
+        ['Scheduled',            s.secondScheduled,  Math.max(s.secondScheduled,1), '#bbf7d0', '—'],
+        ['Completed',            s.secondCompleted,  Math.max(s.secondScheduled,1), '#22c55e', pct(s.secondScheduled>0?s.secondCompleted/s.secondScheduled:0)],
+        ['Closed (Balance = $0)',s.secondClosed,     Math.max(s.secondScheduled,1), '#15803d', pct(s.secondCompleted>0?s.secondClosed/s.secondCompleted:0)]
+      ])
+    +'</div>'
+
+    // ── REVENUE + PIPELINE ──
+    +'<div class="sec-lbl">Revenue & Pipeline</div>'
+    +'<div class="rev-pipe">'
+    +  '<div class="rp-card blue"><div class="rp-lbl">Total Deposits</div><div class="rp-val">'+f$(s.totalDeposits)+'</div><div class="rp-sub">'+s.firstWithDeposit+' customers deposited</div></div>'
+    +  '<div class="rp-card green"><div class="rp-lbl">Closed Sales Value</div><div class="rp-val">'+f$(s.totalClosedValue)+'</div><div class="rp-sub">'+s.closedOrderCount+' orders fully paid</div></div>'
+    +  '<div class="rp-div"></div>'
+    +  '<div class="rp-card hot"><div class="rp-lbl">Hot Pipeline</div><div class="rp-val">'+s.depositAwaitingSecondView+'</div><div class="rp-sub">deposited, no 2nd view yet</div></div>'
+    +  '<div class="rp-card"><div class="rp-lbl">Next 2nd View</div><div class="rp-val">'+s.nextSecondView+'</div><div class="rp-sub">diamond viewing ready</div></div>'
+    +  '<div class="rp-card"><div class="rp-lbl">Needs Follow-Up</div><div class="rp-val">'+s.needsFollowUp+'</div><div class="rp-sub">action required</div></div>'
+    +'</div>'
+
+    // ── BRIEFING ──
+    +'<div class="sec-lbl">Appointment Sales Briefing</div>'
+    +'<div class="brief-section">'
+    +  '<div class="brief-hdr">'
+    +    '<div class="brief-hdr-title">Daily Sales Notes</div>'
+    +    '<div class="brief-hdr-date">'+e(dateF ? fmtD(dateF) : 'All dates')+'</div>'
+    +  '</div>'
+    +  '<div class="brief-grid">'
+    +    rptBriefBox('No-Show Reasons',     noshow)
+    +    rptBriefBox('Common Objections',   objection)
+    +    rptBriefBox('What Worked Today',   worked)
+    +    rptBriefBox('Blockers & Issues',   blockers)
+    +  '</div>'
+    +'</div>'
+
+    // ── TABLE ──
+    +'<div class="sec-lbl">Appointment Detail — '+_rows.length+' records</div>'
+    +'<table>'
+    +  '<thead><tr>'
+    +    '<th>#</th><th>Visit Date</th><th>Customer</th><th>Brand</th>'
+    +    '<th>Visit Type</th><th>Status</th><th>Rep</th><th>SO#</th>'
+    +    '<th class="r">Order Total</th><th class="r">Cash-in</th>'
+    +    '<th class="r">Remaining</th><th style="text-align:center">Closed?</th>'
+    +  '</tr></thead>'
+    +  '<tbody>'+tblRows+'</tbody>'
+    +'</table>'
+
+    // ── FOOTER ──
+    +'<div class="rpt-footer">'
+    +  '<span>Appointment Sales Report &nbsp;·&nbsp; '+e(brand)+'</span>'
+    +  '<span>'+e(range)+'</span>'
+    +  '<span>Generated '+e(generated)+'</span>'
+    +'</div>'
+
+    +'</div>'
+    + printBtn
+    +'</body></html>';
+}
+
+function rptFunnelBox(title, pathCls, rows) {
+  var e = function(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var lines = rows.map(function(r) {
+    var pctW = Math.round((r[1] / r[2]) * 100);  
+    return '<div class="frow">'
+      +'<div class="frow-name">'+e(r[0])+'</div>' 
+      +'<div class="frow-bar"><div class="frow-fill" style="width:'+pctW+'%;background:'+r[3]+'"></div></div>'
+      +'<div class="frow-n">'+r[1]+'</div>'       
+      +'<div class="frow-pct">'+r[4]+'</div>'
+      +'</div>';
+  });
+  return '<div class="funnel-box">'
+    +'<div class="funnel-path-lbl '+pathCls+'">'+e(title)+'</div>'
+    +lines.join('')
+    +'</div>';
+}
+
+function rptBriefBox(label, content) {
+  var e = function(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var body = content
+    ? '<div class="brief-box-val">'+e(content)+'</div>'
+    : '<div class="brief-box-empty">— no notes recorded —</div>';
+  return '<div class="brief-box">'
+    +'<div class="brief-box-lbl">'+e(label)+'</div>'
+    +body
+    +'</div>';
+}
+
+function exportReport() {
+  if (!_rows.length) return;
+  var html = buildReportHtml(false); // false = không có print button
+  var win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+function printReport() {
+  if (!_rows.length) return;
+  var html = buildReportHtml(true); // true = có print button
+  var win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+// ── UTILS ─────────────────────────────────────────────────────
+function setDashState(s) {
+  document.getElementById('dash-idle').style.display    = s === 'idle'    ? '' : 'none';
+  document.getElementById('dash-load').style.display    = s === 'load'    ? '' : 'none';
+  document.getElementById('dash-content').style.display = s === 'content' ? '' : 'none';
+}
+function showErr(msg) { var b = document.getElementById('errBar'); b.textContent = '⚠ ' + msg; b.classList.add('on'); }
+function clearErr()   { document.getElementById('errBar').classList.remove('on'); }
+function esc(s)  { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function trunc(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+function dfmt(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function pad(n)  { return n < 10 ? '0' + n : String(n); }
+function fmtD(iso) { var d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+</script>
+</body>
+</html>

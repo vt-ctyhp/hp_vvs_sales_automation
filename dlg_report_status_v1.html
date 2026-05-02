@@ -1,0 +1,474 @@
+<!doctype html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body { font: 13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial; margin: 16px; }
+  h2 { margin: 0 0 6px; }
+  .sub { color:#555; margin: 0 0 14px; }
+
+  /* ── Main filter grid: 4 status cols + 1 date col + 1 brand col ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(200px, 1fr)) minmax(220px,1fr) minmax(180px,1fr);
+    gap: 4px;
+  }
+
+  fieldset { border:1px solid #ddd; border-radius:10px; padding:10px 12px; }
+  legend { padding:0 6px; font-weight:600; }
+  .controls { display:flex; gap:8px; margin:4px 0 8px; flex-wrap:wrap; }
+  .list { max-height:180px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:6px 8px; }
+  .list label { display:block; margin:4px 0; }
+  .foot { display:flex; justify-content:space-between; align-items:center; margin-top:14px; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  button { padding:8px 12px; cursor:pointer; }
+  .muted { color:#666; font-size:12px; }
+  .chips { margin:10px 0 4px; display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .chip-group { display:flex; align-items:center; gap:6px; margin-right:10px; }
+  .chip-label { font-weight:600; color:#444; }
+  .chip { display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; background:#fafafa; }
+
+  /* Date range fieldset extras */
+  .quick-btns { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
+  .qbtn {
+    padding:5px 9px; font-size:12px; border:1px solid #bbb; border-radius:6px;
+    background:#f5f5f5; cursor:pointer; white-space:nowrap;
+  }
+  .qbtn.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+  .date-row { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .date-row label { font-size:12px; color:#555; white-space:nowrap; }
+  input[type="date"] { font-size:12px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; }
+
+  /* Fixed-height preview rows (two visible lines) */
+  .table-2line td { height: 46px; vertical-align: top; }
+  .cell-clip2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; }
+</style>
+</head>
+<body>
+<? var L = lists || {}; ?>
+
+<div class="sub">
+  Select zero or more values. Matching uses <b>OR</b> within each list and <b>AND</b> across lists.
+</div>
+
+<div class="grid">
+
+  <!-- ── Status columns (unchanged) ── -->
+  <fieldset data-group="salesStage">
+    <legend>Sales Stage</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.salesStage || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="salesStage" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-salesStage"></div>
+  </fieldset>
+
+  <fieldset data-group="conversionStatus">
+    <legend>Conversion Status</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.conversionStatus || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="conversionStatus" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-conversionStatus"></div>
+  </fieldset>
+
+  <fieldset data-group="customOrderStatus">
+    <legend>Custom Order Status</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.customOrderStatus || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="customOrderStatus" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-customOrderStatus"></div>
+  </fieldset>
+
+  <fieldset data-group="centerStoneStatus">
+    <legend>Center Stone Order Status</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.centerStoneStatus || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="centerStoneStatus" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-centerStoneStatus"></div>
+  </fieldset>
+
+  <!-- ── NEW: Date Range ── -->
+  <fieldset id="fs-dateRange">
+    <legend>Date Range</legend>
+    <div class="quick-btns">
+      <button type="button" class="qbtn" data-range="thisYear">This Year</button>
+      <button type="button" class="qbtn" data-range="thisMonth">This Month</button>
+      <button type="button" class="qbtn" data-range="last30">Last 30 Days</button>
+      <button type="button" class="qbtn" data-range="custom">Custom</button>
+      <button type="button" class="qbtn" data-range="clear">Clear</button>
+    </div>
+    <div class="date-row">
+      <label>From</label>
+      <input type="date" id="dateFrom" />
+      <label>To</label>
+      <input type="date" id="dateTo" />
+    </div>
+    <div class="muted" id="ct-dateRange" style="margin-top:6px;"></div>
+  </fieldset>
+
+  <!-- ── NEW: Brand ── -->
+  <fieldset data-group="brand">
+    <legend>Brand</legend>
+    <div class="controls">
+      <button type="button" data-act="all">Select all</button>
+      <button type="button" data-act="none">Clear</button>
+    </div>
+    <div class="list">
+      <? (L.brands || []).forEach(function(x){ ?>
+        <label><input type="checkbox" name="brand" value="<?= x ?>"> <?= x ?></label>
+      <? }); ?>
+    </div>
+    <div class="muted" id="ct-brand"></div>
+  </fieldset>
+
+</div><!-- /grid -->
+
+<div class="foot">
+  <div class="muted" id="summary">0 selected</div>
+  <div class="btns">
+    <button type="button" id="btnRun">Run Report</button>
+    <button type="button" id="btnExportTab" disabled>Export → New tab</button>
+    <button type="button" id="btnExportPdf" disabled>Export → PDF</button>
+    <button type="button" id="btnTest">Server Test</button>
+    <button type="button" onclick="google.script.host.close()">Close</button>
+  </div>
+</div>
+
+<div id="chipBar" class="chips"></div>
+<div id="sumBar" class="chips"></div>
+<div id="resultMeta" class="muted" style="margin-top:10px;"></div>
+<div id="resultWrap" style="margin-top:8px; max-height:380px; overflow:auto; border:1px solid #eee; border-radius:8px;"></div>
+
+<script>
+window.onerror = function(msg){
+  var el = document.getElementById('resultMeta');
+  if (el) el.textContent = 'JS error: ' + msg;
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function qsAll(sel){ return Array.from(document.querySelectorAll(sel)); }
+function escapeHtml(s){
+  return String(s || '').replace(/[&<>"']/g, function(m){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+  });
+}
+function linkify(v){
+  var s = (v == null ? '' : String(v).trim());
+  if (/^https?:\/\//i.test(s)) return '<a href="'+s+'" target="_blank">Open</a>';
+  return escapeHtml(s);
+}
+
+// ── Date helpers ──────────────────────────────────────────────────────────
+function todayISO(){
+  var d = new Date(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+  return d.getFullYear() + '-' + mm + '-' + dd;
+}
+function isoOf(d){ // d = Date → 'yyyy-MM-dd'
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+var _activeRange = ''; // tracks which quick button is active
+
+function applyQuickRange(range){
+  _activeRange = range;
+  qsAll('.qbtn').forEach(function(b){ b.classList.toggle('active', b.dataset.range === range); });
+
+  var fromEl = document.getElementById('dateFrom');
+  var toEl   = document.getElementById('dateTo');
+  var now    = new Date();
+
+  if (range === 'thisYear'){
+    fromEl.value = now.getFullYear() + '-01-01';
+    toEl.value   = now.getFullYear() + '-12-31';
+  } else if (range === 'thisMonth'){
+    var mm = String(now.getMonth()+1).padStart(2,'0');
+    var lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    fromEl.value = now.getFullYear() + '-' + mm + '-01';
+    toEl.value   = now.getFullYear() + '-' + mm + '-' + String(lastDay).padStart(2,'0');
+  } else if (range === 'last30'){
+    var d30 = new Date(now); d30.setDate(d30.getDate() - 30);
+    fromEl.value = isoOf(d30);
+    toEl.value   = isoOf(now);
+  } else if (range === 'custom'){
+    // just enable the fields; user picks manually
+  } else if (range === 'clear'){
+    fromEl.value = '';
+    toEl.value   = '';
+    _activeRange = '';
+    qsAll('.qbtn').forEach(function(b){ b.classList.remove('active'); });
+  }
+  updateDateLabel();
+  updateCounts();
+}
+
+function updateDateLabel(){
+  var fromEl = document.getElementById('dateFrom');
+  var toEl   = document.getElementById('dateTo');
+  var ct     = document.getElementById('ct-dateRange');
+  var f = fromEl.value, t = toEl.value;
+  if (f && t)      ct.textContent = f + ' → ' + t;
+  else if (f)      ct.textContent = 'From ' + f;
+  else if (t)      ct.textContent = 'To ' + t;
+  else             ct.textContent = 'No date filter';
+}
+
+// ── Payload builder ───────────────────────────────────────────────────────
+function selectionPayload(){
+  function pick(name){ return qsAll('input[name="'+name+'"]:checked').map(function(el){ return el.value; }); }
+  var fromEl = document.getElementById('dateFrom');
+  var toEl   = document.getElementById('dateTo');
+  return {
+    salesStage:        pick('salesStage'),
+    conversionStatus:  pick('conversionStatus'),
+    customOrderStatus: pick('customOrderStatus'),
+    centerStoneStatus: pick('centerStoneStatus'),
+    brands:            pick('brand'),
+    dateFrom:          (fromEl && fromEl.value) ? fromEl.value : '',
+    dateTo:            (toEl   && toEl.value)   ? toEl.value   : '',
+    _mode: 'preview'
+  };
+}
+
+function setBusy(b){
+  document.getElementById('btnRun').disabled = b;
+  document.getElementById('btnExportTab').disabled = b || !window.__lastStatusPayload;
+  document.getElementById('btnExportPdf').disabled = b || !window.__lastStatusPayload;
+  document.getElementById('resultMeta').textContent = b ? 'Running…' : '';
+}
+
+// ── Chip renders ──────────────────────────────────────────────────────────
+function renderChipsStatus(p){
+  var bar = document.getElementById('chipBar');
+  var groups = [
+    ['Sales Stage',         p.salesStage],
+    ['Conversion Status',   p.conversionStatus],
+    ['Custom Order Status', p.customOrderStatus],
+    ['Center Stone Status', p.centerStoneStatus],
+    ['Brand',               p.brands],
+  ];
+  var dateChip = '';
+  if (p.dateFrom || p.dateTo){
+    var label = (p.dateFrom || '…') + ' → ' + (p.dateTo || '…');
+    dateChip = '<span class="chip-group"><span class="chip-label">Closed/Won Date:</span><span class="chip">'+escapeHtml(label)+'</span></span>';
+  }
+  var html = groups.map(function(g){
+    var label = g[0], arr = g[1];
+    var chips = (arr && arr.length)
+      ? arr.map(function(v){ return '<span class="chip">'+escapeHtml(v)+'</span>'; }).join(' ')
+      : '<span class="chip">All</span>';
+    return '<span class="chip-group"><span class="chip-label">'+label+':</span>'+chips+'</span>';
+  }).join('') + dateChip;
+  bar.innerHTML = html;
+}
+
+function renderSummaryChipsStatus(summary){
+  var bar = document.getElementById('sumBar');
+  if (!summary || !summary.groups){ bar.innerHTML = ''; return; }
+  function topEntries(map){
+    var arr = Object.keys(map).map(function(k){ return [k, map[k]]; });
+    arr.sort(function(a,b){ return b[1]-a[1] || String(a[0]).localeCompare(String(b[0])); });
+    return arr.slice(0,10);
+  }
+  var g = summary.groups;
+  var sections = [
+    ['Rep',                 g.rep],
+    ['Sales Stage',         g.salesStage],
+    ['Conversion Status',   g.conversionStatus],
+    ['Custom Order Status', g.customOrderStatus],
+    ['Center Stone Status', g.centerStoneStatus],
+    ['Brand',               g.brand],
+  ];
+  var html = sections.map(function(s){
+    var label = s[0], map = s[1];
+    if (!map) return '';
+    var chips = topEntries(map).map(function(e){ return '<span class="chip">'+escapeHtml(e[0])+' ('+e[1]+')</span>'; }).join(' ');
+    return '<span class="chip-group"><span class="chip-label">'+label+':</span>'+(chips||'<span class="chip">(none)</span>')+'</span>';
+  }).join('');
+  bar.innerHTML = html;
+}
+
+// ── Table render ──────────────────────────────────────────────────────────
+function renderTable(res){
+  var wrap = document.getElementById('resultWrap');
+  if (!res || !res.headers){ wrap.innerHTML=''; return; }
+
+  var limit = Math.min(res.previewLimit || 1000, res.rows.length);
+
+  function ymdToday(){ var d=new Date(), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return d.getFullYear()+'-'+mm+'-'+dd; }
+  var todayYMD = ymdToday();
+
+  var cosIdx = res.headers.indexOf('Custom Order Status');
+  var pdIdx  = res.headers.indexOf('Production Deadline');
+
+  var thead = '<thead><tr>' + res.headers.map(function(h){
+    return '<th style="position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;text-align:left;padding:6px 8px;">'+escapeHtml(h)+'</th>';
+  }).join('') + '</tr></thead>';
+
+  var rows = res.rows.slice(0, limit).map(function(r){
+    var status = cosIdx >= 0 ? String(r[cosIdx]||'').trim().toLowerCase() : '';
+    return '<tr>' + r.map(function(cell, i){
+      var extraStyle = '';
+      if (i === pdIdx && pdIdx >= 0 && status === 'in production'){
+        var ymd = String(cell||'').trim();
+        if (ymd && /^\d{4}-\d{2}-\d{2}$/.test(ymd) && ymd < todayYMD) extraStyle = 'background:#ff3b30;color:#000;';
+      }
+      return '<td style="border-bottom:1px solid #f1f1f1;padding:6px 8px;vertical-align:top;'+extraStyle+'"><div class="cell-clip2">'+linkify(cell)+'</div></td>';
+    }).join('') + '</tr>';
+  }).join('');
+
+  var widthMap = {
+    'APPT_ID':'90px','Customer Name':'220px','Assigned Rep':'160px','Assisted Rep':'160px',
+    'Brand':'100px','SO#':'110px','Visit Date':'120px','Order Total':'150px',
+    'Total Pay To Date':'150px','Sales Stage':'190px','Conversion Status':'190px',
+    'Custom Order Status':'190px','In Production Status':'190px','Production Deadline':'140px',
+    'Center Stone Order Status':'140px','Next Steps':'320px','Client Status Report URL':'140px'
+  };
+  var colgroup = '<colgroup>' + res.headers.map(function(h){
+    return '<col style="width:'+(widthMap[h]||'140px')+'">';
+  }).join('') + '</colgroup>';
+
+  wrap.innerHTML = '<table class="table-2line" style="width:100%;border-collapse:collapse;">'+colgroup+thead+'<tbody>'+rows+'</tbody></table>';
+
+  var meta = (limit < res.total)
+    ? 'Showing '+limit.toLocaleString()+' of '+res.total.toLocaleString()+' (preview capped).'
+    : 'Showing '+res.total.toLocaleString()+' rows.';
+  document.getElementById('resultMeta').textContent = meta + (res.warn ? (' • '+res.warn) : '');
+  document.getElementById('btnExportTab').disabled = false;
+  document.getElementById('btnExportPdf').disabled = false;
+}
+
+// ── Selection counters ────────────────────────────────────────────────────
+function updateCounts(){
+  var groups = ['salesStage','conversionStatus','customOrderStatus','centerStoneStatus','brand'];
+  var total = 0;
+  for (var i=0; i<groups.length; i++){
+    var g = groups[i];
+    var n = qsAll('input[name="'+g+'"]:checked').length;
+    total += n;
+    var ct = document.getElementById('ct-'+g);
+    if (ct) ct.textContent = n + ' selected';
+  }
+  // date range counts as 1 "selection" if active
+  var fromEl = document.getElementById('dateFrom');
+  var toEl   = document.getElementById('dateTo');
+  if ((fromEl && fromEl.value) || (toEl && toEl.value)) total += 1;
+  document.getElementById('summary').textContent = total + ' selected';
+}
+
+// Fieldset select-all / clear (status + brand)
+document.querySelectorAll('fieldset[data-group]').forEach(function(fs){
+  fs.addEventListener('click', function(e){
+    if (!(e.target instanceof HTMLButtonElement)) return;
+    var act   = e.target.dataset.act;
+    var group = fs.getAttribute('data-group');
+    fs.querySelectorAll('input[name="'+group+'"]').forEach(function(b){ b.checked = (act==='all'); });
+    updateCounts();
+  });
+});
+
+// Quick range buttons
+document.getElementById('fs-dateRange').addEventListener('click', function(e){
+  if (!(e.target instanceof HTMLButtonElement)) return;
+  var r = e.target.dataset.range;
+  if (r) applyQuickRange(r);
+});
+
+// Manual date input changes
+document.getElementById('dateFrom').addEventListener('change', function(){ updateDateLabel(); updateCounts(); });
+document.getElementById('dateTo').addEventListener('change',   function(){ updateDateLabel(); updateCounts(); });
+
+qsAll('input[type="checkbox"]').forEach(function(cb){ cb.addEventListener('change', updateCounts); });
+updateCounts();
+updateDateLabel();
+
+// ── Run + Export ──────────────────────────────────────────────────────────
+document.getElementById('btnRun').addEventListener('click', function(){
+  var payload = selectionPayload();
+  renderChipsStatus(payload);
+  window.__lastStatusPayload = payload;
+  setBusy(true);
+  google.script.run
+    .withSuccessHandler(function(res){ setBusy(false); renderSummaryChipsStatus(res.summary); renderTable(res); })
+    .withFailureHandler(function(err){ setBusy(false); document.getElementById('resultMeta').textContent = 'Error: '+err.message; })
+    .report_runStatus(payload);
+});
+
+document.getElementById('btnExportTab').addEventListener('click', function(){
+  var payload = window.__lastStatusPayload || selectionPayload();
+  setBusy(true);
+  google.script.run
+    .withSuccessHandler(function(info){
+      setBusy(false);
+      var link  = info.url     ? ' — <a href="'+info.url+'" target="_blank">Open sheet</a>' : '';
+      var dpdf  = info.drivePdfUrl ? ' — <a href="'+info.drivePdfUrl+'" target="_blank">PDF (Drive)</a>' : '';
+      document.getElementById('resultMeta').innerHTML =
+        'Exported to sheet: '+escapeHtml(info.sheetName)+' ('+info.rows+' rows).'+link+dpdf;
+    })
+    .withFailureHandler(function(err){ setBusy(false); document.getElementById('resultMeta').textContent = 'Export error: '+err.message; })
+    .report_export('status', payload);
+});
+
+document.getElementById('btnExportPdf').addEventListener('click', function(){
+  var payload = window.__lastStatusPayload || selectionPayload();
+  setBusy(true);
+  google.script.run
+    .withSuccessHandler(function(res){
+      setBusy(false);
+      if (!res || !res.ok){
+        document.getElementById('resultMeta').textContent = 'Export error: '+(res && res.error ? res.error : 'Unexpected response.');
+        return;
+      }
+      document.getElementById('resultMeta').textContent = 'Exported PDF: '+escapeHtml(res.fileName);
+      downloadBase64Pdf(res.fileName, res.bytesBase64, res.mimeType || 'application/pdf');
+    })
+    .withFailureHandler(function(err){ setBusy(false); document.getElementById('resultMeta').textContent = 'Export error: '+err.message; })
+    .report_exportPdf('status', payload);
+});
+
+document.getElementById('btnTest').addEventListener('click', function(){
+  google.script.run
+    .withSuccessHandler(function(msg){ document.getElementById('resultMeta').textContent = 'Server: '+msg; })
+    .withFailureHandler(function(err){ document.getElementById('resultMeta').textContent = 'Error: '+err.message; })
+    .report_ping();
+});
+
+function downloadBase64Pdf(fileName, b64, mime){
+  try {
+    var byteChars = atob(b64);
+    var bytes = new Uint8Array(byteChars.length);
+    for (var i=0; i<byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    var blob = new Blob([bytes], {type: mime||'application/pdf'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href = url; a.download = fileName||'report.pdf';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    a.remove();
+  } catch(e){ alert('Failed to download PDF: '+(e&&e.message?e.message:e)); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+</head>
+<body style="font-family: Arial; padding:40px">
+
+<h2>Sales Receipt Generator Test</h2>
+
+<button onclick="generateReceipt()" style="padding:10px 20px; font-size:16px">
+Generate Test Receipt
+</button>
+
+<p id="result"></p>
+
+<script>
+function generateReceipt() {
+  google.script.run
+    .withSuccessHandler(function(response) {
+      document.getElementById("result").innerText = response;
+    })
+    .createTestReceipt();
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;font-size:13px;color:#1f2937;background:#fff;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ── Title bar ── */
+.title-bar{padding:14px 20px 4px;border-bottom:1px solid #e5e7eb;}
+.title-bar h2{font-size:17px;font-weight:600;color:#111827;}
+.title-bar p{font-size:12px;color:#6b7280;margin-top:3px;}
+
+/* ── Filter region ── */
+.filter-region{padding:12px 16px 8px;border-bottom:1px solid #e5e7eb;background:#fff;overflow-x:auto;flex-shrink:0;}
+.filter-row{display:flex;gap:10px;align-items:flex-start;min-width:max-content;}
+
+/* Each group box — exact match to screenshot */
+.fg{border:1px solid #d1d5db;border-radius:6px;padding:8px 10px;min-width:160px;background:#fff;}
+.fg-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:nowrap;}
+.fg-title{font-size:11px;font-weight:600;color:#374151;white-space:nowrap;flex-shrink:1;min-width:0;}
+.fg-actions{display:flex;gap:4px;flex-shrink:0;margin-left:auto;}
+.fg-btn{font-size:11px;font-weight:500;color:#1f2937;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.fg-btn:hover{background:#e5e7eb;}
+.fg-scroll{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+.fg-scroll::-webkit-scrollbar{width:4px;}
+.fg-scroll::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px;}
+.cb-row{display:flex;align-items:center;gap:6px;cursor:pointer;padding:1px 0;}
+.cb-row input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:#2563eb;flex-shrink:0;}
+.cb-row span{font-size:12px;color:#374151;cursor:pointer;user-select:none;}
+.fg-count{font-size:11px;color:#6b7280;margin-top:5px;}
+
+/* Date group — wider */
+.fg-date{min-width:200px;}
+.date-presets{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;}
+.dp{font-size:11px;font-weight:500;padding:3px 10px;border-radius:4px;border:1px solid #d1d5db;cursor:pointer;background:#f9fafb;color:#374151;font-family:inherit;}
+.dp:hover{background:#e5e7eb;}
+.dp.active{background:#2563eb;border-color:#2563eb;color:#fff;}
+.dp-clear{background:#f3f4f6;color:#6b7280;border-color:#d1d5db;}
+.dp-clear:hover{background:#e5e7eb;}
+.date-from-to{display:flex;align-items:center;gap:6px;margin-top:4px;}
+.date-from-to label{font-size:11px;color:#6b7280;}
+.date-from-to input[type=date]{padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:11px;font-family:inherit;color:#111827;background:#f9fafb;outline:none;}
+.date-from-to input[type=date]:focus{border-color:#2563eb;background:#fff;}
+.date-range-label{font-size:11px;color:#6b7280;margin-top:4px;}
+
+/* ── Summary / active-filters row ── */
+.summary-row{padding:6px 16px;border-bottom:1px solid #e5e7eb;background:#f9fafb;min-height:30px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;flex-shrink:0;}
+.showing{font-size:12px;color:#374151;margin-right:4px;}
+.ftag{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:#fff;border:1px solid #d1d5db;border-radius:12px;font-size:11px;color:#374151;}
+.ftag strong{font-weight:600;}
+.ftag-val{color:#2563eb;font-weight:500;}
+
+/* ── Action buttons ── */
+.action-bar{padding:8px 16px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#fff;}
+.btn{padding:6px 16px;border-radius:5px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;border:1px solid transparent;transition:background .12s;}
+.btn-run{background:#1f2937;color:#fff;border-color:#1f2937;}
+.btn-run:hover{background:#111827;}
+.btn-newtab{background:#fff;color:#1f2937;border-color:#d1d5db;}
+.btn-newtab:hover{background:#f9fafb;}
+.btn-pdf{background:#fff;color:#1f2937;border-color:#d1d5db;}
+.btn-pdf:hover{background:#f9fafb;}
+.btn-close{background:#fff;color:#1f2937;border-color:#d1d5db;}
+.btn-close:hover{background:#f9fafb;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+
+/* ── Table area ── */
+.tbl-wrap{flex:1;overflow:auto;position:relative;}
+.state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#9ca3af;}
+.state-title{font-size:13px;color:#6b7280;}
+.spinner{width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{position:sticky;top:0;z-index:9;background:#f3f4f6;color:#374151;font-weight:600;padding:7px 10px;text-align:left;white-space:nowrap;border-bottom:2px solid #e5e7eb;font-size:11.5px;}
+tbody tr{border-bottom:1px solid #f3f4f6;}
+tbody tr:hover{background:#f9fafb;}
+td{padding:5px 10px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;color:#374151;}
+td.num{text-align:right;font-variant-numeric:tabular-nums;color:#111827;}
+.brand-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10.5px;font-weight:600;}
+.b-vvs{background:#fef9c3;color:#854d0e;}
+.b-hp{background:#dbeafe;color:#1e40af;}
+.b-oth{background:#f3f4f6;color:#374151;}
+.status-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10.5px;font-weight:600;}
+.s-ok{background:#dcfce7;color:#166534;}
+.s-warn{background:#fef9c3;color:#854d0e;}
+.s-bad{background:#fee2e2;color:#991b1b;}
+
+.err-bar{display:none;padding:7px 16px;background:#fef2f2;border-bottom:1px solid #fecaca;color:#dc2626;font-size:12px;flex-shrink:0;}
+.err-bar.on{display:block;}
+</style>
+</head>
+<body>
+
+<!-- Title -->
+<div class="title-bar">
+  <p>Select zero or more values. Matching uses <strong>OR</strong> within each list and <strong>AND</strong> across lists.</p>
+</div>
+
+<!-- Filters -->
+<div class="filter-region">
+  <div class="filter-row">
+
+    <!-- Visit Date Range -->
+    <div class="fg fg-date">
+      <div class="fg-head"><span class="fg-title">Payment Date Range</span></div>
+      <div class="date-presets">
+        <button class="dp" data-qp="thisYear">This Year</button>
+        <button class="dp" data-qp="thisMonth">This Month</button>
+        <button class="dp" data-qp="last30">Last 30 Days</button>
+        <button class="dp" data-qp="custom">Custom</button>
+        <button class="dp dp-clear" id="dateClrBtn" onclick="clearDate()">Clear</button>
+      </div>
+      <div class="date-from-to">
+        <label>From</label>
+        <input type="date" id="dateFrom">
+        <label>To</label>
+        <input type="date" id="dateTo">
+      </div>
+      <div class="date-range-label" id="dateRangeLabel"></div>
+    </div>
+
+    <!-- Brand -->
+    <div class="fg">
+      <div class="fg-head">
+        <span class="fg-title">Brand</span>
+        <div class="fg-actions">
+          <button class="fg-btn" onclick="selectAll('brand')">Select all</button>
+          <button class="fg-btn" onclick="clearGroup('brand')">Clear</button>
+        </div>
+      </div>
+
+      <div class="fg-scroll" id="brand-list"><span style="color:#9ca3af;font-size:11px">Loading…</span></div>
+      <div class="fg-count" id="brand-count">0 selected</div>
+    </div>
+
+    <!-- Payment Method -->
+    <div class="fg">
+      <div class="fg-head">
+        <span class="fg-title">Payment Method</span>
+        <div class="fg-actions">
+          <button class="fg-btn" onclick="selectAll('method')">Select all</button>
+          <button class="fg-btn" onclick="clearGroup('method')">Clear</button>
+        </div>
+      </div>
+      <div class="fg-scroll" id="method-list"><span style="color:#9ca3af;font-size:11px">Loading…</span></div>
+      <div class="fg-count" id="method-count">0 selected</div>
+    </div>
+
+    <!-- Doc Type -->
+    <div class="fg">
+      <div class="fg-head">
+        <span class="fg-title">Doc Type</span>
+        <div class="fg-actions">
+          <button class="fg-btn" onclick="selectAll('docType')">Select all</button>
+          <button class="fg-btn" onclick="clearGroup('docType')">Clear</button>
+        </div>
+      </div>
+      <div class="fg-scroll" id="docType-list"><span style="color:#9ca3af;font-size:11px">Loading…</span></div>
+      <div class="fg-count" id="docType-count">0 selected</div>
+    </div>
+
+    <!-- Doc Status -->
+    <div class="fg">
+      <div class="fg-head">
+        <span class="fg-title">Doc Status</span>
+        <div class="fg-actions">
+          <button class="fg-btn" onclick="selectAll('docStatus')">Select all</button>
+          <button class="fg-btn" onclick="clearGroup('docStatus')">Clear</button>
+        </div>
+      </div>
+      <div class="fg-scroll" id="docStatus-list"><span style="color:#9ca3af;font-size:11px">Loading…</span></div>
+      <div class="fg-count" id="docStatus-count">0 selected</div>
+    </div>
+
+    <!-- Submitted By -->
+    <div class="fg">
+      <div class="fg-head">
+        <span class="fg-title">Submitted By</span>
+        <div class="fg-actions">
+          <button class="fg-btn" onclick="selectAll('submittedBy')">Select all</button>
+          <button class="fg-btn" onclick="clearGroup('submittedBy')">Clear</button>
+        </div>
+      </div>
+      <div class="fg-scroll" id="submittedBy-list"><span style="color:#9ca3af;font-size:11px">Loading…</span></div>
+      <div class="fg-count" id="submittedBy-count">0 selected</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Summary / active filter tags row -->
+<div class="summary-row" id="summaryRow">
+  <span class="showing" id="showingLabel"></span>
+</div>
+
+<!-- Action bar -->
+<div class="action-bar">
+  <button class="btn btn-run"    id="runBtn"    onclick="runReport()">Run Report</button>
+  <button class="btn btn-newtab" id="newtabBtn" onclick="exportNewTab()" disabled>Export → New tab</button>
+  <button class="btn btn-pdf"    id="pdfBtn"    onclick="exportPDF()"    disabled>Export → PDF</button>
+  <button class="btn btn-close"  onclick="google.script.host.close()">Close</button>
+</div>
+
+<!-- Error -->
+<div class="err-bar" id="errBar"></div>
+
+<!-- Table -->
+<div class="tbl-wrap" id="tblWrap">
+  <div class="state" id="stEmpty">
+    <span style="font-size:28px">🔍</span>
+    <span class="state-title">Set filters above and click Run Report</span>
+  </div>
+  <div class="state" id="stLoad" style="display:none">
+    <div class="spinner"></div>
+    <span class="state-title">Querying 400 Payments Ledger…</span>
+  </div>
+  <div class="state" id="stNone" style="display:none">
+    <span style="font-size:28px">📭</span>
+    <span class="state-title">No payments match your filters</span>
+  </div>
+  <table id="tbl" style="display:none">
+    <thead><tr>
+      <th>#</th>
+      <th>PAYMENT_ID</th>
+      <th>Customer Name</th>
+      <th>Brand</th>
+      <th>RootApptID</th>
+      <th>SO#</th>
+      <th>DocType</th>
+      <th>DocNumber</th>
+      <th>PaymentDateTime</th>
+      <th>Method</th>
+      <th>AmountGross</th>
+      <th>Fee%</th>
+      <th>FeeAmount</th>
+      <th>AmountNet</th>
+      <th>Order Total</th>
+      <th>Balance SO</th>
+      <th>Tax%</th>
+      <th>TaxAmount</th>
+      <th>InvoiceTotal</th>
+      <th>BalanceDue</th>
+      <th>DepositPaid</th>
+      <th>DocStatus</th>
+      <th>SubmittedBy</th>
+      <th>SubmittedDate</th>
+      <th>Reference</th>
+      <th>Notes</th>
+      <th>AllocatedToSO</th>
+      <th>DocRole</th>
+    </tr></thead>
+    <tbody id="tblBody"></tbody>
+  </table>
+</div>
+
+<script>
+var _rows=[], _summary={}, _filters={}, _activeQp=null;
+
+// ── Init ──────────────────────────────────────────────────
+(function(){
+  setQp('thisMonth');
+  google.script.run
+    .withSuccessHandler(onOptionsLoaded)
+    .withFailureHandler(showErr)
+    .pr_getFilterOptions();
+})();
+
+function onOptionsLoaded(res){
+  if(!res||!res.ok){ showErr(res&&res.error||'Failed to load options'); return; }
+  buildGroup('brand',       res.brands       ||[]);
+  buildGroup('method',      res.methods      ||[]);
+  buildGroup('docType',     res.docTypes     ||[]);
+  buildGroup('docStatus',   res.docStatuses  ||[]);
+  buildGroup('submittedBy', res.submittedBys ||[]);
+  refreshCounts();
+}
+
+// ── Checkbox groups ───────────────────────────────────────
+function buildGroup(group, values){
+  var el=document.getElementById(group+'-list');
+  if(!values.length){ el.innerHTML='<span style="color:#9ca3af;font-size:11px">None found</span>'; return; }
+  el.innerHTML=values.map(function(v){
+    var id='cb_'+group+'_'+v.replace(/\W/g,'_');
+    return '<label class="cb-row"><input type="checkbox" id="'+id+'" data-group="'+group+'" value="'+esc(v)+'" onchange="onCheck()">'
+          +'<span>'+esc(v)+'</span></label>';
+  }).join('');
+}
+function onCheck(){ refreshCounts(); refreshSummaryRow(); }
+function getChecked(g){ return Array.from(document.querySelectorAll('input[data-group="'+g+'"]:checked')).map(function(el){return el.value;}); }
+function selectAll(g){ document.querySelectorAll('input[data-group="'+g+'"]').forEach(function(el){el.checked=true;}); onCheck(); }
+function clearGroup(g){ document.querySelectorAll('input[data-group="'+g+'"]').forEach(function(el){el.checked=false;}); onCheck(); }
+function refreshCounts(){
+  ['brand','method','docType','docStatus','submittedBy'].forEach(function(g){
+    var n=getChecked(g).length;
+    document.getElementById(g+'-count').textContent=n+' selected';
+  });
+}
+
+// ── Date quick picks ──────────────────────────────────────
+document.querySelector('.date-presets').addEventListener('click',function(e){
+  var qp=e.target.dataset.qp; if(!qp) return;
+  if(qp==='custom'){ _activeQp=null; clearQpHighlight(); return; }
+  setQp(qp===_activeQp?null:qp);
+});
+['dateFrom','dateTo'].forEach(function(id){
+  document.getElementById(id).addEventListener('change',function(){
+    _activeQp=null; clearQpHighlight(); updateDateRangeLabel(); refreshSummaryRow();
+  });
+});
+
+function clearQpHighlight(){ document.querySelectorAll('.dp').forEach(function(el){el.classList.remove('active');}); }
+
+function setQp(qp){
+  _activeQp=qp; clearQpHighlight();
+  if(!qp) return;
+  var el=document.querySelector('.dp[data-qp="'+qp+'"]');
+  if(el) el.classList.add('active');
+  var today=new Date(), from, to=today;
+  if(qp==='thisYear')  from=new Date(today.getFullYear(),0,1);
+  else if(qp==='thisMonth') from=new Date(today.getFullYear(),today.getMonth(),1);
+  else if(qp==='lastMonth'){ from=new Date(today.getFullYear(),today.getMonth()-1,1); to=new Date(today.getFullYear(),today.getMonth(),0); }
+  else if(qp==='last30') from=new Date(today-30*864e5);
+  if(from) document.getElementById('dateFrom').value=dfmt(from);
+  document.getElementById('dateTo').value=dfmt(to);
+  updateDateRangeLabel(); refreshSummaryRow();
+}
+
+function clearDate(){
+  document.getElementById('dateFrom').value='';
+  document.getElementById('dateTo').value='';
+  _activeQp=null; clearQpHighlight();
+  document.getElementById('dateRangeLabel').textContent='';
+  refreshSummaryRow();
+}
+
+function updateDateRangeLabel(){
+  var f=document.getElementById('dateFrom').value;
+  var t=document.getElementById('dateTo').value;
+  document.getElementById('dateRangeLabel').textContent=(f||t)?(f||'?')+' — '+(t||'?'):'';
+}
+
+// ── Summary row (filter tags like the screenshot) ─────────
+function refreshSummaryRow(){
+  var row=document.getElementById('summaryRow');
+  var html='';
+  var f=document.getElementById('dateFrom').value, t=document.getElementById('dateTo').value;
+  if(f||t) html+=ftag('Visit Date', (f||'?')+' — '+(t||'?'));
+  var groups=[{g:'brand',l:'Brand'},{g:'method',l:'Method'},{g:'docType',l:'DocType'},{g:'docStatus',l:'Status'},{g:'submittedBy',l:'By'}];
+  groups.forEach(function(x){
+    var vals=getChecked(x.g); if(!vals.length) return;
+    html+=ftag(x.l, vals.join(', '));
+  });
+  row.innerHTML='<span class="showing" id="showingLabel">'+(_rows.length?'Showing '+_rows.length+' rows.':'')+'</span>'+html;
+}
+
+function ftag(label,val){
+  return '<span class="ftag"><strong>'+esc(label)+':</strong>&nbsp;<span class="ftag-val">'+esc(val)+'</span></span>';
+}
+
+// ── Run report ────────────────────────────────────────────
+function runReport(){
+  clearErr(); setState('load');
+  document.getElementById('runBtn').disabled=true;
+  document.getElementById('pdfBtn').disabled=true;
+  document.getElementById('newtabBtn').disabled=true;
+  _filters={
+    dateFrom:    document.getElementById('dateFrom').value,
+    dateTo:      document.getElementById('dateTo').value,
+    brands:      getChecked('brand'),
+    methods:     getChecked('method'),
+    docTypes:    getChecked('docType'),
+    docStatuses: getChecked('docStatus'),
+    submittedBys:getChecked('submittedBy')
+  };
+  google.script.run
+    .withSuccessHandler(onResult)
+    .withFailureHandler(function(e){ showErr(e.message||String(e)); setState('empty'); document.getElementById('runBtn').disabled=false; })
+    .pr_generatePaymentReport(_filters);
+}
+
+function onResult(res){
+  document.getElementById('runBtn').disabled=false;
+  if(!res||!res.ok){ showErr(res&&res.error||'Unknown error'); setState('empty'); return; }
+  _rows=res.rows||[]; _summary=res.summary||{};
+  if(!_rows.length){ setState('none'); refreshSummaryRow(); return; }
+  renderTable(_rows);
+  setState('table');
+  refreshSummaryRow();
+  document.getElementById('pdfBtn').disabled=false;
+  document.getElementById('newtabBtn').disabled=false;
+}
+
+// ── Table render ──────────────────────────────────────────
+function renderTable(rows){
+  var f$=function(v){return v===''?'':'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  // Tax/Fee % — stored as decimal (0.09375) → show as 9.375%, strip trailing zeros
+  var fp=function(v){
+    if(v===''||v===null||v===undefined) return '';
+    var n=Number(v);
+    if(isNaN(n)) return '';
+    var pct = n < 1 ? n * 100 : n;
+    return parseFloat(pct.toFixed(5)) + '%';
+  };
+  var brandBadge=function(b){
+    b=String(b||'').toUpperCase();
+    var cls=b==='VVS'?'b-vvs':b==='HPUSA'||b==='HP'?'b-hp':'b-oth';
+    return b?'<span class="brand-pill '+cls+'">'+esc(b)+'</span>':'';
+  };
+  var statusBadge=function(s){
+    var sl=String(s||'').toLowerCase();
+    var cls=sl.includes('paid')||sl.includes('complet')||sl.includes('active')?'s-ok':sl.includes('pend')||sl.includes('draft')?'s-warn':'s-bad';
+    return s?'<span class="status-pill '+cls+'">'+esc(s)+'</span>':'';
+  };
+  document.getElementById('tblBody').innerHTML=rows.map(function(r,i){
+    return '<tr>'
+      +'<td>'+r.ledgerRow+'</td>'
+      +'<td>'+esc(r.PAYMENT_ID)+'</td>'
+      +'<td><strong>'+esc(r.CustomerName)+'</strong></td>'
+      +'<td>'+brandBadge(r.Brand)+'</td>'
+      +'<td>'+esc(r.RootApptID)+'</td>'
+      +'<td>'+esc(r.SO)+'</td>'
+      +'<td>'+esc(r.DocType)+'</td>'
+      +'<td>'+esc(r.DocNumber)+'</td>'
+      +'<td>'+esc(r.PaymentDateTime)+'</td>'
+      +'<td>'+esc(r.Method)+'</td>'
+      +'<td class="num">'+f$(r.AmountGross)+'</td>'
+      +'<td class="num">'+fp(r.FeePercent)+'</td>'
+      +'<td class="num">'+f$(r.FeeAmount)+'</td>'
+      +'<td class="num">'+f$(r.AmountNet)+'</td>'
+      +'<td class="num">'+f$(r.Order_Total_SO)+'</td>'
+      +'<td class="num">'+f$(r.Balance_SO)+'</td>'
+      +'<td class="num">'+fp(r.TaxRate)+'</td>'
+      +'<td class="num">'+f$(r.TaxAmount)+'</td>'
+      +'<td class="num">'+f$(r.InvoiceTotal)+'</td>'
+      +'<td class="num">'+f$(r.BalanceDue)+'</td>'
+      +'<td class="num">'+f$(r.DepositPaidToDate)+'</td>'
+      +'<td>'+statusBadge(r.DocStatus)+'</td>'
+      +'<td>'+esc(r.SubmittedBy)+'</td>'
+      +'<td>'+esc(r.SubmittedDateTime)+'</td>'
+      +'<td title="'+esc(r.Reference)+'">'+esc(trunc(r.Reference,20))+'</td>'
+      +'<td title="'+esc(r.Notes)+'">'+esc(trunc(r.Notes,25))+'</td>'
+      +'<td>'+esc(r.AllocatedToSO)+'</td>'
+      +'<td>'+esc(r.DocRole)+'</td>'
+      +'</tr>';
+  }).join('');
+}
+
+// ── Export → New tab ──────────────────────────────────────
+function exportNewTab(){
+  if(!_rows.length) return;
+  var html=buildPrintHTML(false);
+  window.open(URL.createObjectURL(new Blob([html],{type:'text/html'})),'_blank');
+}
+
+// ── Export → PDF ──────────────────────────────────────────
+function exportPDF(){
+  if(!_rows.length) return;
+  var html=buildPrintHTML(true);
+  window.open(URL.createObjectURL(new Blob([html],{type:'text/html'})),'_blank');
+}
+
+function buildPrintHTML(autoPrint){
+  var f$=function(v){return v===''?'':'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  var fp=function(v){
+    if(v===''||v===null||v===undefined) return '';
+    var n=Number(v); if(isNaN(n)) return '';
+    var pct = n < 1 ? n * 100 : n;
+    return parseFloat(pct.toFixed(5)) + '%';
+  };
+  var e=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var s=_summary;
+
+  // Filter label
+  var fp2=[];
+  var df=document.getElementById('dateFrom').value, dt=document.getElementById('dateTo').value;
+  if(df||dt) fp2.push((df||'?')+' → '+(dt||'?'));
+  if(_filters.brands&&_filters.brands.length)       fp2.push('Brand: '+_filters.brands.join(', '));
+  if(_filters.methods&&_filters.methods.length)      fp2.push('Method: '+_filters.methods.join(', '));
+  if(_filters.docTypes&&_filters.docTypes.length)    fp2.push('DocType: '+_filters.docTypes.join(', '));
+  if(_filters.docStatuses&&_filters.docStatuses.length) fp2.push('Status: '+_filters.docStatuses.join(', '));
+  if(_filters.submittedBys&&_filters.submittedBys.length) fp2.push('By: '+_filters.submittedBys.join(', '));
+  var filterLabel=fp2.length?fp2.join('  ·  '):'All payments';
+
+  // Summary cells
+  var sumCells=[
+    ['Records',     s.total.toLocaleString()],
+    ['Gross',       f$(s.AmountGross)],
+    ['Fees',        f$(s.FeeAmount)],
+    ['Net',         f$(s.AmountNet)],
+    ['Tax',         f$(s.TaxAmount)],
+    ['Balance Due', f$(s.BalanceDue)],
+    ['Invoice Total',f$(s.InvoiceTotal)],
+    ['Order Total', f$(s.Order_Total_SO)]
+  ].map(function(p){ return '<div class="sc"><div class="sl">'+e(p[0])+'</div><div class="sv">'+e(p[1])+'</div></div>'; }).join('');
+
+  var COLS=['#','PAYMENT_ID','Customer Name','Brand','RootApptID','SO#','DocType','DocNumber','PaymentDateTime',
+            'Method','Gross','Fee%','Fee$','Net','OrderTotal','Balance_SO','Tax%','Tax$',
+            'InvTotal','BalanceDue','DepositPaid','DocStatus','SubmittedBy','SubmittedDate',
+            'Reference','Notes','AllocatedToSO','DocRole'];
+  var thead='<tr>'+COLS.map(function(c){return '<th>'+e(c)+'</th>';}).join('')+'</tr>';
+  var tbody=_rows.map(function(r,i){
+    return '<tr>'
+      +'<td>'+(i+1)+'</td><td>'+e(r.PAYMENT_ID)+'</td><td>'+e(r.CustomerName)+'</td><td>'+e(r.Brand)+'</td>'
+      +'<td>'+e(r.RootApptID)+'</td><td>'+e(r.SO)+'</td><td>'+e(r.DocType)+'</td>'
+      +'<td>'+e(r.DocNumber)+'</td><td>'+e(r.PaymentDateTime)+'</td><td>'+e(r.Method)+'</td>'
+      +'<td>'+f$(r.AmountGross)+'</td><td>'+fp(r.FeePercent)+'</td><td>'+f$(r.FeeAmount)+'</td>'
+      +'<td>'+f$(r.AmountNet)+'</td><td>'+f$(r.Order_Total_SO)+'</td><td>'+f$(r.Balance_SO)+'</td>'
+      +'<td>'+fp(r.TaxRate)+'</td><td>'+f$(r.TaxAmount)+'</td><td>'+f$(r.InvoiceTotal)+'</td>'
+      +'<td>'+f$(r.BalanceDue)+'</td><td>'+f$(r.DepositPaidToDate)+'</td>'
+      +'<td>'+e(r.DocStatus)+'</td><td>'+e(r.SubmittedBy)+'</td><td>'+e(r.SubmittedDateTime)+'</td>'
+      +'<td>'+e(r.Reference)+'</td><td>'+e(r.Notes)+'</td>'
+      +'<td>'+e(r.AllocatedToSO)+'</td><td>'+e(r.DocRole)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payment Report</title><style>'
+    +'*{box-sizing:border-box;margin:0;padding:0;}'
+    +'body{font-family:"Inter","Helvetica Neue",sans-serif;font-size:9pt;color:#1f2937;padding:18px 20px;}'
+    +'.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1f2937;padding-bottom:8px;margin-bottom:10px;}'
+    +'.hdr .title{font-size:16pt;font-weight:700;}'
+    +'.hdr .gen{font-size:8pt;color:#6b7280;}'
+    +'.fl{font-size:8pt;color:#374151;background:#f3f4f6;padding:4px 10px;border-left:3px solid #2563eb;border-radius:3px;margin-bottom:10px;}'
+    +'.summary{display:flex;flex-wrap:wrap;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin-bottom:12px;}'
+    +'.sc{flex:1;min-width:90px;padding:6px 10px;border-right:1px solid #e5e7eb;}'
+    +'.sc:last-child{border-right:none;}'
+    +'.sl{font-size:7pt;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:#6b7280;}'
+    +'.sv{font-size:11pt;font-weight:700;color:#111827;margin-top:2px;}'
+    +'table{width:100%;border-collapse:collapse;font-size:7.5pt;}'
+    +'thead th{background:#1f2937;color:#f9fafb;font-weight:600;padding:5px 7px;text-align:left;white-space:nowrap;}'
+    +'tbody tr:nth-child(even){background:#f9fafb;}'
+    +'tbody tr{border-bottom:1px solid #f3f4f6;}'
+    +'td{padding:4px 7px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;}'
+    +'td:nth-child(n+10):nth-child(-n+15),td:nth-child(17),td:nth-child(18),td:nth-child(19),td:nth-child(20){text-align:right;}'
+    +'@media print{@page{size:landscape;margin:10mm;}}'
+    +'</style></head><body>'
+    +'<div class="hdr"><div class="title">💵 Payment Report</div><div class="gen">Generated: '+new Date().toLocaleString()+'  ·  400 Payments Ledger</div></div>'
+    +'<div class="fl">'+e(filterLabel)+'</div>'
+    +'<div class="summary">'+sumCells+'</div>'
+    +'<table><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table>'
+    +(autoPrint?'<script>window.onload=function(){window.print();};<\/script>':'')
+    +'</body></html>';
+}
+
+// ── Utilities ─────────────────────────────────────────────
+function setState(s){
+  document.getElementById('stEmpty').style.display=s==='empty'?'flex':'none';
+  document.getElementById('stLoad').style.display =s==='load' ?'flex':'none';
+  document.getElementById('stNone').style.display =s==='none' ?'flex':'none';
+  document.getElementById('tbl').style.display    =s==='table'?''   :'none';
+}
+function showErr(msg){ var b=document.getElementById('errBar'); b.textContent='⚠ '+msg; b.classList.add('on'); setState('empty'); }
+function clearErr(){ document.getElementById('errBar').classList.remove('on'); }
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function trunc(s,n){s=String(s||'');return s.length>n?s.slice(0,n)+'…':s;}
+function dfmt(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function pad(n){return n<10?'0'+n:String(n);}
+</script>
+</body>
+</html>

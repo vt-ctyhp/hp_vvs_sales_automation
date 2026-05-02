@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font: 13px/1.35 Arial, Helvetica, sans-serif; margin: 0; color: #222; }
+    header { padding: 14px 18px; border-bottom: 1px solid #e5e5e5; background: #fafafa; }
+    h1 { font-size: 16px; margin: 0 0 6px; }
+    .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid #eee; }
+    .chip { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 12px; background: #f0f3f7; border: 1px solid #e3e8ee; font-size: 12px; margin-left: 6px; }
+    .btn { border: 1px solid #d0d7de; background: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+    .btn.primary { background: #0b5cff; border-color: #0b5cff; color: #fff; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    input[type="text"], input[type="date"], select { padding: 5px 6px; border: 1px solid #d0d7de; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #f0f0f0; padding: 6px; vertical-align: top; }
+    th { background: #fafafa; position: sticky; top: 110px; z-index: 2; }
+    thead tr:first-child th { top: 0; }
+    .wrap { padding: 0 18px 18px; }
+    .msg { margin: 12px 18px; padding: 10px; border: 1px solid #e5e5e5; background: #f8f9fb; border-radius: 6px; }
+    .warn { background: #fff7e6; border-color: #ffd591; }
+    .success { background: #f6ffed; border-color: #b7eb8f; }
+    .error { background: #fff1f0; border-color: #ffa39e; }
+    .muted { color: #666; }
+    .right { float:right; }
+    .group { background: #f7f9fc; font-weight: 600; }
+    .topbar { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; width: 100%; }
+    .col-3 { grid-column: span 3; } .col-2 { grid-column: span 2; } .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
+    .sticky-controls { position: sticky; top: 0; background: #fafafa; border-bottom: 1px solid #eee; z-index: 3; padding: 10px 18px; }
+    /* Gray/disabled look for per-row fields when apply-all is on */
+    .disabledField {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>💎 Order/Approve Diamonds</h1>
+  <div class="chip">Source: <b id="meta-file">…</b> <span class="muted" id="meta-tab" style="margin-left:6px;"></span></div>
+</header>
+
+<div class="sticky-controls">
+  <div class="topbar">
+    <div class="col-3">
+      <div class="muted">Default Ordered By</div>
+      <input type="text" id="defBy">
+    </div>
+    <div class="col-2">
+      <div class="muted">Default Ordered Date</div>
+      <input type="date" id="defDate">
+    </div>
+    <div class="col-3" style="display:flex;align-items:flex-end;gap:8px;">
+      <label><input type="checkbox" id="applyAll" checked> Apply defaults to all edited rows</label>
+    </div>
+    <div class="col-4" style="text-align:right;">
+      <button class="btn primary" id="btnSubmit" onclick="submitChanges()" disabled>Save (0)</button>
+    </div>
+  </div>
+</div>
+
+<div id="msg" class="msg warn" style="display:none;"></div>
+
+<div class="wrap">
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th style="width:140px;">Decision</th>
+        <th>Vendor</th>
+        <th>Type</th>
+        <th>Shape</th>
+        <th>Carat</th>
+        <th>Color</th>
+        <th>Clarity</th>
+        <th>LAB</th>
+        <th>Cert #</th>
+        <th>Customer</th>
+        <th>Appt Date/Time</th>
+        <th>Assigned Rep</th>
+        <th>Company</th>
+        <th style="width:120px;">Ordered Date</th>
+        <th style="width:180px;">Ordered By</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div id="result" class="msg success" style="display:none;"></div>
+</div>
+
+<script>
+  // server payload
+  const BOOTSTRAP = <?!= JSON.stringify(bootstrap) ?>;
+  const DROPS = BOOTSTRAP.dropdowns;
+  const META = BOOTSTRAP.meta || {};
+  let ITEMS = BOOTSTRAP.items || [];
+  let EDITS = new Map();
+
+  // Helpers (global)
+  function isApplyAll() {
+    const cb = document.getElementById('applyAll');
+    return !!(cb && cb.checked);
+  }
+  function guardPerRowEdit(ev) {
+    if (isApplyAll()) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      alert('“Apply defaults to all edited rows” is ON.\n\nUncheck it to edit per-row Ordered Date / Ordered By.');
+      return false;
+    }
+    return true;
+  }
+
+  function showMsg(t, cls){ const m=document.getElementById('msg'); m.className='msg '+(cls||''); m.textContent=t; m.style.display='block'; }
+  function hideMsg(){ document.getElementById('msg').style.display='none'; }
+
+  // ---- INIT (runs once when DOM is ready)
+  function init() {
+    try {
+      // meta + defaults
+      document.getElementById('meta-file').innerHTML =
+        '<a href="'+(META.spreadsheetUrl||'#')+'" target="_blank">200_ workbook</a>';
+      document.getElementById('meta-tab').textContent = '(Tab: ' + (META.tab||'') + ')';
+      document.getElementById('defBy').value  = BOOTSTRAP.defaults.orderedByDefault || '';
+      document.getElementById('defDate').value = BOOTSTRAP.defaults.orderedDateDefault || '';
+
+      // re-render when Apply-All toggles
+      document.getElementById('applyAll').addEventListener('change', render);
+
+      render(); // first paint
+    } catch (e) {
+      alert('Init error: ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  function render() {
+    const tb = document.getElementById('rows'); tb.innerHTML = '';
+    let lastGroup = '';
+
+    if (!ITEMS.length) {
+      showMsg('No stones with Order Status = "Proposing" found.', 'warn');
+      document.getElementById('btnSubmit').disabled = true;
+      return;
+    }
+
+    ITEMS.forEach(it => {
+      const groupKey = (it.customerName || '') + ' — ' + (it.rootApptId || '');
+      if (groupKey !== lastGroup) {
+        const trg = document.createElement('tr'); trg.className='group';
+        const tdg = document.createElement('td'); tdg.colSpan = 15;
+        tdg.textContent = groupKey + (it.apptTimeDate ? '  •  ' + it.apptTimeDate : '');
+        trg.appendChild(tdg);
+        tb.appendChild(trg);
+        lastGroup = groupKey;
+      }
+
+      const tr = document.createElement('tr');
+      tr.dataset.rowIndex = it.rowIndex;
+
+      // Decision
+      const tdDec = document.createElement('td');
+      const sel = document.createElement('select');
+      const opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='— choose —'; sel.appendChild(opt0);
+      DROPS.decisions.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); });
+      sel.onchange = () => { setEdit(it.rowIndex, {decision: sel.value}); };
+      tdDec.appendChild(sel);
+      tr.appendChild(tdDec);
+
+      // Vendor..Company
+      tr.appendChild(td(it.vendor));
+      tr.appendChild(td(it.stoneType));
+      tr.appendChild(td(it.shape));
+      tr.appendChild(td(it.carat));
+      tr.appendChild(td(it.color));
+      tr.appendChild(td(it.clarity));
+      tr.appendChild(td(it.lab));
+      tr.appendChild(td(it.certNo));
+      tr.appendChild(td(it.customerName));
+      tr.appendChild(td(it.apptTimeDate));
+      tr.appendChild(td(it.assignedRep));
+      tr.appendChild(td(it.company));
+
+      // Ordered Date (per row)
+      const tdDate = document.createElement('td');
+      const inDate = document.createElement('input');
+      inDate.type = 'date';
+      if (isApplyAll()) {
+        inDate.classList.add('disabledField');
+        inDate.disabled = true;
+        inDate.title = 'Apply defaults is ON';
+        inDate.addEventListener('click', guardPerRowEdit);
+      } else {
+        inDate.disabled = false;
+        inDate.classList.remove('disabledField');
+        inDate.removeEventListener('click', guardPerRowEdit);
+        inDate.title = '';
+      }
+      inDate.onchange = () => setEdit(it.rowIndex, { orderedDate: inDate.value });
+      tdDate.appendChild(inDate);
+      tr.appendChild(tdDate);
+
+      // Ordered By (per row)
+      const tdBy = document.createElement('td');
+      const inBy = document.createElement('input');
+      inBy.type = 'text';
+      inBy.placeholder = '(default: ' + (document.getElementById('defBy').value || '') + ')';
+      if (isApplyAll()) {
+        inBy.classList.add('disabledField');
+        inBy.disabled = true;
+        inBy.title = 'Apply defaults is ON';
+        inBy.addEventListener('click', guardPerRowEdit);
+      } else {
+        inBy.disabled = false;
+        inBy.classList.remove('disabledField');
+        inBy.removeEventListener('click', guardPerRowEdit);
+        inBy.title = '';
+      }
+      inBy.oninput = () => setEdit(it.rowIndex, { orderedBy: inBy.value });
+      tdBy.appendChild(inBy);
+      tr.appendChild(tdBy);
+
+      tb.appendChild(tr);
+    });
+    syncSubmitState();
+  }
+
+  function td(text){ const el=document.createElement('td'); el.textContent = text || ''; return el; }
+
+  function setEdit(rowIndex, patch) {
+    const r = Number(rowIndex);
+    const cur = EDITS.get(r) || {};
+    Object.assign(cur, patch);
+    EDITS.set(r, cur);
+    syncSubmitState();
+  }
+
+  function syncSubmitState() {
+    let n = 0;
+    EDITS.forEach(v => { if (v && v.decision) n++; });
+    const btn = document.getElementById('btnSubmit');
+    btn.textContent = 'Save (' + n + ')';
+    btn.disabled = (n === 0);
+  }
+
+  function submitChanges() {
+    hideMsg();
+    const applyAll = isApplyAll();
+    const defBy = document.getElementById('defBy').value || '';
+    const defDate = document.getElementById('defDate').value || '';
+
+    const items = [];
+    EDITS.forEach((v, rowIndex) => {
+      if (!v || !v.decision) return;
+      const itm = ITEMS.find(x => x.rowIndex === rowIndex);
+      if (!itm) return;
+      items.push({
+        rowIndex: rowIndex,
+        rootApptId: itm.rootApptId,
+        decision: v.decision,
+        orderedBy: v.orderedBy || '',
+        orderedDate: v.orderedDate || ''
+      });
+    });
+    if (!items.length) { showMsg('Nothing to save.', 'warn'); return; }
+
+    const payload = {
+      defaultOrderedBy: defBy,
+      defaultOrderDate: defDate,
+      applyDefaultsToAll: applyAll,
+      items: items
+    };
+
+    const btn = document.getElementById('btnSubmit');
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    google.script.run
+      .withSuccessHandler(function(res){
+        btn.disabled = false; btn.textContent = 'Save (0)';
+        const s = document.getElementById('result');
+        s.style.display = 'block';
+        const updated = res.updatedCount || 0;
+        const app = (res.appointments||[]).map(a => a.rootApptId + ' → ' + a.csos).join('; ');
+        s.innerHTML = '<b>Saved.</b> Updated '+updated+' row(s). ' +
+          (res.meta && res.meta.spreadsheetUrl ? (' <a href="'+res.meta.spreadsheetUrl+'" target="_blank">Open 200_ workbook</a> (Tab: '+(res.meta.tab||'')+')') : '') +
+          (app ? ('<br><span class="muted">Appointments updated: '+app+'</span>') : '');
+        EDITS.clear();
+        if (Array.isArray(res.updatedRows)) {
+          const updatedRows = new Set(res.updatedRows.map(x => x.rowIndex));
+          ITEMS = ITEMS.filter(x => !updatedRows.has(x.rowIndex));
+        }
+        render();
+        if (res.skipped && res.skipped.length) {
+          showMsg('Some rows were skipped: ' + JSON.stringify(res.skipped), 'warn');
+        }
+      })
+      .withFailureHandler(function(err){
+        btn.disabled = false; btn.textContent = 'Save (0)';
+        showMsg((err && err.message) ? err.message : String(err), 'error');
+      })
+      .dp_submitOrderApprovals(payload);
+  }
+
+  // Run after DOM is built
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

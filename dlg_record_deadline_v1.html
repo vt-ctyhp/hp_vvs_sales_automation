@@ -1,0 +1,163 @@
+<!-- dlg_record_deadline_v1.html — v1.2 (2025-09-03) -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <style>
+      html, body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; padding: 0; }
+      .wrap { padding: 16px; }
+      h2 { margin: 0 0 12px 0; font-size: 16px; }
+      .row { display: flex; align-items: center; margin-bottom: 10px; }
+      .row label { width: 150px; font-weight: 600; }
+      .row input[type="date"], .row select { flex: 1; padding: 6px 8px; box-sizing: border-box; }
+      .note { background: #fff8e1; color: #8a6d3b; border: 1px solid #f0e1a1; padding: 8px; border-radius: 4px; margin-bottom: 12px; }
+      .error { background: #fdecea; color: #a94442; border: 1px solid #f5c6cb; padding: 8px; border-radius: 4px; margin-top: 8px; display: none; }
+      .successPanel { background: #f6ffed; border: 1px solid #b7eb8f; padding: 12px; border-radius: 8px; margin-top: 12px; }
+      .summary-grid { display: grid; grid-template-columns: 160px 1fr; gap: 6px 10px; }
+      .summary-grid .label { font-weight: 600; }
+      .muted { color: #555; }
+      .actions { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+      button { padding: 8px 12px; cursor: pointer; }
+      button[disabled] { opacity: 0.6; cursor: not-allowed; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h2>Record Deadline</h2>
+
+      <div id="warning" class="note" style="display:none"></div>
+
+      <div class="row">
+        <label for="kind">Deadline Type</label>
+        <select id="kind">
+          <option value="3D">3D Deadline</option>
+          <option value="PROD">Production Deadline</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="date">Calendar Date</label>
+        <input id="date" type="date" />
+      </div>
+
+      <div class="error" id="error"></div>
+      <div class="success" id="success"></div>
+
+      <div id="successPanel" class="successPanel" style="display:none">
+        <div class="summary-grid">
+          <div class="label">Deadline Type</div><div id="sType" class="muted">—</div>
+          <div class="label">Customer Name</div><div id="sCustomer">—</div>
+          <div class="label">SO#</div><div id="sSO">—</div>
+          <div class="label">RootApptID</div><div id="sRoot">—</div>
+          <div class="label">Previous Deadline</div><div id="sPrev">—</div>
+          <div class="label">New Deadline</div><div id="sNew">—</div>
+          <div class="label"># of Times Moved</div><div id="sMoves">—</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="submitBtn" onclick="submitForm()">Save</button>
+        <button id="cancelBtn" onclick="google.script.host.close()">Cancel</button>
+        <button id="doneBtn" style="display:none" onclick="google.script.host.close()">Done</button>
+      </div>
+    </div>
+
+    <script>
+      function setError(msg) {
+        const el = document.getElementById('error');
+        el.textContent = msg || '';
+        el.style.display = msg ? 'block' : 'none';
+      }
+      function setSuccess(msg) {
+        const el = document.getElementById('success');
+        el.textContent = msg || '';
+        el.style.display = msg ? 'block' : 'none';
+      }
+      function setDisabled(disabled) {
+        document.getElementById('submitBtn').disabled = disabled;
+        document.getElementById('kind').disabled = disabled;
+        document.getElementById('date').disabled = disabled;
+      }
+
+      function onInitSuccess(data) {
+        const dateEl = document.getElementById('date');
+        if (data.existing && data.existing.threeD) dateEl.value = data.existing.threeD;
+
+        document.getElementById('kind').addEventListener('change', function() {
+          const k = this.value;
+          if (k === '3D') {
+            dateEl.value = data.existing && data.existing.threeD ? data.existing.threeD : '';
+          } else {
+            dateEl.value = data.existing && data.existing.production ? data.existing.production : '';
+          }
+        });
+
+        if (!data.hasClientStatusUrl) {
+          const w = document.getElementById('warning');
+          w.textContent = 'No "Client Status Report URL" found for this row. Please submit the Client Status report first to enable deadline updates.';
+          w.style.display = 'block';
+          setDisabled(true);
+        }
+      }
+
+      function onInitFailure(err) {
+        setError(err && err.message ? err.message : String(err));
+        setDisabled(true);
+      }
+
+      function submitForm() {
+        setError('');
+        setSuccess('');
+        const kind = document.getElementById('kind').value;
+        const dateIso = document.getElementById('date').value;
+        if (!dateIso) {
+          setError('Please select a date.');
+          return;
+        }
+        setDisabled(true);
+        google.script.run
+          .withSuccessHandler(function(res) {
+            setDisabled(false);
+            if (res && res.ok) {
+              // concise success message
+              setSuccess(res.message || 'Saved.');
+
+              // Fill the summary panel if provided
+              if (res.summary) {
+                document.getElementById('sType').textContent = res.summary.deadlineType || '—';
+                document.getElementById('sCustomer').textContent = res.summary.customerName || '—';
+                document.getElementById('sSO').textContent = res.summary.soNumber || '—';
+                document.getElementById('sRoot').textContent = res.summary.rootApptId || '—';
+                document.getElementById('sPrev').textContent = res.summary.previousDeadline || '—';
+                document.getElementById('sNew').textContent = res.summary.newDeadline || '—';
+                document.getElementById('sMoves').textContent = String(res.summary.moveCount ?? res.moveCount ?? '0');
+
+                // Show the panel
+                document.getElementById('successPanel').style.display = 'block';
+              }
+
+              // Hide the form controls and switch buttons
+              document.querySelectorAll('.row').forEach(function(el){ el.style.display = 'none'; });
+              document.getElementById('submitBtn').style.display = 'none';
+              document.getElementById('cancelBtn').style.display = 'none';
+              document.getElementById('doneBtn').style.display = 'inline-block';
+            } else {
+              setError(res && res.message ? res.message : 'Unknown error.');
+            }
+          })
+          .withFailureHandler(function(err){
+            setDisabled(false);
+            setError(err && err.message ? err.message : String(err));
+          })
+          .saveRecordDeadline({ kind, dateIso });
+      }
+
+      // Init
+      google.script.run
+        .withSuccessHandler(onInitSuccess)
+        .withFailureHandler(onInitFailure)
+        .getRecordDeadlineInit();
+    </script>
+  </body>
+</html>
