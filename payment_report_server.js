@@ -72,7 +72,8 @@ function pr_getPaymentsSheet_(ledger) {
 // ── Open dialog ──────────────────────────────────────────────
 
 function openPaymentReportDialog() {
-  var html = HtmlService.createHtmlOutputFromFile('dlg_payment_report_v1')
+  var html = HtmlService.createTemplateFromFile('dlg_payment_report_v1')
+    .evaluate()
     .setWidth(1100).setHeight(720);
   SpreadsheetApp.getUi().showModalDialog(html, '💵 Payment Report');
 }

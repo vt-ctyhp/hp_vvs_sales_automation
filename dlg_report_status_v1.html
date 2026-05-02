@@ -43,8 +43,10 @@
   .table-2line td { height: 46px; vertical-align: top; }
   .cell-clip2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; }
 </style>
+<?!= include('ui_styles') ?>
+<style>body.ui-shell{padding:16px;}</style>
 </head>
-<body>
+<body class="ui-shell">
 <? var L = lists || {}; ?>
 
 <div class="sub">
@@ -467,7 +469,9 @@ function downloadBase64Pdf(fileName, b64, mime){
     document.body.appendChild(a); a.click();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
     a.remove();
-  } catch(e){ alert('Failed to download PDF: '+(e&&e.message?e.message:e)); }
+  } catch(e){
+    uiSetStatus('Failed to download PDF: '+(e&&e.message?e.message:e), 'error');
+  }
 }
 </script>
 </body>

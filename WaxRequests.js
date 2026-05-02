@@ -338,7 +338,8 @@ function wax_directRowUrl_(sheetName, rowIdx) {
 
 function wax_adminOpenDialog_() {
   const out = HtmlService
-    .createHtmlOutputFromFile('WaxPendingDialog')
+    .createTemplateFromFile('WaxPendingDialog')
+    .evaluate()
     .setWidth(1100).setHeight(650);
   SpreadsheetApp.getUi().showModalDialog(out, 'Wax — Pending Requests');
 }
@@ -574,4 +575,3 @@ function wax_adminOpenDialog_TEST() {
   var html = HtmlService.createHtmlOutput('<html><body><div id="x">boot</div><script>document.getElementById("x").textContent="JS ran";google.script.run.wax__trace("TEST dialog JS ran");</script></body></html>');
   SpreadsheetApp.getUi().showModalDialog(html, 'TEST');
 }
-

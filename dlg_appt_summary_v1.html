@@ -111,9 +111,12 @@
     }
 
   </style>
+  <?!= include('ui_styles') ?>
+  <style>body.ui-shell{padding:16px;}</style>
 </head>
-<body>
+<body class="ui-shell">
   <p class="sub">Pick a date range to list concise appointment details from <b>00_Master Appointments</b>.</p>
+  <div id="uiStatus" class="ui-status" role="status"></div>
 
   <div class="filters-grid">
     <!-- Brand -->
@@ -520,23 +523,31 @@
     $run.addEventListener('click', () => {
       const s = $start.value;
       const e = $end.value;
-      if (!s || !e) return alert('Please select both start and end dates.');
-      if (s > e) return alert('Start date must be on or before end date.');
+      uiClearStatus();
+      if (!s || !e) {
+        uiSetStatus('Please select both start and end dates.', 'error');
+        return;
+      }
+      if (s > e) {
+        uiSetStatus('Start date must be on or before end date.', 'error');
+        return;
+      }
 
       setBusy(true);
       google.script.run
         .withSuccessHandler((res) => {
           setBusy(false);
           if (!res || !res.ok) {
-            alert(res && res.error ? res.error : 'Failed to run summary.');
+            uiSetStatus(res && res.error ? res.error : 'Failed to run summary.', 'error');
             return;
           }
           lastRows = res.rows || [];
           render(lastRows);
+          uiSetStatus(`${lastRows.length} rows loaded.`, 'ok');
         })
         .withFailureHandler((err) => {
           setBusy(false);
-          alert(err && err.message ? err.message : 'Request failed.');
+          uiSetStatus(err && err.message ? err.message : 'Request failed.', 'error');
         })
         .as_runAppointmentSummary(s, e, getSelectedFilters());
     });
@@ -544,8 +555,15 @@
     $export.addEventListener('click', () => {
       const s = $start.value;
       const e = $end.value;
-      if (!lastRows || !lastRows.length) return alert('Nothing to export for the selected range.');
-      if (!s || !e) return alert('Please select both start and end dates.');
+      uiClearStatus();
+      if (!lastRows || !lastRows.length) {
+        uiSetStatus('Nothing to export for the selected range.', 'error');
+        return;
+      }
+      if (!s || !e) {
+        uiSetStatus('Please select both start and end dates.', 'error');
+        return;
+      }
 
       const filters = getSelectedFilters();
 
@@ -554,14 +572,15 @@
         .withSuccessHandler((res) => {
           setBusy(false);
           if (!res || !res.ok) {
-            alert(res && res.error ? res.error : 'Failed to generate PDF.');
+            uiSetStatus(res && res.error ? res.error : 'Failed to generate PDF.', 'error');
             return;
           }
           downloadBase64Pdf(res.fileName, res.bytesBase64, res.mimeType || 'application/pdf');
+          uiSetStatus('PDF export generated.', 'ok');
         })
         .withFailureHandler((err) => {
           setBusy(false);
-          alert(err && err.message ? err.message : 'Request failed.');
+          uiSetStatus(err && err.message ? err.message : 'Request failed.', 'error');
         })
         .as_exportAppointmentSummaryPdf(s, e, filters);
     });

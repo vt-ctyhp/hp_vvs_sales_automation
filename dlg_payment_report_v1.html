@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<base target="_top">
 <meta charset="utf-8">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
@@ -90,8 +91,9 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;color:#111827;}
 .err-bar{display:none;padding:7px 16px;background:#fef2f2;border-bottom:1px solid #fecaca;color:#dc2626;font-size:12px;flex-shrink:0;}
 .err-bar.on{display:block;}
 </style>
+<?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 
 <!-- Title -->
 <div class="title-bar">

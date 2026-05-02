@@ -18,14 +18,17 @@
     input.date-field { width: 13ch; }                 /* ~half the previous size */
     input[type="date"].date-field { width: 13ch; }    /* keep width when flipped to date */
   </style>
+  <?!= include('ui_styles') ?>
+  <style>body.ui-shell{padding:14px;}</style>
 </head>
-<body>
+<body class="ui-shell">
   <div class="toolbar">
     <label><input type="checkbox" id="selectAll"> Select all</label>
     <span class="small">Tip: Sort is already by Admin Deadline, then Rep Needed-By.</span>
     <span id="debug" class="small" style="margin-left:12px; opacity:.7;"></span>
     <button id="commitBtn" type="button" class="right">Commit Updates</button>
   </div>
+  <div id="uiStatus" class="ui-status" role="status"></div>
 
   <table id="tbl">
     <colgroup>
@@ -186,8 +189,8 @@
        })
        .withFailureHandler(function(err){
          try { google.script.run.wax__traceObj('ping failure', {message: (err && err.message) || String(err)}); } catch(e){}
-         setDbg('ping failed: '   ((err && err.message) || err));
-         alert('Ping failed: '   ((err && err.message) || err));
+         setDbg('ping failed: ' + ((err && err.message) || err));
+         uiSetStatus('Ping failed: ' + ((err && err.message) || err), 'error');
        })
        .wax__ping('init');
      return;
@@ -228,7 +231,7 @@
           __wax_fetching = false;
           try { google.script.run.wax__traceObj('fetch failure', {message:(err && err.message) || String(err)}); } catch(e){}
           setDbg('fetch failed');
-          alert('Load error: ' + ((err && err.message) || err));
+          uiSetStatus('Load error: ' + ((err && err.message) || err), 'error');
         })
         .wax_adminGetPendingData();
     }
@@ -359,24 +362,28 @@
         // Trace what's about to be sent
         try { google.script.run.wax__traceObj('onCommit -> updates', updates); } catch(_){}
 
-        if (!updates.length) { alert('Please check at least one row to update.'); return; }
+        uiClearStatus();
+        if (!updates.length) {
+          uiSetStatus('Please check at least one row to update.', 'error');
+          return;
+        }
 
         try { setDbg('committing ' + updates.length + ' row(s)…'); } catch(_){}
 
         // Disable button to prevent double-submits
-        if (btn) btn.disabled = true;
+        uiSetBusy(btn, true, 'Committing...');
 
         google.script.run
           .withSuccessHandler(function(res){
             try { google.script.run.wax__traceObj('commit success', res); } catch(_){}
-            alert(res && res.message ? res.message : 'Updates committed.');
-            if (btn) btn.disabled = false;
+            uiSetStatus(res && res.message ? res.message : 'Updates committed.', 'ok');
+            uiSetBusy(btn, false);
             fetchData_(); // reload fresh rows
           })
           .withFailureHandler(function(err){
             try { google.script.run.wax__traceObj('commit failure', {message:(err && err.message)||String(err)}); } catch(_){}
-            alert('Commit failed: ' + ((err && err.message) || err));
-            if (btn) btn.disabled = false;
+            uiSetStatus('Commit failed: ' + ((err && err.message) || err), 'error');
+            uiSetBusy(btn, false);
           })
           .wax_adminCommitFromDialog({ updates: updates });
       };

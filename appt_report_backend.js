@@ -7,7 +7,8 @@ var AR_CFG = {
 
 // ── Open dialog ───────────────────────────────────────────────
 function openApptReportDialog() {
-  var html = HtmlService.createHtmlOutputFromFile('dlg_appt_report_v1')
+  var html = HtmlService.createTemplateFromFile('dlg_appt_report_v1')
+    .evaluate()
     .setWidth(1280).setHeight(820);
   SpreadsheetApp.getUi().showModalDialog(html, 'Appointment Sales Report');
 }
@@ -427,4 +428,4 @@ function appt_loadBriefing(dateKey) {
   } catch(e) {
     return { ok: false, error: e.message };
   }
-} 
+}

@@ -134,7 +134,8 @@ function openPaymentSummary() {
   try { rp_markActiveMasterRowIndex_(); } catch (e) {
     try { rp_captureSelectionForPrefill_(); } catch (_) {}
   }
-  const html = HtmlService.createHtmlOutputFromFile('dlg_payment_summary_v1')
+  const html = HtmlService.createTemplateFromFile('dlg_payment_summary_v1')
+                .evaluate()
                 .setTitle('Payment Summary');
   SpreadsheetApp.getUi().showModalDialog(html, 'Payment Summary');
 }

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<base target="_top">
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -197,8 +198,9 @@ tr.row-noshow{background:#fef2f2!important;opacity:.8;}
 .err-bar{display:none;padding:5px 16px;flex-shrink:0;background:var(--red-bg);border-bottom:1px solid var(--red-border);color:var(--red);font-size:11px;}
 .err-bar.on{display:block;}
 </style>
+<?!= include('ui_styles') ?>
 </head>
-<body>
+<body class="ui-shell">
 
 <!-- HEADER -->
 <div class="hdr">
@@ -392,8 +394,8 @@ tr.row-noshow{background:#fef2f2!important;opacity:.8;}
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px">
-          <div class="brief-saved" id="briefSavedMsg">✓ Saved</div>
-          <button class="btn-save-brief" id="btnSaveBrief" onclick="briefSave()">💾 Save Briefing</button>
+          <div class="brief-saved" id="briefSavedMsg">Saved</div>
+          <button class="btn-save-brief" id="btnSaveBrief" onclick="briefSave()">Save Briefing</button>
         </div>
       </div>
     </div>
@@ -792,7 +794,8 @@ function brandBadge(b) {
 function briefSave() {
   var btn = document.getElementById('btnSaveBrief');
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  btn.textContent = 'Saving...';
+  clearErr();
 
   var data = {
     noshow:    document.getElementById('brief-noshow').value,
@@ -805,19 +808,19 @@ function briefSave() {
   google.script.run
     .withSuccessHandler(function(res) {
       btn.disabled = false;
-      btn.textContent = '💾 Save Briefing';
+      btn.textContent = 'Save Briefing';
       if (res && res.ok) {
         var msg = document.getElementById('briefSavedMsg');
         msg.classList.add('show');
         setTimeout(function() { msg.classList.remove('show'); }, 3000);
       } else {
-        alert('Lưu thất bại: ' + (res && res.error || 'Unknown error'));
+        showErr('Save failed: ' + (res && res.error || 'Unknown error'));
       }
     })
     .withFailureHandler(function(e) {
       btn.disabled = false;
-      btn.textContent = '💾 Save Briefing';
-      alert('Lỗi: ' + (e.message || String(e)));
+      btn.textContent = 'Save Briefing';
+      showErr('Save failed: ' + (e.message || String(e)));
     })
     .appt_saveBriefing({ dateKey: dateKey, data: data });
 }
@@ -1093,7 +1096,7 @@ function setDashState(s) {
   document.getElementById('dash-load').style.display    = s === 'load'    ? '' : 'none';
   document.getElementById('dash-content').style.display = s === 'content' ? '' : 'none';
 }
-function showErr(msg) { var b = document.getElementById('errBar'); b.textContent = '⚠ ' + msg; b.classList.add('on'); }
+function showErr(msg) { var b = document.getElementById('errBar'); b.textContent = msg; b.classList.add('on'); }
 function clearErr()   { document.getElementById('errBar').classList.remove('on'); }
 function esc(s)  { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function trunc(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }

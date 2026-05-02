@@ -31,6 +31,8 @@
 
 
  </style>
+ <?!= include('ui_styles') ?>
+ <style>body.ui-shell{padding:16px;}</style>
  <script>
    function fitDialogToContent(w){
      try{ google.script.host.setWidth(w||1040); }catch(e){}
@@ -209,7 +211,7 @@
 
  </script>
 </head>
-<body>
+<body class="ui-shell">
  <div class="sub">Read‑only view of all Invoices & Receipts for the selected customer/anchor.</div>
 
 
@@ -255,8 +257,6 @@
  </fieldset>
 </body>
 </html>
-
-
 
 
 
