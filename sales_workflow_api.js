@@ -433,6 +433,75 @@ function sw_adminUnblockTask(taskId, reason) {
 // Diagnostics and tests.
 
 /**
+ * Read-only diagnostic: logs server-side speed for initial queue load paths.
+ */
+function sw_measureSalesWorkflowSpeed() {
+  var started = new Date().getTime();
+  var out = {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    readOnly: true,
+    note: 'Measures Apps Script server time only. Browser/network rendering time is not included.',
+    steps: []
+  };
+  var bootstrap = null;
+  var mine = null;
+  var coverage = null;
+  var admin = null;
+
+  swBenchmarkSalesWorkflowStep_(out, 'sw_getBootstrap', function () {
+    bootstrap = sw_getBootstrap();
+    return {
+      counts: bootstrap.counts || {},
+      views: bootstrap.views || {},
+      initialTasks: bootstrap.tasks ? bootstrap.tasks.length : 0
+    };
+  });
+
+  swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:mine', function () {
+    mine = sw_getMyTasks('mine');
+    return swBenchmarkSalesWorkflowListSummary_(mine);
+  });
+
+  if (bootstrap && bootstrap.views && bootstrap.views.coverage) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:coverage', function () {
+      coverage = sw_getMyTasks('coverage');
+      return swBenchmarkSalesWorkflowListSummary_(coverage);
+    });
+  }
+
+  if (bootstrap && bootstrap.views && bootstrap.views.admin) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:admin', function () {
+      admin = sw_getMyTasks('admin');
+      return swBenchmarkSalesWorkflowListSummary_(admin);
+    });
+  }
+
+  var detailTaskId = swBenchmarkSalesWorkflowFirstTaskId_([mine, coverage, admin]);
+  if (detailTaskId) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getTaskDetail', function () {
+      var detail = sw_getTaskDetail(detailTaskId);
+      return {
+        taskId: detailTaskId,
+        taskType: detail.task ? detail.task.taskType : '',
+        attachments: detail.attachments ? detail.attachments.length : 0,
+        missingFields: detail.missingFields ? detail.missingFields.length : 0
+      };
+    });
+  } else {
+    out.steps.push({
+      operation: 'sw_getTaskDetail',
+      skipped: true,
+      reason: 'No visible task was available for detail timing.'
+    });
+  }
+
+  out.totalMs = new Date().getTime() - started;
+  Logger.log('SW_BENCHMARK_SUMMARY ' + JSON.stringify(out, null, 2));
+  return out;
+}
+
+/**
  * Mutating diagnostic: runs setup and generation twice to confirm duplicate-safe generation.
  */
 function sw_testSalesWorkflowDryRun() {
@@ -446,4 +515,38 @@ function sw_testSalesWorkflowDryRun() {
     duplicateSafe: second.created === 0
   }, null, 2));
   return { ok: true, setup: setup, first: first, second: second };
+}
+
+function swBenchmarkSalesWorkflowStep_(out, operation, fn) {
+  var started = new Date().getTime();
+  var step = {
+    operation: operation,
+    ok: true
+  };
+  try {
+    step.result = fn() || {};
+  } catch (err) {
+    step.ok = false;
+    step.error = err && err.message ? err.message : String(err);
+  } finally {
+    step.ms = new Date().getTime() - started;
+    out.steps.push(step);
+    Logger.log('SW_BENCHMARK_STEP ' + JSON.stringify(step));
+  }
+  return step;
+}
+
+function swBenchmarkSalesWorkflowListSummary_(res) {
+  return {
+    view: res && res.view ? res.view : '',
+    tasks: res && res.tasks ? res.tasks.length : 0
+  };
+}
+
+function swBenchmarkSalesWorkflowFirstTaskId_(responses) {
+  for (var i = 0; i < responses.length; i++) {
+    var tasks = responses[i] && responses[i].tasks ? responses[i].tasks : [];
+    if (tasks.length && tasks[0].taskId) return tasks[0].taskId;
+  }
+  return '';
 }
