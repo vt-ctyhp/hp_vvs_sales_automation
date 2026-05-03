@@ -469,8 +469,11 @@
       serverCall('sw_getBootstrap', [], function (res) {
         appState.user = res.user;
         renderUser(res);
+        appState.view = 'mine';
+        setActiveTab(appState.view);
+        renderViewHeader(appState.view);
+        renderTasks(res.tasks || []);
         if (res.message) setStatus(res.message);
-        loadTasks('mine');
       });
     }
 
