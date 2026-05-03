@@ -2,6 +2,11 @@
  * Sales workflow public API: functions called by the web app, triggers, and admins.
  */
 
+// Setup and generation.
+
+/**
+ * Mutating setup: ensures workflow sheets, styling, config rows, and templates exist.
+ */
 function sw_setupSalesWorkflow() {
   var ss = swSpreadsheet_();
   var taskSheet = swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
@@ -24,6 +29,9 @@ function sw_setupSalesWorkflow() {
   };
 }
 
+/**
+ * Mutating generation: creates or updates workflow tasks from master appointments.
+ */
 function sw_generateSalesWorkflowTasks() {
   return swTimed_('sw_generateSalesWorkflowTasks', function () {
     sw_setupSalesWorkflow();
@@ -78,12 +86,18 @@ function sw_generateSalesWorkflowTasks() {
   });
 }
 
+/**
+ * Mutating generation wrapper: refreshes owner assignment through the normal generator.
+ */
 function sw_refreshTaskOwners() {
   var summary = sw_generateSalesWorkflowTasks();
   summary.ownerRefresh = true;
   return summary;
 }
 
+/**
+ * Mutating setup: replaces Sales Workflow generation and owner-refresh triggers.
+ */
 function sw_installSalesWorkflowTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
     var fn = trigger.getHandlerFunction();
@@ -99,6 +113,11 @@ function sw_installSalesWorkflowTriggers() {
   };
 }
 
+// Read-only UI calls.
+
+/**
+ * Read-only UI bootstrap: returns current user, view counts, and initial My Queue tasks.
+ */
 function sw_getBootstrap() {
   return swTimed_('sw_getBootstrap', function () {
     var mark = swStepTimer_('sw_getBootstrap');
@@ -137,6 +156,9 @@ function sw_getBootstrap() {
   });
 }
 
+/**
+ * Read-only UI list: returns tasks visible to the current user for the requested view.
+ */
 function sw_getMyTasks(view) {
   return swTimed_('sw_getMyTasks', function () {
     var mark = swStepTimer_('sw_getMyTasks');
@@ -161,6 +183,9 @@ function sw_getMyTasks(view) {
   });
 }
 
+/**
+ * Read-only admin list: returns filterable admin-visible tasks.
+ */
 function sw_adminGetTasks(filters) {
   return swTimed_('sw_adminGetTasks', function () {
     var ss = swSpreadsheet_();
@@ -181,6 +206,9 @@ function sw_adminGetTasks(filters) {
   });
 }
 
+/**
+ * Read-only detail: returns task payload, rendered template data, and allowed actions.
+ */
 function sw_getTaskDetail(taskId) {
   return swTimed_('sw_getTaskDetail', function () {
     var mark = swStepTimer_('sw_getTaskDetail');
@@ -229,12 +257,20 @@ function sw_getTaskDetail(taskId) {
   });
 }
 
+// Task actions.
+
+/**
+ * Mutating task action: marks acknowledge-style tasks complete through the standard path.
+ */
 function sw_acknowledgeTask(taskId, data) {
   data = data || {};
   data.acknowledged = true;
   return sw_completeTask(taskId, data);
 }
 
+/**
+ * Mutating task action: validates and completes a pending task, then refreshes generation.
+ */
 function sw_completeTask(taskId, data) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
@@ -278,6 +314,9 @@ function sw_completeTask(taskId, data) {
   };
 }
 
+/**
+ * Mutating task action: lets an eligible user claim a pending coverage task.
+ */
 function sw_claimTask(taskId) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
@@ -300,6 +339,25 @@ function sw_claimTask(taskId) {
   return { ok: true, task: swGetTaskById_(ss, taskId) };
 }
 
+/**
+ * Mutating task action: records that the user copied a task template.
+ */
+function sw_logTemplateCopied(taskId) {
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  var user = swCurrentUser_(ss);
+  var task = swGetTaskById_(ss, taskId);
+  if (!task) throw new Error('Task not found: ' + taskId);
+  if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
+  swAppendTaskLog_(ss, 'TEMPLATE_COPY', task, user, task.currentOwner, task.currentOwner, {});
+  return { ok: true };
+}
+
+// Admin actions.
+
+/**
+ * Mutating admin action: reassigns a pending task to a named owner.
+ */
 function sw_adminReassignTask(taskId, ownerName, ownerEmail, reason) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
@@ -324,6 +382,9 @@ function sw_adminReassignTask(taskId, ownerName, ownerEmail, reason) {
   return { ok: true, task: swGetTaskById_(ss, taskId) };
 }
 
+/**
+ * Mutating admin action: blocks a task and records the reason.
+ */
 function sw_adminBlockTask(taskId, reason) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
@@ -346,6 +407,9 @@ function sw_adminBlockTask(taskId, reason) {
   return { ok: true, task: swGetTaskById_(ss, taskId) };
 }
 
+/**
+ * Mutating admin action: returns a blocked task to pending status.
+ */
 function sw_adminUnblockTask(taskId, reason) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
@@ -366,17 +430,11 @@ function sw_adminUnblockTask(taskId, reason) {
   return { ok: true, task: swGetTaskById_(ss, taskId) };
 }
 
-function sw_logTemplateCopied(taskId) {
-  var ss = swSpreadsheet_();
-  sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
-  var task = swGetTaskById_(ss, taskId);
-  if (!task) throw new Error('Task not found: ' + taskId);
-  if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
-  swAppendTaskLog_(ss, 'TEMPLATE_COPY', task, user, task.currentOwner, task.currentOwner, {});
-  return { ok: true };
-}
+// Diagnostics and tests.
 
+/**
+ * Mutating diagnostic: runs setup and generation twice to confirm duplicate-safe generation.
+ */
 function sw_testSalesWorkflowDryRun() {
   var setup = sw_setupSalesWorkflow();
   var first = sw_generateSalesWorkflowTasks();
