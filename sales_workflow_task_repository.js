@@ -313,17 +313,6 @@ function swTaskToRow_(task) {
 
 function swFindTaskRow_(sh, taskId) {
   if (sh.getLastRow() < 2) return 0;
-  var idRange = sh.getRange(2, 1, sh.getLastRow() - 1, 1);
-  try {
-    var found = idRange
-      .createTextFinder(String(taskId))
-      .useRegularExpression(false)
-      .matchEntireCell(true)
-      .matchCase(true)
-      .findNext();
-    if (found) return found.getRow();
-  } catch (_) {}
-
   var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
   for (var i = 0; i < ids.length; i++) {
     if (String(ids[i][0]) === String(taskId)) return i + 2;
