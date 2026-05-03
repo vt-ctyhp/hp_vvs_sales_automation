@@ -59,7 +59,7 @@ function swReadConfig_(ss, readOnly) {
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.CONFIG)
     : swEnsureSheet_(ss, SW_SHEETS.CONFIG, SW_CONFIG_HEADERS);
-  return swReadSheetObjects_(sh);
+  return swReadSheetObjectsExpectedHeaders_(sh, SW_CONFIG_HEADERS);
 }
 
 function swReadAdmins_(ss) {
@@ -91,45 +91,82 @@ function swReadPeopleIndex_(ss, config) {
     assistedRoster: []
   };
   var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
-  if (sh && sh.getLastRow() >= 2) {
-    var lastRow = sh.getLastRow();
-    var lastCol = sh.getLastColumn();
-    var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
-    var H = swHeaderMapFromArray_(headers);
-    mark('headers', { lastRow: lastRow, lastCol: lastCol });
-    var pairs = [
-      [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
-      [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
-    ];
-    var assistedNameCol = swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']);
-    var assistedEmailCol = swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']);
+  var lastRow = sh ? sh.getLastRow() : 0;
+  if (sh && lastRow >= 2) {
+    var firstColumns = null;
+    try {
+      firstColumns = sh.getRange(1, 1, lastRow, 4).getDisplayValues();
+    } catch (_) {}
+    var useFastColumns = firstColumns && swPeopleIndexFastHeadersMatch_(firstColumns[0]);
+    var pairs = [];
+    var assistedNameCol = -1;
+    var assistedEmailCol = -1;
     var neededCols = [];
-    pairs.forEach(function (pair) {
-      if (pair[0] >= 0) neededCols.push(pair[0]);
-      if (pair[1] >= 0) neededCols.push(pair[1]);
-    });
-    if (assistedNameCol >= 0) neededCols.push(assistedNameCol);
-    if (assistedEmailCol >= 0) neededCols.push(assistedEmailCol);
-    var seenAssisted = {};
-    if (neededCols.length) {
-      var minCol = Math.min.apply(null, neededCols);
-      var maxCol = Math.max.apply(null, neededCols);
-      var uniqueCols = swUniqueNumberList_(neededCols);
-      var readSparse = (maxCol - minCol + 1) > uniqueCols.length + 2;
-      var values = readSparse ? [] : sh.getRange(2, minCol + 1, lastRow - 1, maxCol - minCol + 1).getDisplayValues();
-      var sparseValues = {};
-      if (readSparse) {
-        uniqueCols.forEach(function (col) {
-          sparseValues[col] = sh.getRange(2, col + 1, lastRow - 1, 1).getDisplayValues();
-        });
-      }
+    var minCol = 0;
+    var maxCol = 0;
+    var uniqueCols = [];
+    var readSparse = false;
+    var values = [];
+    var sparseValues = {};
+
+    if (useFastColumns) {
+      pairs = [[0, 1], [2, 3]];
+      assistedNameCol = 2;
+      assistedEmailCol = 3;
+      neededCols = [0, 1, 2, 3];
+      uniqueCols = neededCols;
+      maxCol = 3;
+      values = firstColumns.slice(1);
+      mark('headers', { lastRow: lastRow, lastCol: 4, fastPath: true });
       mark('dropdownRead', {
-        readSparse: readSparse,
+        readSparse: false,
         rows: lastRow - 1,
         columns: uniqueCols.length,
-        minCol: minCol + 1,
-        maxCol: maxCol + 1
+        minCol: 1,
+        maxCol: 4,
+        fastPath: true
       });
+    } else {
+      var lastCol = sh.getLastColumn();
+      var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+      var H = swHeaderMapFromArray_(headers);
+      mark('headers', { lastRow: lastRow, lastCol: lastCol, fastPath: false });
+      pairs = [
+        [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
+        [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
+      ];
+      assistedNameCol = swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']);
+      assistedEmailCol = swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']);
+      pairs.forEach(function (pair) {
+        if (pair[0] >= 0) neededCols.push(pair[0]);
+        if (pair[1] >= 0) neededCols.push(pair[1]);
+      });
+      if (assistedNameCol >= 0) neededCols.push(assistedNameCol);
+      if (assistedEmailCol >= 0) neededCols.push(assistedEmailCol);
+    }
+
+    var seenAssisted = {};
+    if (neededCols.length) {
+      if (!useFastColumns) {
+        minCol = Math.min.apply(null, neededCols);
+        maxCol = Math.max.apply(null, neededCols);
+        uniqueCols = swUniqueNumberList_(neededCols);
+        readSparse = (maxCol - minCol + 1) > uniqueCols.length + 2;
+        values = readSparse ? [] : sh.getRange(2, minCol + 1, lastRow - 1, maxCol - minCol + 1).getDisplayValues();
+        if (readSparse) {
+          uniqueCols.forEach(function (col) {
+            sparseValues[col] = sh.getRange(2, col + 1, lastRow - 1, 1).getDisplayValues();
+          });
+        }
+        mark('dropdownRead', {
+          readSparse: readSparse,
+          rows: lastRow - 1,
+          columns: uniqueCols.length,
+          minCol: minCol + 1,
+          maxCol: maxCol + 1,
+          fastPath: false
+        });
+      }
       var dropdownCell = function (row, originalCol) {
         if (originalCol < 0) return '';
         if (readSparse) return sparseValues[originalCol] && sparseValues[originalCol][row] ? sparseValues[originalCol][row][0] : '';
@@ -186,6 +223,17 @@ function swReadPeopleIndex_(ss, config) {
   return out;
 }
 
+function swPeopleIndexFastHeadersMatch_(headers) {
+  headers = headers || [];
+  var assignedName = swHeaderKey_(headers[0]) === swHeaderKey_('Assigned Rep');
+  var assignedEmail = swHeaderKey_(headers[1]) === swHeaderKey_('Assigned Rep Email');
+  var assistedNameKey = swHeaderKey_(headers[2]);
+  var assistedEmailKey = swHeaderKey_(headers[3]);
+  var assistedName = assistedNameKey === swHeaderKey_('Assisted Rep') || assistedNameKey === swHeaderKey_('Assistant Rep');
+  var assistedEmail = assistedEmailKey === swHeaderKey_('Assisted Rep Email') || assistedEmailKey === swHeaderKey_('Assistant Rep Email');
+  return assignedName && assignedEmail && assistedName && assistedEmail;
+}
+
 function swReadAssistedRoster_(ss) {
   var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
   var out = [];
@@ -224,7 +272,7 @@ function swReadTemplates_(ss, readOnly) {
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TEMPLATES)
     : swEnsureSheet_(ss, SW_SHEETS.TEMPLATES, SW_TEMPLATE_HEADERS);
-  var rows = swReadSheetObjects_(sh);
+  var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_TEMPLATE_HEADERS);
   var out = {};
   rows.forEach(function (r) {
     var type = swTrim_(r['Task Type']);

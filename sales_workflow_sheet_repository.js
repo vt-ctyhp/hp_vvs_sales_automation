@@ -73,3 +73,36 @@ function swReadSheetObjects_(sh) {
   }
   return out;
 }
+
+function swReadSheetObjectsExpectedHeaders_(sh, expectedHeaders) {
+  expectedHeaders = expectedHeaders || [];
+  if (!sh || !expectedHeaders.length) return [];
+
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  var values;
+  try {
+    values = sh.getRange(1, 1, lastRow, expectedHeaders.length).getDisplayValues();
+  } catch (_) {
+    return swReadSheetObjects_(sh);
+  }
+
+  var actualHeaders = values[0].map(function (h) { return swTrim_(h); });
+  for (var h = 0; h < expectedHeaders.length; h++) {
+    if (swHeaderKey_(actualHeaders[h]) !== swHeaderKey_(expectedHeaders[h])) {
+      return swReadSheetObjects_(sh);
+    }
+  }
+
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var obj = { __rowNumber: i + 1 };
+    var blank = true;
+    for (var j = 0; j < expectedHeaders.length; j++) {
+      obj[expectedHeaders[j]] = values[i][j];
+      if (values[i][j] !== '') blank = false;
+    }
+    if (!blank) out.push(obj);
+  }
+  return out;
+}
