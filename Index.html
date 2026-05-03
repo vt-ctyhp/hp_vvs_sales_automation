@@ -2,26 +2,775 @@
 <html>
 <head>
   <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-foundation: #F7F1EB;
+      --surface-card:  #FBF7F1;
+      --surface-inset: #EFE8DD;
+      --ink-primary:   #2A2725;
+      --ink-body:      #4A4540;
+      --ink-muted:     #8A8178;
+      --rule:          #D4CFC4;
+      --accent:        #E91D79;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg-foundation);
+      color: var(--ink-body);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 32px;
+    }
+
+    .masthead {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .eyebrow {
+      color: var(--ink-muted);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    h1, h2, h3 {
+      color: var(--ink-primary);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-weight: 400;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 38px;
+      line-height: 1;
+    }
+
+    h2 {
+      font-size: 26px;
+    }
+
+    h3 {
+      font-size: 20px;
+    }
+
+    .userline {
+      color: var(--ink-muted);
+      text-align: right;
+      line-height: 1.45;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 24px 0;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      border-radius: 2px;
+      border: 1px solid var(--ink-primary);
+      background: transparent;
+      color: var(--ink-primary);
+      cursor: pointer;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      padding: 10px 14px;
+      text-transform: uppercase;
+      transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+
+    button.primary {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+
+    button.primary:hover:not(:disabled) {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    button.active {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    .status {
+      color: var(--ink-muted);
+      min-height: 20px;
+      text-align: right;
+    }
+
+    .error {
+      color: var(--accent);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      padding: 28px;
+    }
+
+    .panel-header {
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .task-card {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      padding: 18px;
+    }
+
+    .task-card.overdue {
+      border-top: 2px solid var(--accent);
+    }
+
+    .task-top {
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+    }
+
+    .task-title {
+      color: var(--ink-primary);
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+
+    .meta {
+      color: var(--ink-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .badge {
+      background: var(--surface-inset);
+      color: var(--ink-body);
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      margin: 10px 8px 0 0;
+      padding: 5px 7px;
+      text-transform: uppercase;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .empty, .loading {
+      background: var(--surface-inset);
+      color: var(--ink-muted);
+      padding: 24px;
+    }
+
+    .detail-body {
+      display: grid;
+      gap: 18px;
+    }
+
+    .detail-section {
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 18px;
+    }
+
+    .detail-section:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .template-box {
+      background: var(--surface-inset);
+      color: var(--ink-primary);
+      line-height: 1.55;
+      min-height: 96px;
+      padding: 16px;
+      white-space: pre-wrap;
+    }
+
+    .attachment-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .attachment-row {
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 12px;
+    }
+
+    .attachment-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .attachment-image {
+      border: 1px solid var(--rule);
+      display: block;
+      margin-top: 10px;
+      max-height: 220px;
+      max-width: 100%;
+      object-fit: contain;
+    }
+
+    label {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    textarea, input {
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--rule);
+      border-radius: 0;
+      color: var(--ink-primary);
+      font: inherit;
+      padding: 6px 2px;
+      width: 100%;
+    }
+
+    textarea {
+      border: 1px solid var(--rule);
+      min-height: 140px;
+      padding: 12px;
+      resize: vertical;
+    }
+
+    textarea:focus, input:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 10px;
+    }
+
+    .check-row {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+    }
+
+    .check-row input {
+      width: auto;
+    }
+
+    .admin-form {
+      display: grid;
+      gap: 12px;
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        padding: 20px;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .masthead, .toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .userline, .status {
+        text-align: left;
+      }
+    }
+  </style>
 </head>
-<body style="font-family: Arial; padding:40px">
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">Sales Appointment Workflow</div>
+        <h1>Team Queue</h1>
+      </div>
+      <div class="userline" id="userLine">Loading user</div>
+    </header>
 
-<h2>Sales Receipt Generator Test</h2>
+    <section class="toolbar">
+      <div class="tabs">
+        <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
+        <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
+        <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
+      </div>
+      <div>
+        <button id="refreshOwnersButton" type="button">Refresh Owners</button>
+        <button id="generateTasksButton" class="primary" type="button">Generate Tasks</button>
+      </div>
+    </section>
 
-<button onclick="generateReceipt()" style="padding:10px 20px; font-size:16px">
-Generate Test Receipt
-</button>
+    <div class="status" id="status"></div>
 
-<p id="result"></p>
+    <section class="layout">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="eyebrow" id="viewEyebrow">My Queue</div>
+          <h2 id="viewTitle">Tasks assigned to you</h2>
+        </div>
+        <div id="taskList" class="task-list">
+          <div class="loading">LOADING</div>
+        </div>
+      </div>
 
-<script>
-function generateReceipt() {
-  google.script.run
-    .withSuccessHandler(function(response) {
-      document.getElementById("result").innerText = response;
-    })
-    .createTestReceipt();
-}
-</script>
+      <aside class="panel" id="detailPanel">
+        <div class="panel-header">
+          <div class="eyebrow">Task Detail</div>
+          <h2>Select a task</h2>
+        </div>
+        <div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>
+      </aside>
+    </section>
+  </main>
 
+  <script>
+    var appState = {
+      user: null,
+      view: 'mine',
+      selectedTaskId: '',
+      detail: null,
+      busy: false
+    };
+
+    function bindEvents() {
+      ['mine', 'coverage', 'admin'].forEach(function (view) {
+        var tab = document.getElementById('tab-' + view);
+        if (!tab) return;
+        tab.addEventListener('click', function () {
+          loadTasks(view);
+        });
+      });
+
+      var refreshOwnersButton = document.getElementById('refreshOwnersButton');
+      if (refreshOwnersButton) refreshOwnersButton.addEventListener('click', refreshOwners);
+
+      var generateTasksButton = document.getElementById('generateTasksButton');
+      if (generateTasksButton) generateTasksButton.addEventListener('click', generateTasks);
+
+      var taskList = document.getElementById('taskList');
+      if (taskList) {
+        taskList.addEventListener('click', function (event) {
+          var button = closestMatch_(event.target, '.js-open-task');
+          if (!button) return;
+          openTask(button.getAttribute('data-task-id') || '');
+        });
+      }
+
+      var detailPanel = document.getElementById('detailPanel');
+      if (detailPanel) {
+        detailPanel.addEventListener('click', function (event) {
+          if (closestMatch_(event.target, '.js-copy-template')) return copyTemplate();
+          if (closestMatch_(event.target, '.js-claim-task')) return claimTask();
+          if (closestMatch_(event.target, '.js-complete-task')) return completeTask();
+          if (closestMatch_(event.target, '.js-admin-reassign')) return adminReassign();
+          if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
+          if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+        });
+      }
+    }
+
+    function closestMatch_(target, selector) {
+      return target && target.closest ? target.closest(selector) : null;
+    }
+
+    function setStatus(message, isError) {
+      var el = document.getElementById('status');
+      el.textContent = message || '';
+      el.className = isError ? 'status error' : 'status';
+    }
+
+    function setBusy(isBusy, message) {
+      appState.busy = isBusy;
+      if (message) {
+        setStatus(message);
+      } else if (!isBusy) {
+        setStatus('');
+      }
+    }
+
+    function serverCall(fnName, args, onSuccess, busyMessage) {
+      setBusy(true, busyMessage || 'Working');
+      var runner = google.script.run
+        .withSuccessHandler(function (response) {
+          setBusy(false, '');
+          onSuccess(response || {});
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false, '');
+          setStatus((err && err.message) ? err.message : String(err), true);
+        });
+      runner[fnName].apply(runner, args || []);
+    }
+
+    function init() {
+      serverCall('sw_getBootstrap', [], function (res) {
+        appState.user = res.user;
+        renderUser(res);
+        if (res.message) setStatus(res.message);
+        loadTasks('mine');
+      });
+    }
+
+    function renderUser(res) {
+      var user = res.user || {};
+      var parts = [];
+      parts.push(escapeHtml(user.name || user.email || 'Unknown user'));
+      if (user.isAdmin) parts.push('Admin');
+      if (user.isJoc) parts.push('JOC');
+      document.getElementById('userLine').innerHTML = parts.join('<br>');
+      document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
+      document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
+    }
+
+    function loadTasks(view) {
+      appState.view = view || 'mine';
+      setActiveTab(appState.view);
+      renderViewHeader(appState.view);
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING</div>';
+      serverCall('sw_getMyTasks', [appState.view], function (res) {
+        renderTasks(res.tasks || []);
+      });
+    }
+
+    function setActiveTab(view) {
+      ['mine', 'coverage', 'admin'].forEach(function (v) {
+        var el = document.getElementById('tab-' + v);
+        if (el) el.className = v === view ? 'active' : '';
+      });
+    }
+
+    function renderViewHeader(view) {
+      var title = 'Tasks assigned to you';
+      var eyebrow = 'My Queue';
+      if (view === 'coverage') {
+        title = 'JOC tasks needing coverage';
+        eyebrow = 'JOC Coverage';
+      }
+      if (view === 'admin') {
+        title = 'Open tasks across the workflow';
+        eyebrow = 'Admin Review';
+      }
+      document.getElementById('viewTitle').textContent = title;
+      document.getElementById('viewEyebrow').textContent = eyebrow;
+    }
+
+    function renderTasks(tasks) {
+      var list = document.getElementById('taskList');
+      if (!tasks.length) {
+        list.innerHTML = '<div class="empty"><h3>No tasks here</h3><p>Your queue is clear for this view.</p></div>';
+        return;
+      }
+      list.innerHTML = tasks.map(function (task) {
+        var overdue = /^Overdue/.test(task.dueLabel || '');
+        var coverage = task.coverageReason ? '<span class="badge">' + escapeHtml(task.coverageReason) + '</span>' : '';
+        return [
+          '<article class="task-card ' + (overdue ? 'overdue' : '') + '">',
+            '<div class="task-top">',
+              '<div>',
+                '<div class="task-title">' + escapeHtml(task.taskTitle || task.taskType) + '</div>',
+                '<div class="meta">' + escapeHtml(task.customerName || 'No customer') + ' · ' + escapeHtml(task.visitDate || 'No date') + ' ' + escapeHtml(task.visitTime || '') + '</div>',
+                '<div class="meta">Owner: ' + escapeHtml(task.currentOwner || 'Unassigned') + '</div>',
+              '</div>',
+              '<div class="meta">' + escapeHtml(task.dueLabel || '') + '</div>',
+            '</div>',
+            '<span class="badge">' + escapeHtml(task.lifecycleStage || task.ownerRole || '') + '</span>',
+            coverage,
+            '<div class="actions">',
+              '<button class="primary js-open-task" type="button" data-task-id="' + escapeAttrValue(task.taskId) + '">Open</button>',
+            '</div>',
+          '</article>'
+        ].join('');
+      }).join('');
+    }
+
+    function openTask(taskId) {
+      appState.selectedTaskId = taskId;
+      document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING</div>';
+      serverCall('sw_getTaskDetail', [taskId], function (res) {
+        appState.detail = res;
+        renderDetail(res);
+      });
+    }
+
+    function renderDetail(res) {
+      var task = res.task || {};
+      var missing = (res.missingFields || []).length
+        ? '<div class="error">Missing template fields: ' + escapeHtml(res.missingFields.join(', ')) + '</div>'
+        : '';
+      var template = res.renderedTemplate
+        ? '<div class="detail-section"><label>Template</label><div class="template-box" id="renderedTemplate">' + escapeHtml(res.renderedTemplate) + '</div><div class="actions"><button class="js-copy-template" type="button">Copy Template</button></div>' + missing + '</div>'
+        : '';
+      var attachments = renderAttachments(res.attachments || (res.attachment && res.attachment.url ? [res.attachment] : []));
+      var checklist = renderChecklist(res.checklist || []);
+      var textArea = renderCompletionTextArea(task, res);
+      var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
+      var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete') + '</button>' : '';
+      var admin = res.canAdmin ? renderAdminForm(task) : '';
+
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(task.lifecycleStage || 'Task Detail') + '</div>',
+          '<h2>' + escapeHtml(task.taskTitle || task.taskType || '') + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<div class="meta">' + escapeHtml(task.customerName || '') + '</div>',
+            '<div class="meta">' + escapeHtml(task.visitDate || '') + ' ' + escapeHtml(task.visitTime || '') + '</div>',
+            '<div class="meta">Current owner: ' + escapeHtml(task.currentOwner || 'Unassigned') + '</div>',
+            task.coverageReason ? '<div class="error">' + escapeHtml(task.coverageReason) + '</div>' : '',
+          '</div>',
+          '<div class="detail-section"><label>Instructions</label><div>' + escapeHtml(task.instructions || 'No instructions provided.') + '</div></div>',
+          template,
+          attachments,
+          checklist,
+          textArea,
+          '<div class="actions">' + claim + complete + '</div>',
+          admin,
+        '</div>'
+      ].join('');
+    }
+
+    function renderAttachments(attachments) {
+      attachments = attachments || [];
+      if (!attachments.length) return '';
+      return [
+        '<div class="detail-section">',
+          '<label>Attachments</label>',
+          '<div class="attachment-list">',
+            attachments.map(function (attachment) {
+              var preview = isImageUrl(attachment.url) ? '<img class="attachment-image" src="' + escapeHref(attachment.url) + '" alt="">' : '';
+              return '<div class="attachment-row"><a href="' + escapeHref(attachment.url) + '" target="_blank">' + escapeHtml(attachment.label || attachment.url) + '</a>' + preview + '</div>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderChecklist(items) {
+      if (!items.length) return '';
+      return [
+        '<div class="detail-section">',
+          '<label>Checklist</label>',
+          '<div class="checklist">',
+            items.map(function (item) {
+              return '<div class="check-row"><input type="checkbox" id="check-' + escapeAttr(item.id) + '"><span>' + escapeHtml(item.label || item.id) + '</span></div>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCompletionTextArea(task, res) {
+      if (task.taskType === 'PROCESS_APPOINTMENT_DATA') {
+        return '<div class="detail-section"><label>Recap Draft</label><textarea id="completionText"></textarea></div>';
+      }
+      if (task.taskType === 'APPROVE_RECAP_MESSAGE') {
+        var draft = ((res.payload || {}).extra || {}).recapDraft || res.renderedTemplate || '';
+        return '<div class="detail-section"><label>Approved Recap Text</label><textarea id="completionText">' + escapeHtml(draft) + '</textarea></div>';
+      }
+      return '';
+    }
+
+    function renderAdminForm(task) {
+      return [
+        '<div class="detail-section">',
+          '<label>Admin Reassign</label>',
+          '<div class="admin-form">',
+            '<input id="adminOwnerName" placeholder="Owner name">',
+            '<input id="adminOwnerEmail" placeholder="Owner email">',
+            '<input id="adminReason" placeholder="Reason">',
+            '<button class="js-admin-reassign" type="button">Reassign</button>',
+            '<button class="js-admin-block" type="button">Block</button>',
+            '<button class="js-admin-unblock" type="button">Unblock</button>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function completionPayload() {
+      var detail = appState.detail || {};
+      var task = detail.task || {};
+      var payload = { checklist: {} };
+      (detail.checklist || []).forEach(function (item) {
+        var el = document.getElementById('check-' + item.id);
+        payload.checklist[item.id] = !!(el && el.checked);
+      });
+      var text = document.getElementById('completionText');
+      if (text && task.taskType === 'PROCESS_APPOINTMENT_DATA') payload.recapText = text.value;
+      if (text && task.taskType === 'APPROVE_RECAP_MESSAGE') payload.approvedText = text.value;
+      return payload;
+    }
+
+    function completeTask() {
+      if (!appState.selectedTaskId) return;
+      serverCall('sw_completeTask', [appState.selectedTaskId, completionPayload()], function () {
+        setStatus('Task completed');
+        loadTasks(appState.view);
+        appState.selectedTaskId = '';
+        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
+      });
+    }
+
+    function claimTask() {
+      if (!appState.selectedTaskId) return;
+      serverCall('sw_claimTask', [appState.selectedTaskId], function () {
+        setStatus('Task claimed');
+        openTask(appState.selectedTaskId);
+        loadTasks(appState.view);
+      });
+    }
+
+    function adminReassign() {
+      if (!appState.selectedTaskId) return;
+      var name = document.getElementById('adminOwnerName').value;
+      var email = document.getElementById('adminOwnerEmail').value;
+      var reason = document.getElementById('adminReason').value;
+      serverCall('sw_adminReassignTask', [appState.selectedTaskId, name, email, reason], function () {
+        setStatus('Task reassigned');
+        openTask(appState.selectedTaskId);
+        loadTasks(appState.view);
+      });
+    }
+
+    function adminBlock() {
+      if (!appState.selectedTaskId) return;
+      var reason = document.getElementById('adminReason').value || 'Admin blocked';
+      serverCall('sw_adminBlockTask', [appState.selectedTaskId, reason], function () {
+        setStatus('Task blocked');
+        openTask(appState.selectedTaskId);
+        loadTasks(appState.view);
+      });
+    }
+
+    function adminUnblock() {
+      if (!appState.selectedTaskId) return;
+      var reason = document.getElementById('adminReason').value || '';
+      serverCall('sw_adminUnblockTask', [appState.selectedTaskId, reason], function () {
+        setStatus('Task unblocked');
+        openTask(appState.selectedTaskId);
+        loadTasks(appState.view);
+      });
+    }
+
+    function generateTasks() {
+      setStatus('Generating tasks. This can take a minute on the first run.');
+      serverCall('sw_generateSalesWorkflowTasks', [], function (res) {
+        setStatus('Generated: ' + (res.created || 0) + ' created, ' + (res.updated || 0) + ' updated');
+        loadTasks(appState.view);
+      }, 'Generating tasks. This can take a minute on the first run.');
+    }
+
+    function refreshOwners() {
+      setStatus('Refreshing task owners.');
+      serverCall('sw_refreshTaskOwners', [], function (res) {
+        setStatus('Owners refreshed: ' + (res.updated || 0) + ' updated');
+        loadTasks(appState.view);
+      }, 'Refreshing task owners.');
+    }
+
+    function copyTemplate() {
+      var text = document.getElementById('renderedTemplate');
+      if (!text) return;
+      navigator.clipboard.writeText(text.textContent || '').then(function () {
+        setStatus('Template copied');
+        if (appState.selectedTaskId) {
+          google.script.run.sw_logTemplateCopied(appState.selectedTaskId);
+        }
+      }, function () {
+        setStatus('Copy failed. Select the template text manually.', true);
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replace(/\s+/g, '_');
+    }
+
+    function escapeAttrValue(value) {
+      return escapeHtml(value);
+    }
+
+    function escapeHref(value) {
+      return escapeHtml(value);
+    }
+
+    function isImageUrl(value) {
+      return /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(String(value || ''));
+    }
+
+    bindEvents();
+    init();
+  </script>
 </body>
 </html>

@@ -1,13 +1,22 @@
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index');
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  var app = String(p.app || p.view || p.ui || '').toLowerCase();
+  var op = String(p.op || p.action || p.a || '').toLowerCase();
+
+  if (app === 'receipt' || app === 'receipts' || app === 'ipad') {
+    return ipad_receiptDoGet(e);
+  }
+
+  if (op) {
+    return askControllerDoGet_(e);
+  }
+
+  return sw_taskQueueDoGet_(e);
 }
 
-function createTestReceipt() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.appendRow([
-    "Test Receipt",
-    new Date()
-  ]);
-  
-  return "Receipt created successfully!";
+function sw_taskQueueDoGet_(e) {
+  return HtmlService
+    .createHtmlOutputFromFile('Index')
+    .setTitle('Sales Appointment Workflow')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

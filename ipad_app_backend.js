@@ -25,8 +25,8 @@
  * ══════════════════════════════════════════════════════════════════════
  */
 
-// ── Entry point ────────────────────────────────────────────────────────
-function doGet(e) {
+// ── Receipt generator entry point ──────────────────────────────────────
+function ipad_receiptDoGet(e) {
   return HtmlService
     .createHtmlOutputFromFile('ipad_app')
     .setTitle('HP & VVS — Receipt Generator')

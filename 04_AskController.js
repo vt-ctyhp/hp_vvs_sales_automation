@@ -210,7 +210,7 @@ function callAskStrategist_(question, evidence, pins){
 }
 
 /* ---------- [WEBAPP/DOGET] Add ASK + ADOPT_OVERRIDE actions ---------- */
-function doGet(e) {
+function askControllerDoGet_(e) {
   const p = (e && e.parameter) || {};
   const op = String(p.op || p.action || p.a || '').toLowerCase();
   const root = String(p.root_appt_id || p.root || p.appt || '').trim();
@@ -1235,6 +1235,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 
