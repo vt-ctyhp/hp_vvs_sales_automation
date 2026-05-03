@@ -61,17 +61,9 @@ function swReadScheduleChangesIndex_(ss) {
 }
 
 function swBuildIdentityContext_(ss, readOnly) {
-  var mark = swStepTimer_('swBuildIdentityContext');
   var config = swReadConfig_(ss, readOnly);
-  mark('config', { rows: config.length });
   var peopleIndex = swReadPeopleIndex_(ss, config);
-  mark('peopleIndex', {
-    nameByEmail: Object.keys(peopleIndex.nameByEmail || {}).length,
-    emailByName: Object.keys(peopleIndex.emailByName || {}).length,
-    assistedRoster: (peopleIndex.assistedRoster || []).length
-  });
   var admins = swReadAdminsFromConfig_(config);
-  mark('admins', { admins: admins.length });
   return {
     tz: swTimezone_(),
     config: config,
@@ -84,11 +76,8 @@ function swBuildIdentityContext_(ss, readOnly) {
 }
 
 function swBuildTaskDetailContext_(ss, readOnly) {
-  var mark = swStepTimer_('swBuildTaskDetailContext');
   var ctx = swBuildIdentityContext_(ss, readOnly);
-  mark('identity');
   ctx.templates = swReadTemplates_(ss, readOnly);
-  mark('templates', { templates: Object.keys(ctx.templates || {}).length });
   return ctx;
 }
 
