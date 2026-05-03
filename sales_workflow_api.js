@@ -34,56 +34,90 @@ function sw_setupSalesWorkflow() {
  */
 function sw_generateSalesWorkflowTasks() {
   return swTimed_('sw_generateSalesWorkflowTasks', function () {
-    sw_setupSalesWorkflow();
+    var lock = LockService.getDocumentLock() || LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      sw_setupSalesWorkflow();
 
-    var ss = swSpreadsheet_();
-    var ctx = swBuildContext_(ss, true);
-    if (swNorm_(swConfigValue_(ctx.config, 'SYSTEM', 'FEATURE_ENABLED', 'Y')) === 'n') {
-      return {
+      var ss = swSpreadsheet_();
+      var ctx = swBuildContext_(ss, true);
+      if (swNorm_(swConfigValue_(ctx.config, 'SYSTEM', 'FEATURE_ENABLED', 'Y')) === 'n') {
+        return {
+          ok: true,
+          generatedAt: swIso_(new Date()),
+          scannedAppointments: 0,
+          created: 0,
+          updated: 0,
+          blocked: 0,
+          skippedOld: 0,
+          systemCompleted: 0,
+          paused: true
+        };
+      }
+      var masterRows = swReadAppointments_(ss);
+      var taskState = swReadTaskState_(ss);
+      swBeginDeferredTaskWrites_(ss, taskState);
+      var now = new Date();
+      var summary = {
         ok: true,
-        generatedAt: swIso_(new Date()),
-        scannedAppointments: 0,
+        generatedAt: swIso_(now),
+        scannedAppointments: masterRows.length,
         created: 0,
         updated: 0,
         blocked: 0,
         skippedOld: 0,
-        systemCompleted: 0,
-        paused: true
+        systemCompleted: 0
       };
+
+      masterRows.forEach(function (rec) {
+        if (!rec.root && !rec.appt) return;
+        if (!swIsWorkflowRelevant_(rec, now, ctx)) {
+          summary.skippedOld++;
+          return;
+        }
+
+        if (!swIsAppointmentActive_(rec)) {
+          summary.blocked += swBlockTasksForAppointment_(ss, taskState, rec, 'Appointment is no longer active/current.');
+          return;
+        }
+
+        swGenerateTasksForAppointment_(ss, taskState, ctx, rec, now, summary);
+      });
+
+      swFlushDeferredTaskWrites_(ss, taskState);
+      return summary;
+    } finally {
+      try { lock.releaseLock(); } catch (_) {}
     }
-    var masterRows = swReadAppointments_(ss);
-    var taskState = swReadTaskState_(ss);
-    swBeginDeferredTaskWrites_(ss, taskState);
-    var now = new Date();
-    var summary = {
-      ok: true,
-      generatedAt: swIso_(now),
-      scannedAppointments: masterRows.length,
-      created: 0,
-      updated: 0,
-      blocked: 0,
-      skippedOld: 0,
-      systemCompleted: 0
-    };
-
-    masterRows.forEach(function (rec) {
-      if (!rec.root && !rec.appt) return;
-      if (!swIsWorkflowRelevant_(rec, now, ctx)) {
-        summary.skippedOld++;
-        return;
-      }
-
-      if (!swIsAppointmentActive_(rec)) {
-        summary.blocked += swBlockTasksForAppointment_(ss, taskState, rec, 'Appointment is no longer active/current.');
-        return;
-      }
-
-      swGenerateTasksForAppointment_(ss, taskState, ctx, rec, now, summary);
-    });
-
-    swFlushDeferredTaskWrites_(ss, taskState);
-    return summary;
   });
+}
+
+/**
+ * Editor-only, read-only duplicate task audit. Logs to Apps Script only.
+ */
+function sw_auditDuplicateTasks() {
+  var ss = swSpreadsheet_();
+  swRequireWorkflowReadSheets_(ss, { templates: false });
+  var state = swReadTaskState_(ss, true, { includeDuplicates: true });
+  var plan = swDuplicateTaskCleanupPlan_(state);
+  var out = swDuplicateTaskAuditOutput_(state, plan);
+  Logger.log('SW_DUPLICATE_TASK_AUDIT_SUMMARY ' + JSON.stringify(out.summary));
+  Logger.log('SW_DUPLICATE_TASK_AUDIT_DETAILS ' + JSON.stringify(out, null, 2));
+  return out;
+}
+
+/**
+ * Editor-only dry run for duplicate task cleanup. Does not write.
+ */
+function sw_cleanupDuplicateTasksDryRun() {
+  return swCleanupDuplicateTasks_(false);
+}
+
+/**
+ * Editor-only cleanup for duplicate task rows. Marks extra pending rows Blocked.
+ */
+function sw_cleanupDuplicateTasksApply() {
+  return swCleanupDuplicateTasks_(true);
 }
 
 /**

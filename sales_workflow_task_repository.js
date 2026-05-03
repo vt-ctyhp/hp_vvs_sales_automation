@@ -2,24 +2,22 @@
  * Sales workflow task repository: task state, queue projections, row writes, and task logs.
  */
 
-function swReadTaskState_(ss, readOnly) {
+function swReadTaskState_(ss, readOnly, options) {
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
     : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
   var rows = swReadSheetObjects_(sh);
-  var byId = {};
-  var tasks = [];
+  var rawTasks = [];
   rows.forEach(function (r) {
     var t = swTaskFromRow_(r);
     if (t.taskId) {
-      byId[t.taskId] = t;
-      tasks.push(t);
+      rawTasks.push(t);
     }
   });
-  return { rows: rows, byId: byId, tasks: tasks };
+  return swBuildTaskStateFromTasks_(rawTasks, rows, options);
 }
 
-function swReadTaskListState_(ss, readOnly) {
+function swReadTaskListState_(ss, readOnly, options) {
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
     : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
@@ -27,20 +25,71 @@ function swReadTaskListState_(ss, readOnly) {
   if (lastRow < 2) return { rows: [], byId: {}, tasks: [] };
 
   var statusCol = swTaskHeaderColumn_('Status');
-  if (statusCol <= 0 || sh.getLastColumn() < statusCol) return swReadTaskState_(ss, readOnly);
+  if (statusCol <= 0 || sh.getLastColumn() < statusCol) return swReadTaskState_(ss, readOnly, options);
 
   var rows = sh.getRange(2, 1, lastRow - 1, statusCol).getDisplayValues();
-  var byId = {};
-  var tasks = [];
+  var rawTasks = [];
 
   for (var i = 0; i < rows.length; i++) {
     var t = swTaskListFromValues_(rows[i], '', i + 2);
     if (!t.taskId) continue;
-    byId[t.taskId] = t;
-    tasks.push(t);
+    rawTasks.push(t);
   }
 
-  return { rows: [], byId: byId, tasks: tasks };
+  return swBuildTaskStateFromTasks_(rawTasks, [], options);
+}
+
+function swBuildTaskStateFromTasks_(rawTasks, rows, options) {
+  options = options || {};
+  var byId = {};
+  var taskIds = [];
+  var duplicateTaskIds = {};
+
+  (rawTasks || []).forEach(function (t) {
+    if (!t || !t.taskId) return;
+    if (!byId[t.taskId]) {
+      byId[t.taskId] = t;
+      taskIds.push(t.taskId);
+      return;
+    }
+    duplicateTaskIds[t.taskId] = true;
+    byId[t.taskId] = swBetterTaskRecord_(byId[t.taskId], t);
+  });
+
+  var tasks = taskIds.map(function (taskId) { return byId[taskId]; }).filter(Boolean);
+  var out = { rows: rows || [], byId: byId, tasks: tasks };
+  if (options.includeDuplicates) {
+    out.allTasks = rawTasks || [];
+    out.duplicateTaskIds = Object.keys(duplicateTaskIds);
+  }
+  return out;
+}
+
+function swBetterTaskRecord_(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  var ar = swTaskCanonicalRank_(a);
+  var br = swTaskCanonicalRank_(b);
+  if (br !== ar) return br > ar ? b : a;
+  var au = swTaskTimestampValue_(a.updatedAt || a.createdAt);
+  var bu = swTaskTimestampValue_(b.updatedAt || b.createdAt);
+  if (bu !== au) return bu > au ? b : a;
+  return (b.rowNumber || 0) > (a.rowNumber || 0) ? b : a;
+}
+
+function swTaskCanonicalRank_(t) {
+  var statusRank = 0;
+  if (t.status === SW_STATUSES.BLOCKED) statusRank = 100;
+  if (t.status === SW_STATUSES.PENDING) statusRank = 200;
+  if (t.status === SW_STATUSES.COMPLETED) statusRank = 300;
+  if (t.claimedBy) statusRank += 20;
+  return statusRank;
+}
+
+function swTaskTimestampValue_(value) {
+  if (!value) return 0;
+  var d = new Date(value);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
 function swTaskHeaderColumn_(header) {
@@ -215,13 +264,7 @@ function swReadTaskRowById_(ss, taskId, readOnly) {
 }
 
 function swReadTaskRowByIdOnePass_(sh, taskId) {
-  if (!taskId || sh.getLastRow() < 2) return null;
-  var colCount = Math.min(sh.getLastColumn(), SW_TASK_HEADERS.length);
-  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, colCount).getDisplayValues();
-  for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(taskId)) return swTaskFromValues_(rows[i], i + 2);
-  }
-  return null;
+  return swFindCanonicalTaskInSheet_(sh, taskId);
 }
 
 function swTaskFromValues_(values, rowNumber) {
@@ -337,12 +380,20 @@ function swTaskToRow_(task) {
 }
 
 function swFindTaskRow_(sh, taskId) {
-  if (sh.getLastRow() < 2) return 0;
-  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === String(taskId)) return i + 2;
+  var task = swFindCanonicalTaskInSheet_(sh, taskId);
+  return task ? task.rowNumber : 0;
+}
+
+function swFindCanonicalTaskInSheet_(sh, taskId) {
+  if (!taskId || sh.getLastRow() < 2) return null;
+  var colCount = Math.min(sh.getLastColumn(), SW_TASK_HEADERS.length);
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, colCount).getDisplayValues();
+  var best = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) !== String(taskId)) continue;
+    best = swBetterTaskRecord_(best, swTaskFromValues_(rows[i], i + 2));
   }
-  return 0;
+  return best;
 }
 
 function swAppendTaskLog_(ss, eventType, task, actor, fromOwner, toOwner, details) {
@@ -366,4 +417,171 @@ function swTaskLogRow_(eventType, task, actor, fromOwner, toOwner, details) {
     task.status || '',
     swStringify_(details || {})
   ];
+}
+
+function swDuplicateTaskCleanupPlan_(state) {
+  var byId = {};
+  var allTasks = (state && state.allTasks) || (state && state.tasks) || [];
+  allTasks.forEach(function (t) {
+    if (!t || !t.taskId) return;
+    if (!byId[t.taskId]) byId[t.taskId] = [];
+    byId[t.taskId].push(t);
+  });
+
+  var groups = [];
+  var rowsToBlock = [];
+  Object.keys(byId).sort().forEach(function (taskId) {
+    var group = byId[taskId];
+    if (group.length < 2) return;
+    var keep = group.reduce(function (best, t) {
+      return swBetterTaskRecord_(best, t);
+    }, null);
+    var statusCounts = {};
+    group.forEach(function (t) {
+      var status = t.status || '(blank)';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    var block = group.filter(function (t) {
+      return keep && t.rowNumber !== keep.rowNumber &&
+        t.status !== SW_STATUSES.COMPLETED &&
+        t.status !== SW_STATUSES.BLOCKED;
+    });
+    block.forEach(function (t) {
+      rowsToBlock.push({
+        task: t,
+        row: t.rowNumber,
+        keepRow: keep.rowNumber,
+        taskId: t.taskId,
+        taskType: t.taskType,
+        customerName: t.customerName,
+        currentOwner: t.currentOwner,
+        reason: 'Duplicate TaskID cleanup; kept row ' + keep.rowNumber + '.'
+      });
+    });
+    groups.push({
+      taskId: taskId,
+      rowCount: group.length,
+      rows: group.map(function (t) { return t.rowNumber; }),
+      keepRow: keep ? keep.rowNumber : '',
+      statuses: statusCounts,
+      rowsToBlock: block.map(function (t) { return t.rowNumber; }),
+      sample: swDuplicateTaskBrief_(keep || group[0])
+    });
+  });
+
+  return {
+    duplicateGroups: groups,
+    rowsToBlock: rowsToBlock
+  };
+}
+
+function swDuplicateTaskAuditOutput_(state, plan) {
+  state = state || {};
+  plan = plan || swDuplicateTaskCleanupPlan_(state);
+  var allTasks = state.allTasks || state.tasks || [];
+  var duplicateRows = plan.duplicateGroups.reduce(function (sum, g) {
+    return sum + g.rowCount;
+  }, 0);
+  var statusMix = {};
+  var extraRowsByType = {};
+  plan.duplicateGroups.forEach(function (g) {
+    var names = Object.keys(g.statuses).sort().join(' + ');
+    statusMix[names] = (statusMix[names] || 0) + 1;
+    var type = g.sample.taskType || '(blank)';
+    extraRowsByType[type] = (extraRowsByType[type] || 0) + Math.max(0, g.rowCount - 1);
+  });
+  var pendingGroups = plan.duplicateGroups.filter(function (g) {
+    return !!g.statuses[SW_STATUSES.PENDING];
+  });
+  return {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    readOnly: true,
+    summary: {
+      totalPhysicalRows: allTasks.length,
+      uniqueTaskIds: state.tasks ? state.tasks.length : 0,
+      duplicateTaskIdGroups: plan.duplicateGroups.length,
+      duplicateTaskIdRows: duplicateRows,
+      extraDuplicateRows: duplicateRows - plan.duplicateGroups.length,
+      duplicateGroupsWithPendingRows: pendingGroups.length,
+      pendingRowsToBlock: plan.rowsToBlock.length,
+      duplicateStatusMix: statusMix,
+      extraRowsByType: extraRowsByType
+    },
+    examples: plan.duplicateGroups.slice(0, 50)
+  };
+}
+
+function swCleanupDuplicateTasks_(apply) {
+  var lock = LockService.getDocumentLock() || LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    var state = swReadTaskState_(ss, false, { includeDuplicates: true });
+    var plan = swDuplicateTaskCleanupPlan_(state);
+    var out = swDuplicateTaskAuditOutput_(state, plan);
+    out.readOnly = !apply;
+    out.rowsPlannedToBlock = plan.rowsToBlock.map(function (item) {
+      return swDuplicateTaskCleanupItem_(item);
+    });
+
+    if (!apply) {
+      Logger.log('SW_DUPLICATE_TASK_CLEANUP_DRY_RUN ' + JSON.stringify(out, null, 2));
+      return out;
+    }
+
+    var now = swIso_(new Date());
+    plan.rowsToBlock.forEach(function (item) {
+      var t = item.task;
+      var fromOwner = t.currentOwner || '';
+      t.status = SW_STATUSES.BLOCKED;
+      t.coverageReason = item.reason;
+      t.updatedAt = now;
+      t.lastEvent = 'BLOCK';
+      swWriteTaskRow_(ss, t);
+      swAppendTaskLog_(ss, 'BLOCK', t, swSystemUser_(), fromOwner, t.currentOwner, {
+        reason: 'Duplicate TaskID cleanup',
+        keepRow: item.keepRow,
+        duplicateRow: item.row
+      });
+    });
+
+    out.applied = true;
+    out.rowsBlocked = plan.rowsToBlock.length;
+    Logger.log('SW_DUPLICATE_TASK_CLEANUP_APPLY ' + JSON.stringify(out, null, 2));
+    return out;
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
+}
+
+function swDuplicateTaskCleanupItem_(item) {
+  return {
+    row: item.row,
+    keepRow: item.keepRow,
+    taskId: item.taskId,
+    taskType: item.taskType,
+    customerName: item.customerName,
+    currentOwner: item.currentOwner,
+    reason: item.reason
+  };
+}
+
+function swDuplicateTaskBrief_(t) {
+  t = t || {};
+  return {
+    row: t.rowNumber || '',
+    taskId: t.taskId || '',
+    root: t.root || '',
+    appt: t.appt || '',
+    taskType: t.taskType || '',
+    taskTitle: t.taskTitle || '',
+    customerName: t.customerName || '',
+    currentOwner: t.currentOwner || '',
+    dueAt: t.dueAt || '',
+    status: t.status || '',
+    createdAt: t.createdAt || '',
+    updatedAt: t.updatedAt || ''
+  };
 }
