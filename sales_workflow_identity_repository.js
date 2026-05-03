@@ -24,6 +24,40 @@ function swCurrentUser_(ss, ctx) {
   };
 }
 
+function swCurrentUserConfigOnly_(ss, readOnly) {
+  var email = '';
+  try { email = swNormEmail_(Session.getActiveUser().getEmail()); } catch (_) {}
+  var config = swReadConfig_(ss, readOnly);
+  var admins = swReadAdminsFromConfig_(config);
+  var name = '';
+  for (var i = 0; i < config.length; i++) {
+    if (email && swNormEmail_(config[i]['Email']) === email) {
+      name = swTrim_(config[i]['Name'] || config[i]['Key']);
+      break;
+    }
+  }
+  if (!name && email) name = email;
+  var isAdmin = admins.length === 0 || admins.indexOf(email) >= 0 || swUserHasConfigRole_(config, email, 'Admin');
+  var isJoc = swUserHasConfigRole_(config, email, 'JOC');
+  return {
+    email: email,
+    name: name,
+    isAdmin: isAdmin,
+    isJoc: isJoc,
+    isRep: !!name
+  };
+}
+
+function swCurrentUserForTaskListView_(ss, view, readOnly) {
+  view = view || 'mine';
+  if (view === 'admin' || view === 'coverage') {
+    var user = swCurrentUserConfigOnly_(ss, readOnly);
+    if (view === 'admin' && user.isAdmin) return user;
+    if (view === 'coverage' && (user.isAdmin || user.isJoc)) return user;
+  }
+  return swCurrentUser_(ss, swBuildIdentityContext_(ss, readOnly));
+}
+
 function swSystemUser_() {
   return { name: 'System', email: '', isAdmin: true, isJoc: false };
 }

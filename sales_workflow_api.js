@@ -162,21 +162,21 @@ function sw_getBootstrap() {
 function sw_getMyTasks(view) {
   return swTimed_('sw_getMyTasks', function () {
     var mark = swStepTimer_('sw_getMyTasks');
+    var viewName = view || 'mine';
     var ss = swSpreadsheet_();
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss, { templates: false });
     mark('requiredSheets');
-    var ctx = swBuildIdentityContext_(ss, true);
+    var user = swCurrentUserForTaskListView_(ss, viewName, true);
     mark('identity');
-    var user = swCurrentUser_(ss, ctx);
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var state = swReadTaskListState_(ss, true);
     mark('taskListRead', { tasks: state.tasks.length });
-    var tasks = swListVisibleTasksFromState_(state, user, view || 'mine');
-    mark('filter', { view: view || 'mine', tasks: tasks.length });
+    var tasks = swListVisibleTasksFromState_(state, user, viewName);
+    mark('filter', { view: viewName, tasks: tasks.length });
     return {
       ok: true,
-      view: view || 'mine',
+      view: viewName,
       user: user,
       tasks: tasks
     };
