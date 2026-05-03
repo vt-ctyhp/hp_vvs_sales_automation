@@ -125,12 +125,16 @@ function sw_getBootstrap() {
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss, { templates: false });
     mark('requiredSheets');
-    var ctx = swBuildIdentityContext_(ss, true);
-    mark('identity');
-    var user = swCurrentUser_(ss, ctx);
-    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+    var identity = swBuildBootstrapUser_(ss, true);
+    var user = identity.user;
+    mark('identity', { mode: identity.lightweight ? 'configOnly' : 'full' });
     var state = swReadTaskListState_(ss, true);
     mark('taskListRead', { tasks: state.tasks.length });
+    if (identity.lightweight && user.name === user.email && swTaskStateMayNeedNameIdentity_(state)) {
+      user = swCurrentUser_(ss, swBuildIdentityContext_(ss, true));
+      mark('identityFallback', { reason: 'nameOnlyOwners' });
+    }
+    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var buckets = swBuildVisibleTaskBuckets_(state, user);
     mark('taskBuckets', {
       mine: buckets.mine.length,

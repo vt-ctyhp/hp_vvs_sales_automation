@@ -149,6 +149,19 @@ function swBuildVisibleTaskBuckets_(state, user) {
   return buckets;
 }
 
+function swTaskStateMayNeedNameIdentity_(state) {
+  var tasks = state.tasks || [];
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    if (t.status !== SW_STATUSES.PENDING) continue;
+    if (t.currentOwnerEmail) continue;
+    if (!swTrim_(t.currentOwner)) continue;
+    if (swNorm_(t.currentOwner) === swNorm_('JOC Coverage')) continue;
+    return true;
+  }
+  return false;
+}
+
 function swSortAndPublishTasks_(tasks, now) {
   tasks.sort(function (a, b) {
     var ao = swIsOverdue_(a, now) ? 0 : 1;

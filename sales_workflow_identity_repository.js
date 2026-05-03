@@ -58,6 +58,15 @@ function swCurrentUserForTaskListView_(ss, view, readOnly) {
   return swCurrentUser_(ss, swBuildIdentityContext_(ss, readOnly));
 }
 
+function swBuildBootstrapUser_(ss, readOnly) {
+  var user = swCurrentUserConfigOnly_(ss, readOnly);
+  if (user.isAdmin) return { user: user, lightweight: true };
+  return {
+    user: swCurrentUser_(ss, swBuildIdentityContext_(ss, readOnly)),
+    lightweight: false
+  };
+}
+
 function swSystemUser_() {
   return { name: 'System', email: '', isAdmin: true, isJoc: false };
 }
