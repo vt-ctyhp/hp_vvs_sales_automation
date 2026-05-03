@@ -84,6 +84,7 @@ function swReadAdminsFromConfig_(config) {
 }
 
 function swReadPeopleIndex_(ss, config) {
+  var mark = swStepTimer_('swReadPeopleIndex');
   var out = {
     nameByEmail: {},
     emailByName: {},
@@ -95,6 +96,7 @@ function swReadPeopleIndex_(ss, config) {
     var lastCol = sh.getLastColumn();
     var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
     var H = swHeaderMapFromArray_(headers);
+    mark('headers', { lastRow: lastRow, lastCol: lastCol });
     var pairs = [
       [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
       [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
@@ -121,6 +123,13 @@ function swReadPeopleIndex_(ss, config) {
           sparseValues[col] = sh.getRange(2, col + 1, lastRow - 1, 1).getDisplayValues();
         });
       }
+      mark('dropdownRead', {
+        readSparse: readSparse,
+        rows: lastRow - 1,
+        columns: uniqueCols.length,
+        minCol: minCol + 1,
+        maxCol: maxCol + 1
+      });
       var dropdownCell = function (row, originalCol) {
         if (originalCol < 0) return '';
         if (readSparse) return sparseValues[originalCol] && sparseValues[originalCol][row] ? sparseValues[originalCol][row][0] : '';
@@ -151,6 +160,11 @@ function swReadPeopleIndex_(ss, config) {
           }
         }
       }
+      mark('dropdownIndex', {
+        nameByEmail: Object.keys(out.nameByEmail || {}).length,
+        emailByName: Object.keys(out.emailByName || {}).length,
+        assistedRoster: (out.assistedRoster || []).length
+      });
     }
   }
 
@@ -161,6 +175,12 @@ function swReadPeopleIndex_(ss, config) {
       out.nameByEmail[email] = out.nameByEmail[email] || name;
       out.emailByName[swNorm_(name)] = out.emailByName[swNorm_(name)] || email;
     }
+  });
+  mark('configRows', {
+    configRows: (config || []).length,
+    nameByEmail: Object.keys(out.nameByEmail || {}).length,
+    emailByName: Object.keys(out.emailByName || {}).length,
+    assistedRoster: (out.assistedRoster || []).length
   });
 
   return out;
