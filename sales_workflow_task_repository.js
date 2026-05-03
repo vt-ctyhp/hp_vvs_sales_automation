@@ -29,16 +29,15 @@ function swReadTaskListState_(ss, readOnly) {
   var statusCol = swTaskHeaderColumn_('Status');
   if (statusCol <= 0 || sh.getLastColumn() < statusCol) return swReadTaskState_(ss, readOnly);
 
-  var main = sh.getRange(2, 1, lastRow - 1, statusCol).getDisplayValues();
   var actionCol = swTaskHeaderColumn_('Primary Action');
-  var actions = actionCol > 0 && sh.getLastColumn() >= actionCol
-    ? sh.getRange(2, actionCol, lastRow - 1, 1).getDisplayValues()
-    : [];
+  var readCols = actionCol > 0 && sh.getLastColumn() >= actionCol ? actionCol : statusCol;
+  var rows = sh.getRange(2, 1, lastRow - 1, readCols).getDisplayValues();
   var byId = {};
   var tasks = [];
 
-  for (var i = 0; i < main.length; i++) {
-    var t = swTaskListFromValues_(main[i], actions[i] ? actions[i][0] : '', i + 2);
+  for (var i = 0; i < rows.length; i++) {
+    var primaryAction = actionCol > 0 && actionCol <= rows[i].length ? rows[i][actionCol - 1] : '';
+    var t = swTaskListFromValues_(rows[i], primaryAction, i + 2);
     if (!t.taskId) continue;
     byId[t.taskId] = t;
     tasks.push(t);
