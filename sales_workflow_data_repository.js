@@ -81,6 +81,22 @@ function swBuildTaskDetailContext_(ss, readOnly) {
   return ctx;
 }
 
+function swBuildTaskDetailReadContext_(ss, readOnly) {
+  var user = swCurrentUserConfigOnly_(ss, readOnly);
+  if (user.isAdmin) {
+    return {
+      user: user,
+      templates: swReadTemplates_(ss, readOnly),
+      lightweight: true
+    };
+  }
+
+  var ctx = swBuildTaskDetailContext_(ss, readOnly);
+  ctx.user = swCurrentUser_(ss, ctx);
+  ctx.lightweight = false;
+  return ctx;
+}
+
 function swBuildContext_(ss, readOnly) {
   var ctx = swBuildTaskDetailContext_(ss, readOnly);
   ctx.rosterIndex = swReadRosterAvailabilityIndex_(ss);

@@ -220,9 +220,9 @@ function sw_getTaskDetail(taskId) {
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss);
     mark('requiredSheets');
-    var ctx = swBuildTaskDetailContext_(ss, true);
-    mark('detailContext');
-    var user = swCurrentUser_(ss, ctx);
+    var ctx = swBuildTaskDetailReadContext_(ss, true);
+    mark('detailContext', { mode: ctx.lightweight ? 'adminConfigOnly' : 'full' });
+    var user = ctx.user;
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var task = swReadTaskRowById_(ss, taskId, true);
     mark('taskRowLookup');
