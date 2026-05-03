@@ -112,13 +112,23 @@ function swReadPeopleIndex_(ss, config) {
     if (neededCols.length) {
       var minCol = Math.min.apply(null, neededCols);
       var maxCol = Math.max.apply(null, neededCols);
-      var values = sh.getRange(2, minCol + 1, lastRow - 1, maxCol - minCol + 1).getDisplayValues();
+      var uniqueCols = swUniqueNumberList_(neededCols);
+      var readSparse = (maxCol - minCol + 1) > uniqueCols.length + 2;
+      var values = readSparse ? [] : sh.getRange(2, minCol + 1, lastRow - 1, maxCol - minCol + 1).getDisplayValues();
+      var sparseValues = {};
+      if (readSparse) {
+        uniqueCols.forEach(function (col) {
+          sparseValues[col] = sh.getRange(2, col + 1, lastRow - 1, 1).getDisplayValues();
+        });
+      }
       var dropdownCell = function (row, originalCol) {
+        if (originalCol < 0) return '';
+        if (readSparse) return sparseValues[originalCol] && sparseValues[originalCol][row] ? sparseValues[originalCol][row][0] : '';
         return originalCol >= 0 ? row[originalCol - minCol] : '';
       };
 
-      for (var i = 0; i < values.length; i++) {
-        var row = values[i];
+      for (var i = 0; i < lastRow - 1; i++) {
+        var row = readSparse ? i : values[i];
         pairs.forEach(function (pair) {
           var nameCol = pair[0];
           var emailCol = pair[1];
@@ -175,6 +185,18 @@ function swReadAssistedRoster_(ss) {
     seen[key] = true;
     out.push({ name: name, email: email });
   }
+  return out;
+}
+
+function swUniqueNumberList_(values) {
+  var seen = {};
+  var out = [];
+  values.forEach(function (v) {
+    v = Number(v);
+    if (isNaN(v) || seen[v]) return;
+    seen[v] = true;
+    out.push(v);
+  });
   return out;
 }
 
