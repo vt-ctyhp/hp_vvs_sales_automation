@@ -83,7 +83,8 @@ function swDueLabel_(task, nowMs) {
   var mins = Math.round(Math.abs(diff) / 60000);
   if (diff < 0) {
     if (mins < 60) return 'Overdue ' + mins + 'm';
-    return 'Overdue ' + Math.round(mins / 60) + 'h';
+    if (mins < 1440) return 'Overdue ' + Math.round(mins / 60) + 'h';
+    return 'Overdue ' + Math.round(mins / 1440) + 'd';
   }
   if (mins < 60) return 'Due in ' + mins + 'm';
   if (mins < 1440) return 'Due in ' + Math.round(mins / 60) + 'h';
