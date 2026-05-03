@@ -171,6 +171,24 @@ function swTimed_(operation, fn) {
   }
 }
 
+function swStepTimer_(operation) {
+  var started = new Date().getTime();
+  var last = started;
+  return function (step, extra) {
+    var now = new Date().getTime();
+    try {
+      Logger.log('SW_TIMING_STEP ' + JSON.stringify({
+        operation: operation,
+        step: step,
+        ms: now - last,
+        totalMs: now - started,
+        extra: extra || {}
+      }));
+    } catch (_) {}
+    last = now;
+  };
+}
+
 function swParseJson_(text, fallback) {
   if (!text) return fallback;
   try {

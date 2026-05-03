@@ -101,20 +101,31 @@ function sw_installSalesWorkflowTriggers() {
 
 function sw_getBootstrap() {
   return swTimed_('sw_getBootstrap', function () {
+    var mark = swStepTimer_('sw_getBootstrap');
     var ss = swSpreadsheet_();
-    swRequireWorkflowReadSheets_(ss);
-    var ctx = swBuildContext_(ss, true);
+    mark('spreadsheet');
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    mark('requiredSheets');
+    var ctx = swBuildIdentityContext_(ss, true);
+    mark('identity');
     var user = swCurrentUser_(ss, ctx);
-    var state = swReadTaskState_(ss, true);
-    var tasks = swListVisibleTasksFromState_(state, user, 'mine');
+    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+    var state = swReadTaskListState_(ss, true);
+    mark('taskListRead', { tasks: state.tasks.length });
+    var buckets = swBuildVisibleTaskBuckets_(state, user);
+    mark('taskBuckets', {
+      mine: buckets.mine.length,
+      coverage: buckets.coverage.length,
+      admin: buckets.admin.length
+    });
     return {
       ok: true,
       user: user,
-      tasks: tasks,
+      tasks: buckets.mine,
       counts: {
-        mine: tasks.length,
-        coverage: swListVisibleTasksFromState_(state, user, 'coverage').length,
-        admin: user.isAdmin ? swListVisibleTasksFromState_(state, user, 'admin').length : 0
+        mine: buckets.mine.length,
+        coverage: buckets.coverage.length,
+        admin: user.isAdmin ? buckets.admin.length : 0
       },
       views: {
         mine: true,
@@ -128,16 +139,24 @@ function sw_getBootstrap() {
 
 function sw_getMyTasks(view) {
   return swTimed_('sw_getMyTasks', function () {
+    var mark = swStepTimer_('sw_getMyTasks');
     var ss = swSpreadsheet_();
-    swRequireWorkflowReadSheets_(ss);
-    var ctx = swBuildContext_(ss, true);
+    mark('spreadsheet');
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    mark('requiredSheets');
+    var ctx = swBuildIdentityContext_(ss, true);
+    mark('identity');
     var user = swCurrentUser_(ss, ctx);
-    var state = swReadTaskState_(ss, true);
+    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+    var state = swReadTaskListState_(ss, true);
+    mark('taskListRead', { tasks: state.tasks.length });
+    var tasks = swListVisibleTasksFromState_(state, user, view || 'mine');
+    mark('filter', { view: view || 'mine', tasks: tasks.length });
     return {
       ok: true,
       view: view || 'mine',
       user: user,
-      tasks: swListVisibleTasksFromState_(state, user, view || 'mine')
+      tasks: tasks
     };
   });
 }
@@ -145,11 +164,11 @@ function sw_getMyTasks(view) {
 function sw_adminGetTasks(filters) {
   return swTimed_('sw_adminGetTasks', function () {
     var ss = swSpreadsheet_();
-    swRequireWorkflowReadSheets_(ss);
-    var ctx = swBuildContext_(ss, true);
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    var ctx = swBuildIdentityContext_(ss, true);
     var user = swCurrentUser_(ss, ctx);
     if (!user.isAdmin) throw new Error('Admin access required.');
-    var state = swReadTaskState_(ss, true);
+    var state = swReadTaskListState_(ss, true);
     var tasks = swListVisibleTasksFromState_(state, user, 'admin');
     filters = filters || {};
     if (filters.status) {
@@ -164,16 +183,22 @@ function sw_adminGetTasks(filters) {
 
 function sw_getTaskDetail(taskId) {
   return swTimed_('sw_getTaskDetail', function () {
+    var mark = swStepTimer_('sw_getTaskDetail');
     var ss = swSpreadsheet_();
+    mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss);
-    var ctx = swBuildContext_(ss, true);
+    mark('requiredSheets');
+    var ctx = swBuildTaskDetailContext_(ss, true);
+    mark('detailContext');
     var user = swCurrentUser_(ss, ctx);
-    var state = swReadTaskState_(ss, true);
-    var task = state.byId[taskId] || null;
+    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+    var task = swReadTaskRowById_(ss, taskId, true);
+    mark('taskRowLookup');
     if (!task) throw new Error('Task not found: ' + taskId);
     if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
 
     var payload = swParseJson_(task.payloadJson, {});
+    mark('payloadParse');
     var template = ctx.templates[task.taskType] || swDefaultTemplate_(task.taskType);
     var renderData = swRenderDataForTask_(task, payload);
     var renderedTemplate = template.template ? swRenderTemplate_(template.template, renderData) : '';
@@ -182,6 +207,7 @@ function sw_getTaskDetail(taskId) {
     var attachments = swAttachmentsForTask_(task, template, renderData);
     var missingFields = swMissingFieldsForTask_(task, template, renderData);
     var checklist = swParseJson_(template.checklistJson, []);
+    mark('render');
 
     return {
       ok: true,
@@ -213,8 +239,7 @@ function sw_completeTask(taskId, data) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
   var user = swCurrentUser_(ss);
-  var state = swReadTaskState_(ss);
-  var task = state.byId[taskId];
+  var task = swGetTaskById_(ss, taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
   if (task.status !== SW_STATUSES.PENDING) throw new Error('Only pending tasks can be completed.');

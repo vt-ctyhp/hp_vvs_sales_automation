@@ -60,7 +60,7 @@ function swReadScheduleChangesIndex_(ss) {
   return out;
 }
 
-function swBuildContext_(ss, readOnly) {
+function swBuildIdentityContext_(ss, readOnly) {
   var config = swReadConfig_(ss, readOnly);
   var peopleIndex = swReadPeopleIndex_(ss, config);
   return {
@@ -68,13 +68,23 @@ function swBuildContext_(ss, readOnly) {
     config: config,
     peopleIndex: peopleIndex,
     assistedRoster: peopleIndex.assistedRoster,
-    templates: swReadTemplates_(ss, readOnly),
     admins: swReadAdminsFromConfig_(config),
-    rosterIndex: swReadRosterAvailabilityIndex_(ss),
-    scheduleChangesIndex: swReadScheduleChangesIndex_(ss),
     lookbackDays: Number(swConfigValue_(config, 'SYSTEM', 'WORKFLOW_LOOKBACK_DAYS', '14')) || 14,
     futureDays: Number(swConfigValue_(config, 'SYSTEM', 'WORKFLOW_FUTURE_DAYS', '365')) || 365
   };
+}
+
+function swBuildTaskDetailContext_(ss, readOnly) {
+  var ctx = swBuildIdentityContext_(ss, readOnly);
+  ctx.templates = swReadTemplates_(ss, readOnly);
+  return ctx;
+}
+
+function swBuildContext_(ss, readOnly) {
+  var ctx = swBuildTaskDetailContext_(ss, readOnly);
+  ctx.rosterIndex = swReadRosterAvailabilityIndex_(ss);
+  ctx.scheduleChangesIndex = swReadScheduleChangesIndex_(ss);
+  return ctx;
 }
 
 function swReadAppointments_(ss) {
@@ -150,11 +160,77 @@ function swReadTaskState_(ss, readOnly) {
     : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
   var rows = swReadSheetObjects_(sh);
   var byId = {};
+  var tasks = [];
   rows.forEach(function (r) {
     var t = swTaskFromRow_(r);
-    if (t.taskId) byId[t.taskId] = t;
+    if (t.taskId) {
+      byId[t.taskId] = t;
+      tasks.push(t);
+    }
   });
-  return { rows: rows, byId: byId };
+  return { rows: rows, byId: byId, tasks: tasks };
+}
+
+function swReadTaskListState_(ss, readOnly) {
+  var sh = readOnly
+    ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
+    : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return { rows: [], byId: {}, tasks: [] };
+
+  var statusCol = swTaskHeaderColumn_('Status');
+  if (statusCol <= 0 || sh.getLastColumn() < statusCol) return swReadTaskState_(ss, readOnly);
+
+  var main = sh.getRange(2, 1, lastRow - 1, statusCol).getDisplayValues();
+  var actionCol = swTaskHeaderColumn_('Primary Action');
+  var actions = actionCol > 0 && sh.getLastColumn() >= actionCol
+    ? sh.getRange(2, actionCol, lastRow - 1, 1).getDisplayValues()
+    : [];
+  var byId = {};
+  var tasks = [];
+
+  for (var i = 0; i < main.length; i++) {
+    var t = swTaskListFromValues_(main[i], actions[i] ? actions[i][0] : '', i + 2);
+    if (!t.taskId) continue;
+    byId[t.taskId] = t;
+    tasks.push(t);
+  }
+
+  return { rows: [], byId: byId, tasks: tasks };
+}
+
+function swTaskHeaderColumn_(header) {
+  return SW_TASK_HEADERS.indexOf(header) + 1;
+}
+
+function swTaskListFromValues_(row, primaryAction, rowNumber) {
+  function val(header) {
+    var idx = SW_TASK_HEADERS.indexOf(header);
+    return idx >= 0 && idx < row.length ? row[idx] : '';
+  }
+  return {
+    taskId: val('TaskID'),
+    root: val('RootApptID'),
+    appt: val('APPT_ID'),
+    customerName: val('Customer Name'),
+    brand: val('Brand'),
+    visitDate: val('Visit Date'),
+    visitTime: val('Visit Time'),
+    visitType: val('Visit Type'),
+    lifecycleStage: val('Lifecycle Stage'),
+    taskType: val('Task Type'),
+    taskTitle: val('Task Title'),
+    ownerRole: val('Owner Role'),
+    intendedOwner: val('Intended Owner'),
+    intendedOwnerEmail: swNormEmail_(val('Intended Owner Email')),
+    currentOwner: val('Current Owner'),
+    currentOwnerEmail: swNormEmail_(val('Current Owner Email')),
+    coverageReason: val('Coverage Reason'),
+    dueAt: val('Due At'),
+    status: val('Status') || SW_STATUSES.PENDING,
+    primaryAction: primaryAction || '',
+    rowNumber: rowNumber || 0
+  };
 }
 
 function swTaskFromRow_(r) {
@@ -201,16 +277,35 @@ function swListVisibleTasks_(ss, user, view) {
 }
 
 function swListVisibleTasksFromState_(state, user, view) {
+  return swBuildVisibleTaskBuckets_(state, user)[view || 'mine'] || [];
+}
+
+function swBuildVisibleTaskBuckets_(state, user) {
   var now = new Date().getTime();
-  var tasks = Object.keys(state.byId).map(function (id) { return state.byId[id]; });
-  tasks = tasks.filter(function (t) {
-    if (view === 'admin') return user.isAdmin && t.status !== SW_STATUSES.COMPLETED;
-    if (view === 'coverage') return (user.isJoc || user.isAdmin) && t.ownerRole === 'JOC' &&
+  var tasks = state.tasks || Object.keys(state.byId || {}).map(function (id) { return state.byId[id]; });
+  var buckets = { mine: [], coverage: [], admin: [] };
+  tasks.forEach(function (t) {
+    if (t.status === SW_STATUSES.PENDING && swTaskDueForQueue_(t, now) && swTaskOwnedByUser_(t, user)) {
+      buckets.mine.push(t);
+    }
+    if ((user.isJoc || user.isAdmin) && t.ownerRole === 'JOC' &&
       swTaskDueForQueue_(t, now) &&
       t.status === SW_STATUSES.PENDING &&
-      (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'));
-    return t.status === SW_STATUSES.PENDING && swTaskDueForQueue_(t, now) && swTaskOwnedByUser_(t, user);
+      (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'))) {
+      buckets.coverage.push(t);
+    }
+    if (user.isAdmin && t.status !== SW_STATUSES.COMPLETED) {
+      buckets.admin.push(t);
+    }
   });
+
+  buckets.mine = swSortAndPublishTasks_(buckets.mine, now);
+  buckets.coverage = swSortAndPublishTasks_(buckets.coverage, now);
+  buckets.admin = swSortAndPublishTasks_(buckets.admin, now);
+  return buckets;
+}
+
+function swSortAndPublishTasks_(tasks, now) {
   tasks.sort(function (a, b) {
     var ao = swIsOverdue_(a, now) ? 0 : 1;
     var bo = swIsOverdue_(b, now) ? 0 : 1;
@@ -245,8 +340,23 @@ function swPublicTask_(t, nowMs) {
 }
 
 function swGetTaskById_(ss, taskId) {
-  var state = swReadTaskState_(ss);
-  return state.byId[taskId] || null;
+  return swReadTaskRowById_(ss, taskId, false);
+}
+
+function swReadTaskRowById_(ss, taskId, readOnly) {
+  var sh = readOnly
+    ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
+    : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
+  var rowNumber = swFindTaskRow_(sh, taskId);
+  if (!rowNumber) return null;
+
+  var colCount = Math.min(sh.getLastColumn(), SW_TASK_HEADERS.length);
+  var values = sh.getRange(rowNumber, 1, 1, colCount).getDisplayValues()[0];
+  var row = { __rowNumber: rowNumber };
+  for (var i = 0; i < SW_TASK_HEADERS.length; i++) {
+    row[SW_TASK_HEADERS[i]] = i < values.length ? values[i] : '';
+  }
+  return swTaskFromRow_(row);
 }
 
 function swBeginDeferredTaskWrites_(ss, state) {
@@ -474,8 +584,9 @@ function swReadPeopleIndex_(ss, config) {
   };
   var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
   if (sh && sh.getLastRow() >= 2) {
-    var values = sh.getDataRange().getDisplayValues();
-    var headers = values[0].map(function (h) { return swTrim_(h); });
+    var lastRow = sh.getLastRow();
+    var lastCol = sh.getLastColumn();
+    var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
     var H = swHeaderMapFromArray_(headers);
     var pairs = [
       [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
@@ -483,27 +594,44 @@ function swReadPeopleIndex_(ss, config) {
     ];
     var assistedNameCol = swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']);
     var assistedEmailCol = swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']);
+    var neededCols = [];
+    pairs.forEach(function (pair) {
+      if (pair[0] >= 0) neededCols.push(pair[0]);
+      if (pair[1] >= 0) neededCols.push(pair[1]);
+    });
+    if (assistedNameCol >= 0) neededCols.push(assistedNameCol);
+    if (assistedEmailCol >= 0) neededCols.push(assistedEmailCol);
     var seenAssisted = {};
-    for (var i = 1; i < values.length; i++) {
-      pairs.forEach(function (pair) {
-        var nameCol = pair[0];
-        var emailCol = pair[1];
-        if (nameCol < 0 || emailCol < 0) return;
-        var name = swTrim_(values[i][nameCol]);
-        var email = swNormEmail_(values[i][emailCol]);
-        if (name && email) {
-          out.emailByName[swNorm_(name)] = out.emailByName[swNorm_(name)] || email;
-          out.nameByEmail[email] = out.nameByEmail[email] || name;
-        }
-      });
+    if (neededCols.length) {
+      var minCol = Math.min.apply(null, neededCols);
+      var maxCol = Math.max.apply(null, neededCols);
+      var values = sh.getRange(2, minCol + 1, lastRow - 1, maxCol - minCol + 1).getDisplayValues();
+      var dropdownCell = function (row, originalCol) {
+        return originalCol >= 0 ? row[originalCol - minCol] : '';
+      };
 
-      if (assistedNameCol >= 0) {
-        var assistedName = swTrim_(values[i][assistedNameCol]);
-        var assistedEmail = assistedEmailCol >= 0 ? swNormEmail_(values[i][assistedEmailCol]) : '';
-        var assistedKey = swNorm_(assistedName) + '|' + assistedEmail;
-        if (assistedName && !seenAssisted[assistedKey]) {
-          seenAssisted[assistedKey] = true;
-          out.assistedRoster.push({ name: assistedName, email: assistedEmail });
+      for (var i = 0; i < values.length; i++) {
+        var row = values[i];
+        pairs.forEach(function (pair) {
+          var nameCol = pair[0];
+          var emailCol = pair[1];
+          if (nameCol < 0 || emailCol < 0) return;
+          var name = swTrim_(dropdownCell(row, nameCol));
+          var email = swNormEmail_(dropdownCell(row, emailCol));
+          if (name && email) {
+            out.emailByName[swNorm_(name)] = out.emailByName[swNorm_(name)] || email;
+            out.nameByEmail[email] = out.nameByEmail[email] || name;
+          }
+        });
+
+        if (assistedNameCol >= 0) {
+          var assistedName = swTrim_(dropdownCell(row, assistedNameCol));
+          var assistedEmail = assistedEmailCol >= 0 ? swNormEmail_(dropdownCell(row, assistedEmailCol)) : '';
+          var assistedKey = swNorm_(assistedName) + '|' + assistedEmail;
+          if (assistedName && !seenAssisted[assistedKey]) {
+            seenAssisted[assistedKey] = true;
+            out.assistedRoster.push({ name: assistedName, email: assistedEmail });
+          }
         }
       }
     }
@@ -722,8 +850,11 @@ function swSpreadsheet_() {
   return ss;
 }
 
-function swRequireWorkflowReadSheets_(ss) {
-  [SW_SHEETS.TASKS, SW_SHEETS.CONFIG, SW_SHEETS.TEMPLATES].forEach(function (name) {
+function swRequireWorkflowReadSheets_(ss, options) {
+  options = options || {};
+  var names = [SW_SHEETS.TASKS, SW_SHEETS.CONFIG];
+  if (options.templates !== false) names.push(SW_SHEETS.TEMPLATES);
+  names.forEach(function (name) {
     swGetRequiredSheet_(ss, name);
   });
 }

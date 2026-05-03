@@ -62,6 +62,28 @@ var SW_TASK_HEADERS = [
   'Instructions',
   'Primary Action'
 ];
+var SW_TASK_LIST_HEADERS = [
+  'TaskID',
+  'RootApptID',
+  'APPT_ID',
+  'Customer Name',
+  'Brand',
+  'Visit Date',
+  'Visit Time',
+  'Visit Type',
+  'Lifecycle Stage',
+  'Task Type',
+  'Task Title',
+  'Owner Role',
+  'Intended Owner',
+  'Intended Owner Email',
+  'Current Owner',
+  'Current Owner Email',
+  'Coverage Reason',
+  'Due At',
+  'Status',
+  'Primary Action'
+];
 var SW_LOG_HEADERS = [
   'Event At',
   'Event Type',
