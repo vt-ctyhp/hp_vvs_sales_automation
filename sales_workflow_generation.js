@@ -218,7 +218,7 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
 
   if (ownerRole === SW_OWNER_ROLES.SALES_REP || ownerRole === 'SALES_REP') {
     var repName = rec.assignedRep || '';
-    var repEmail = rec.assignedRepEmail || swLookupEmailByName_(ss, repName, ctx) || '';
+    var repEmail = swLookupEmailByName_(ss, repName, ctx) || '';
     return {
       intendedOwner: repName,
       intendedOwnerEmail: repEmail,
@@ -300,7 +300,7 @@ function swRoleQueueLabel_(ctx, ownerRole) {
 
 function swResolveJocOwner_(ss, ctx, rec, dueAt, existing) {
   var intendedName = rec.assistedRep || '';
-  var intendedEmail = rec.assistedRepEmail || swLookupEmailByName_(ss, intendedName, ctx) || '';
+  var intendedEmail = swLookupEmailByName_(ss, intendedName, ctx) || '';
   if (!intendedName) {
     return {
       intendedOwner: '',

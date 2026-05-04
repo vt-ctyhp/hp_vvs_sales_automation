@@ -21,7 +21,7 @@ Run `sw_setupSalesWorkflow()` to seed the system/config rows and append the Shee
 - `SYSTEM | SHARED_DIAMOND_ORDER_ADMIN_QUEUE`
 - `SYSTEM | SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE`
 
-The seeded diamond config rows can remain blank. Assigned rep and JOC ownership still come from the appointment row (`Assigned Rep`, `Assisted Rep`) and existing roster/config mapping.
+The seeded diamond config rows can remain blank. Assigned rep and JOC ownership come from the appointment row `Assigned Rep` / `Assisted Rep` names and then look up the current email by name; the outdated `Assigned Rep Email` and `Assisted Rep Email` columns on `00_Master Appointments` are ignored.
 
 ## Login Users
 For the first admin user, run this no-argument function from the Apps Script editor function dropdown:
