@@ -897,8 +897,7 @@
           if (removeProposalButton) return removeProposalRow(removeProposalButton);
           if (closestMatch_(event.target, '.js-claim-task')) return claimTask();
           if (closestMatch_(event.target, '.js-complete-task')) return completeTask();
-          if (closestMatch_(event.target, '.js-admin-reassign')) return adminReassign();
-          if (closestMatch_(event.target, '.js-admin-assign-appointment')) return adminAssignAppointment();
+          if (closestMatch_(event.target, '.js-admin-save-assignment')) return adminSaveAssignment();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
           if (closestMatch_(event.target, '.js-admin-generate-password')) return fillGeneratedUserPassword();
@@ -2410,26 +2409,41 @@
       var options = res.assignmentOptions || {};
       var payload = res.payload || {};
       var appt = payload.appointment || {};
+      var hasAppointment = !!(appt.row || appt.root || task.root || task.appt);
+      var assignmentControls = hasAppointment ? [
+            '<div class="field-grid">',
+              '<div><label for="adminAssignedRep">Sales Rep</label><select id="adminAssignedRep">' + optionTags(adminAssignmentNames(options.salesReps || [], appt.assignedRep || task.intendedOwner || ''), appt.assignedRep || task.intendedOwner || '') + '</select></div>',
+              '<div><label for="adminAssistedRep">JOC</label><select id="adminAssistedRep">' + optionTags(adminAssignmentNames(options.jocReps || [], appt.assistedRep || ''), appt.assistedRep || '') + '</select></div>',
+              '<div class="wide"><label for="adminReason">Reason / Note</label><input id="adminReason" placeholder="Optional for assignment; used for block/unblock"></div>',
+            '</div>',
+            '<div class="meta">Saving writes Sales Rep and JOC to the Master appointment rows for this RootApptID and refreshes task ownership.</div>'
+          ].join('') : [
+            '<div class="field-grid">',
+              '<div><label for="adminOwnerName">Task Owner</label><input id="adminOwnerName" value="' + escapeAttrValue(task.currentOwner || '') + '" placeholder="Owner name"></div>',
+              '<div><label for="adminOwnerEmail">Owner Email</label><input id="adminOwnerEmail" value="' + escapeAttrValue(task.currentOwnerEmail || '') + '" placeholder="Owner email"></div>',
+              '<div class="wide"><label for="adminReason">Reason / Note</label><input id="adminReason" placeholder="Required for reassignment/block"></div>',
+            '</div>',
+            '<div class="meta">No appointment row was found for this task, so saving only changes this task owner.</div>'
+          ].join('');
       return [
         '<div class="detail-section">',
-          '<label>Admin Reassign</label>',
+          '<label>Admin Assignment</label>',
           '<div class="admin-form">',
-            '<input id="adminOwnerName" placeholder="Owner name">',
-            '<input id="adminOwnerEmail" placeholder="Owner email">',
-            '<input id="adminReason" placeholder="Reason">',
-            '<button class="js-admin-reassign" type="button">Reassign</button>',
-            '<button class="js-admin-block" type="button">Block</button>',
-            '<button class="js-admin-unblock" type="button">Unblock</button>',
-          '</div>',
-          '<div class="admin-form" style="margin-top:18px">',
-            '<label>Appointment Assignment</label>',
-            '<select id="adminAssignedRep">' + optionTags((options.salesReps || []).map(function (item) { return item.name; }), appt.assignedRep || task.intendedOwner || '') + '</select>',
-            '<select id="adminAssistedRep">' + optionTags((options.jocReps || []).map(function (item) { return item.name; }), appt.assistedRep || '') + '</select>',
-            '<div class="meta">This updates Assigned Rep and Assisted Rep/JOC on the Master appointment rows for this RootApptID, then refreshes task owners.</div>',
-            '<button class="js-admin-assign-appointment" type="button">Assign Appointment</button>',
+            assignmentControls,
+            '<div class="actions">',
+              '<button class="primary js-admin-save-assignment" type="button">Save Assignment</button>',
+              '<button class="js-admin-block" type="button">Block</button>',
+              '<button class="js-admin-unblock" type="button">Unblock</button>',
+            '</div>',
           '</div>',
         '</div>'
       ].join('');
+    }
+
+    function adminAssignmentNames(items, selected) {
+      var names = (items || []).map(function (item) { return item && item.name ? item.name : String(item || ''); }).filter(Boolean);
+      if (selected && names.indexOf(selected) < 0) names.unshift(selected);
+      return names;
     }
 
     function openUserAdminPanel() {
@@ -2742,29 +2756,31 @@
       });
     }
 
-    function adminReassign() {
+    function adminSaveAssignment() {
       if (!appState.selectedTaskId) return;
-      var name = document.getElementById('adminOwnerName').value;
-      var email = document.getElementById('adminOwnerEmail').value;
-      var reason = document.getElementById('adminReason').value;
-      serverCall('sw_adminReassignTask', [appState.selectedTaskId, name, email, reason], function () {
-        setStatus('Task reassigned');
+      if (document.getElementById('adminAssignedRep') || document.getElementById('adminAssistedRep')) {
+        var payload = {
+          assignedRep: valueOf('adminAssignedRep'),
+          assistedRep: valueOf('adminAssistedRep'),
+          reason: valueOf('adminReason')
+        };
+        serverCall('sw_adminAssignAppointmentOwners', [appState.selectedTaskId, payload], function (res) {
+          setStatus('Assignment saved: ' + (res.rowsUpdated || 0) + ' appointment row(s) updated');
+          openTask(appState.selectedTaskId);
+          loadTasks(appState.view);
+        }, 'Saving assignment');
+        return;
+      }
+      serverCall('sw_adminReassignTask', [
+        appState.selectedTaskId,
+        valueOf('adminOwnerName'),
+        valueOf('adminOwnerEmail'),
+        valueOf('adminReason')
+      ], function () {
+        setStatus('Assignment saved');
         openTask(appState.selectedTaskId);
         loadTasks(appState.view);
-      });
-    }
-
-    function adminAssignAppointment() {
-      if (!appState.selectedTaskId) return;
-      var payload = {
-        assignedRep: valueOf('adminAssignedRep'),
-        assistedRep: valueOf('adminAssistedRep')
-      };
-      serverCall('sw_adminAssignAppointmentOwners', [appState.selectedTaskId, payload], function (res) {
-        setStatus('Appointment assigned: ' + (res.rowsUpdated || 0) + ' row(s) updated');
-        openTask(appState.selectedTaskId);
-        loadTasks(appState.view);
-      }, 'Assigning appointment');
+      }, 'Saving assignment');
     }
 
     function adminBlock() {

@@ -1187,6 +1187,7 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
 
   var assignedName = swTrim_(data.assignedRep);
   var assistedName = swTrim_(data.assistedRep);
+  var reason = swTrim_(data.reason);
   var options = swReadAssignmentOptions_(ss);
   var assignedEmail = swTrim_(data.assignedRepEmail) || swAssignmentEmailForName_(assignedName, options.salesReps);
   var assistedEmail = swTrim_(data.assistedRepEmail) || swAssignmentEmailForName_(assistedName, options.jocReps);
@@ -1213,6 +1214,7 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
     assignedRepEmail: assignedEmail,
     assistedRep: assistedName,
     assistedRepEmail: assistedEmail,
+    reason: reason,
     rootApptId: root,
     rowsUpdated: targetRows
   });
@@ -1225,6 +1227,7 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
     assignedRepEmail: assignedEmail,
     assistedRep: assistedName,
     assistedRepEmail: assistedEmail,
+    reason: reason,
     generation: generation
   };
 }
