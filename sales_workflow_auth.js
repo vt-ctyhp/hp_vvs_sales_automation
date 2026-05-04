@@ -85,6 +85,45 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
   return { ok: true, email: email, roles: next['Roles'] };
 }
 
+function sw_oneTimeGrantVtAdminAccess() {
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  var email = 'vt@ctyhp.us';
+  var existing = swAuthFindUserRow_(ss, email);
+  if (existing && swTruthy_(existing['Active?'] || '') && existing['Password Salt'] && existing['Password Hash']) {
+    Logger.log('SW_BOOTSTRAP_ADMIN_ALREADY_SET ' + JSON.stringify({
+      ok: true,
+      email: email,
+      roles: existing['Roles'] || '',
+      message: 'Admin login already exists; password was not reset.'
+    }));
+    return {
+      ok: true,
+      email: email,
+      roles: existing['Roles'] || '',
+      passwordCreated: false,
+      message: 'Admin login already exists; password was not reset.'
+    };
+  }
+
+  var password = swAuthGeneratedPassword_();
+  var out = sw_adminSetWorkflowPassword(email, password, 'VT', 'Admin');
+  Logger.log('SW_BOOTSTRAP_ADMIN_CREATED ' + JSON.stringify({
+    ok: true,
+    email: email,
+    roles: out.roles,
+    password: password,
+    note: 'Use this password for dashboard login. Store it safely; raw passwords are not saved in the sheet.'
+  }));
+  return {
+    ok: true,
+    email: email,
+    roles: out.roles,
+    password: password,
+    passwordCreated: true
+  };
+}
+
 function swAuthUserForApi_(ss, token, ctx) {
   token = swTrim_(token);
   if (token) return swCurrentUserFromAuthToken_(ss, token);
@@ -170,6 +209,10 @@ function swAuthNewSalt_() {
 
 function swAuthNewToken_() {
   return swAuthRandom_('sw');
+}
+
+function swAuthGeneratedPassword_() {
+  return swAuthRandom_('pw').replace(/[^A-Za-z0-9]/g, '').slice(0, 18);
 }
 
 function swAuthRandom_(prefix) {

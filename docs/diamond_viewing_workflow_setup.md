@@ -23,6 +23,14 @@ Run `sw_setupSalesWorkflow()` to seed these rows, then fill real names/emails:
 Assigned rep and JOC ownership still come from the appointment row (`Assigned Rep`, `Assisted Rep`) and existing roster/config mapping.
 
 ## Login Users
+For the first admin user, run this no-argument function from the Apps Script editor function dropdown:
+
+```javascript
+sw_oneTimeGrantVtAdminAccess();
+```
+
+It creates `vt@ctyhp.us` with the `Admin` role and logs the generated password under `SW_BOOTSTRAP_ADMIN_CREATED`. If that login already exists with a password, it does not reset it.
+
 Create or reset a dashboard login with:
 
 ```javascript
@@ -35,6 +43,8 @@ sw_adminSetWorkflowPassword(
 ```
 
 Use only the roles that person needs. A diamond order admin usually needs `DIAMOND_ORDER_ADMIN`; a diamond order assistant usually needs `DIAMOND_ORDER_ASSISTANT`.
+
+The `Temporary Password?` column is informational only. The dashboard does not force a password change on first login; users can continue using the password assigned to them until an admin resets it.
 
 ## Generated Diamond Tasks
 - `PROPOSE_DIAMONDS`: assigned rep proposes stones immediately when a Diamond Viewing appointment is in workflow.
