@@ -475,6 +475,73 @@
       grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) minmax(80px, 110px);
     }
 
+    .stat-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      padding: 14px;
+    }
+
+    .stat-value {
+      color: var(--ink-primary);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    button.tracking-row {
+      background: transparent;
+      border-left: 0;
+      border-right: 0;
+      border-bottom: 0;
+      border-top: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: grid;
+      font-size: 14px;
+      font-weight: 400;
+      gap: 10px;
+      letter-spacing: 0;
+      padding: 16px 0;
+      text-align: left;
+      text-transform: none;
+      width: 100%;
+    }
+
+    button.tracking-row:hover:not(:disabled) {
+      background: var(--surface-inset);
+      color: var(--ink-body);
+    }
+
+    button.tracking-row.issue {
+      border-top: 2px solid var(--accent);
+    }
+
+    .proposal-rows {
+      display: grid;
+      gap: 18px;
+    }
+
+    .proposal-row {
+      border-top: 1px solid var(--rule);
+      padding-top: 16px;
+    }
+
+    .proposal-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .proposal-grid .wide {
+      grid-column: 1 / -1;
+    }
+
     .login-status {
       min-height: 18px;
       margin-top: 12px;
@@ -503,6 +570,10 @@
 
       .calendar-day {
         min-height: 96px;
+      }
+
+      .stat-grid, .proposal-grid {
+        grid-template-columns: 1fr;
       }
 
       .masthead, .toolbar {
@@ -551,6 +622,7 @@
       <div class="tabs">
         <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
         <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
+        <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
@@ -595,6 +667,7 @@
       userAdmin: null,
       calendarMonth: '',
       calendarAppointments: [],
+      diamondTrackingRows: [],
       busy: false
     };
 
@@ -614,11 +687,12 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'calendar', 'coverage', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'diamondTracking', 'coverage', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
           if (view === 'calendar') loadCalendar();
+          else if (view === 'diamondTracking') loadDiamondTracking();
           else loadTasks(view);
         });
       });
@@ -637,6 +711,11 @@
             renderCalendarAppointmentDetail(calendarButton.getAttribute('data-appointment-id') || '');
             return;
           }
+          var trackingButton = closestMatch_(event.target, '.js-diamond-tracking-row');
+          if (trackingButton) {
+            renderDiamondTrackingDetail(trackingButton.getAttribute('data-row-index') || '');
+            return;
+          }
           var button = closestMatch_(event.target, '.js-open-task');
           if (!button) return;
           openTask(button.getAttribute('data-task-id') || '');
@@ -650,6 +729,10 @@
           if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
           var refreshButton = closestMatch_(event.target, '.js-refresh-diamond-quote');
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
+          var addProposalButton = closestMatch_(event.target, '.js-add-proposal-row');
+          if (addProposalButton) return addProposalRow();
+          var removeProposalButton = closestMatch_(event.target, '.js-remove-proposal-row');
+          if (removeProposalButton) return removeProposalRow(removeProposalButton);
           if (closestMatch_(event.target, '.js-claim-task')) return claimTask();
           if (closestMatch_(event.target, '.js-complete-task')) return completeTask();
           if (closestMatch_(event.target, '.js-admin-reassign')) return adminReassign();
@@ -657,6 +740,12 @@
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
           if (closestMatch_(event.target, '.js-admin-generate-password')) return fillGeneratedUserPassword();
           if (closestMatch_(event.target, '.js-admin-save-user')) return saveWorkflowUser();
+        });
+        detailPanel.addEventListener('change', function () {
+          updateCompleteButtonState();
+        });
+        detailPanel.addEventListener('input', function () {
+          updateCompleteButtonState();
         });
       }
     }
@@ -783,6 +872,7 @@
       return {
         mine: true,
         calendar: true,
+        diamondTracking: !!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant),
         coverage: !!(user.isJoc || user.isAdmin),
         admin: !!user.isAdmin
       };
@@ -806,6 +896,7 @@
       if (user.isDiamondOrderAdmin) parts.push('Diamond Order Admin');
       if (user.isDiamondOrderAssistant) parts.push('Diamond Order Assistant');
       document.getElementById('userLine').innerHTML = parts.join('<br>');
+      document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
@@ -814,6 +905,10 @@
     function loadTasks(view) {
       if (view === 'calendar') {
         loadCalendar(appState.calendarMonth);
+        return;
+      }
+      if (view === 'diamondTracking') {
+        loadDiamondTracking();
         return;
       }
       appState.view = view || 'mine';
@@ -826,7 +921,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'coverage', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'diamondTracking', 'coverage', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -842,6 +937,10 @@
       if (view === 'calendar') {
         title = 'Upcoming appointments by month';
         eyebrow = 'Calendar';
+      }
+      if (view === 'diamondTracking') {
+        title = 'Diamond shipment and return tracking';
+        eyebrow = 'Diamond Tracking';
       }
       if (view === 'admin') {
         title = 'Open tasks across the workflow';
@@ -965,6 +1064,138 @@
       var appointments = appState.calendarAppointments || [];
       for (var i = 0; i < appointments.length; i++) {
         if (String(appointments[i].id) === String(appointmentId)) return appointments[i];
+      }
+      return null;
+    }
+
+    function loadDiamondTracking() {
+      appState.view = 'diamondTracking';
+      appState.selectedTaskId = '';
+      setActiveTab(appState.view);
+      renderViewHeader(appState.view);
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING DIAMOND TRACKING</div>';
+      document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Diamond Tracking</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
+      serverCall('sw_getDiamondTrackingDashboard', [], function (res) {
+        appState.diamondTrackingRows = res.rows || [];
+        renderDiamondTrackingDashboard(res);
+        renderDiamondTrackingSummary(res);
+      }, 'Loading diamond tracking');
+    }
+
+    function renderDiamondTrackingDashboard(res) {
+      res = res || {};
+      if (!res.available) {
+        document.getElementById('taskList').innerHTML = '<div class="empty"><h3>Diamond tracker unavailable</h3><p>Connect the 200_ diamond tracking spreadsheet before using this view.</p></div>';
+        return;
+      }
+      var stats = res.stats || {};
+      var missing = (res.missingColumns || []).length
+        ? '<div class="empty">Missing in 200_: ' + escapeHtml(res.missingColumns.join(', ')) + '. These columns are created automatically when a tracking task is saved.</div>'
+        : '';
+      var rows = res.rows || [];
+      var list = rows.length ? rows.map(renderDiamondTrackingRow).join('') : '<div class="empty"><h3>No active shipment issues</h3><p>On-the-way diamonds, delivered diamonds, and return items will appear here.</p></div>';
+      document.getElementById('taskList').innerHTML = [
+        '<div class="stat-grid">',
+          statCardHtml('Issues', stats.issues || 0),
+          statCardHtml('On The Way', stats.onTheWay || 0),
+          statCardHtml('Missing ETA', stats.missingEta || 0),
+          statCardHtml('Returns', stats.returns || 0),
+        '</div>',
+        missing,
+        '<div class="tracking-list">',
+          list,
+        '</div>'
+      ].join('');
+    }
+
+    function statCardHtml(label, value) {
+      return '<div class="stat-card"><div class="eyebrow">' + escapeHtml(label) + '</div><div class="stat-value">' + escapeHtml(value) + '</div></div>';
+    }
+
+    function renderDiamondTrackingRow(row) {
+      var issue = row.issue ? '<span class="badge">' + escapeHtml(row.issue) + '</span>' : '<span class="badge">Tracking</span>';
+      var tracking = [
+        row.trackingEta ? 'ETA ' + row.trackingEta : 'No ETA',
+        row.trackingStatus,
+        row.carrier,
+        row.trackingNumber
+      ].filter(Boolean).join(' | ');
+      return [
+        '<button class="tracking-row js-diamond-tracking-row ' + (row.issue ? 'issue' : '') + '" type="button" data-row-index="' + escapeAttrValue(row.rowIndex) + '">',
+          '<div class="task-top">',
+            '<div>',
+              '<div class="task-title">' + escapeHtml(row.customerName || 'No customer') + '</div>',
+              '<div class="meta">' + escapeHtml(row.diamond || ('Row ' + row.rowIndex)) + '</div>',
+              '<div class="meta">' + escapeHtml([row.vendor, row.certNo ? 'Cert ' + row.certNo : '', row.assignedRep ? 'Rep ' + row.assignedRep : ''].filter(Boolean).join(' | ')) + '</div>',
+            '</div>',
+            '<div>' + issue + '</div>',
+          '</div>',
+          '<div class="meta">' + escapeHtml(tracking) + '</div>',
+          '<div class="meta">' + escapeHtml([row.orderStatus, row.stoneStatus, row.decision].filter(Boolean).join(' | ')) + '</div>',
+        '</button>'
+      ].join('');
+    }
+
+    function renderDiamondTrackingSummary(res) {
+      res = res || {};
+      var url = res.spreadsheetUrl ? '<a href="' + escapeHref(res.spreadsheetUrl) + '" target="_blank">Open 200_ tracker</a>' : '';
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Diamond Tracking</div>',
+          '<h2>Shipment Overview</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Source</label>',
+            '<div class="meta">' + escapeHtml(res.spreadsheetName || '200_ Diamond Tracker') + '</div>',
+            '<div class="meta">' + escapeHtml(res.tab || '') + '</div>',
+            url ? '<div class="actions">' + url + '</div>' : '',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>What This View Shows</label>',
+            '<div class="template-box">Diamonds on the way, delivered diamonds, return decisions, missing ETAs, delayed/cancelled/unavailable tracking, and returns due soon.</div>',
+          '</div>',
+          '<div class="empty">Select a row to review the shipment and return details.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderDiamondTrackingDetail(rowIndex) {
+      var row = findDiamondTrackingRow(rowIndex);
+      if (!row) return;
+      var trackingLink = row.trackingUrl ? '<a href="' + escapeHref(row.trackingUrl) + '" target="_blank">Open Tracking Link</a>' : '';
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(row.issue || 'Diamond Tracking') + '</div>',
+          '<h2>' + escapeHtml(row.customerName || 'Diamond Row ' + row.rowIndex) + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Diamond</label>',
+            '<div class="meta">' + escapeHtml(row.diamond || '') + '</div>',
+            '<div class="meta">' + escapeHtml([row.vendor, row.certNo ? 'Cert ' + row.certNo : ''].filter(Boolean).join(' | ')) + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Tracking</label>',
+            '<div class="meta">ETA: ' + escapeHtml(row.trackingEta || 'Missing') + '</div>',
+            '<div class="meta">Status: ' + escapeHtml(row.trackingStatus || 'Missing') + '</div>',
+            '<div class="meta">' + escapeHtml([row.carrier, row.trackingNumber].filter(Boolean).join(' | ')) + '</div>',
+            trackingLink ? '<div class="actions">' + trackingLink + '</div>' : '',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Status</label>',
+            '<div class="meta">' + escapeHtml([row.orderStatus, row.stoneStatus, row.decision].filter(Boolean).join(' | ')) + '</div>',
+            '<div class="meta">Return due: ' + escapeHtml(row.returnDueDate || '') + '</div>',
+            '<div class="meta">Row ' + escapeHtml(row.rowIndex || '') + '</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function findDiamondTrackingRow(rowIndex) {
+      var rows = appState.diamondTrackingRows || [];
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i].rowIndex) === String(rowIndex)) return rows[i];
       }
       return null;
     }
@@ -1106,6 +1337,7 @@
           admin,
         '</div>'
       ].join('');
+      updateCompleteButtonState();
     }
 
     function renderAttachments(attachments) {
@@ -1131,7 +1363,8 @@
           '<label>Checklist</label>',
           '<div class="checklist">',
             items.map(function (item) {
-              return '<div class="check-row"><input type="checkbox" id="check-' + escapeAttr(item.id) + '"><span>' + escapeHtml(item.label || item.id) + '</span></div>';
+              var required = item.required === false ? '' : ' data-required-checklist="1"';
+              return '<div class="check-row"><input type="checkbox" id="check-' + escapeAttr(item.id) + '"' + required + '><span>' + escapeHtml(item.label || item.id) + (item.required === false ? '' : ' *') + '</span></div>';
             }).join(''),
           '</div>',
         '</div>'
@@ -1159,10 +1392,15 @@
         ].join('');
       }
 
+      if (task.taskType === 'PROPOSE_DIAMONDS') {
+        return quoteButtons + renderProposalDiamondForm(payload);
+      }
+
       if (task.taskType === 'ORDER_DIAMONDS') {
         return quoteButtons + '<div class="detail-section"><label>Order Decisions</label>' +
+          '<div class="template-box">Select an order result for every proposed diamond. Completing this task writes the Order Status and Purchased / Ordered Date directly to 200_, then creates acknowledgement tasks for JOC and the assigned rep.</div>' +
           renderOrderDecisionRows(rows) +
-          '<div class="field-grid" style="margin-top:14px"><div><label for="orderedDate">Order Date</label><input id="orderedDate" type="date"></div></div></div>';
+          '<div class="field-grid" style="margin-top:14px"><div><label for="orderedDate">Purchased / Ordered Date</label><input id="orderedDate" type="date" value="' + escapeAttrValue(currentDateKey()) + '"></div></div></div>';
       }
 
       if (task.taskType === 'TRACK_DIAMONDS') {
@@ -1195,10 +1433,93 @@
       }
 
       if (task.taskType === 'RETURN_DIAMONDS') {
-        return quoteButtons + '<div class="detail-section"><label>Return Queue</label>' + renderReadonlyDiamondRows(diamond.returnRows || []) + '</div>';
+        return quoteButtons + '<div class="detail-section"><label>Return Queue</label><div class="template-box">Completing this task marks the listed rows in 200_ as Return in Progress and writes return notes with the completion time.</div>' + renderReadonlyDiamondRows(diamond.returnRows || []) + '</div>';
       }
 
       return quoteButtons;
+    }
+
+    function renderProposalDiamondForm(payload) {
+      payload = payload || {};
+      var appt = payload.appointment || {};
+      return [
+        '<div class="detail-section">',
+          '<label>Proposed Diamonds</label>',
+          '<div class="template-box">Add proposed diamonds here. Completing this task uses the same Sheet 100 proposal flow: it validates the stones, inserts them into 200_, updates the Sheet 100 diamond counts/status, and keeps the appointment context tied to this customer.</div>',
+          '<div class="meta" style="margin-top:10px">' + escapeHtml([appt.customerName, appt.visitDate, appt.visitTime].filter(Boolean).join(' | ')) + '</div>',
+          '<div id="proposalRows" class="proposal-rows" style="margin-top:16px">',
+            proposalRowHtml(0),
+          '</div>',
+          '<div class="actions"><button class="js-add-proposal-row" type="button">Add Diamond</button></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function proposalRowHtml(index) {
+      return [
+        '<div class="proposal-row" data-proposal-row="' + escapeAttrValue(index) + '">',
+          '<div class="task-top">',
+            '<h3>Diamond ' + escapeHtml(index + 1) + '</h3>',
+            index > 0 ? '<button class="js-remove-proposal-row" type="button">Remove</button>' : '',
+          '</div>',
+          '<div class="proposal-grid" style="margin-top:12px">',
+            proposalSelectHtml('vendor', 'Vendor', ['Loupe360', 'LG', 'From In Stock', 'Other']),
+            proposalSelectHtml('stoneType', 'Stone Type', ['Lab Diamond', 'Natural Diamond', 'Sapphire', 'Emerald', 'Ruby']),
+            proposalSelectHtml('shape', 'Shape', ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other']),
+            proposalInputHtml('carat', 'Carat', 'number', '0.01'),
+            proposalSelectHtml('color', 'Color', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy']),
+            proposalSelectHtml('clarity', 'Clarity', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2']),
+            proposalSelectHtml('cut', 'Cut', ['EX', 'VG', 'G', 'F', 'P']),
+            proposalSelectHtml('pol', 'Polish', ['EX', 'VG', 'G', 'F', 'P']),
+            proposalSelectHtml('sym', 'Symmetry', ['EX', 'VG', 'G', 'F', 'P']),
+            proposalSelectHtml('fluorIntensity', 'Fluor Intensity', ['None', 'Faint', 'Medium', 'Strong', 'Very Strong']),
+            proposalSelectHtml('fluorColor', 'Fluor Color', ['None', 'Blue', 'Yellow', 'Other']),
+            proposalInputHtml('lwRatio', 'L/W Ratio', 'number', '0.01'),
+            proposalSelectHtml('lab', 'Lab', ['GIA', 'IGI', 'Other']),
+            proposalInputHtml('certNo', 'Certificate No', 'text'),
+            proposalInputHtml('measurements', 'Measurements', 'text'),
+            proposalSelectHtml('fancyColor', 'Fancy Color', ['Yellow', 'Brown', 'Blue', 'Pink', 'Green', 'Orange', 'Purple', 'Red', 'Gray', 'Black', 'Other']),
+            proposalSelectHtml('fancyIntensity', 'Fancy Intensity', ['Faint', 'Light', 'Fancy', 'Intense', 'Vivid', 'Deep', 'Dark']),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function proposalSelectHtml(name, label, options) {
+      return '<div><label>' + escapeHtml(label) + '</label><select class="proposal-field" data-field="' + escapeAttrValue(name) + '">' +
+        '<option value="">Select</option>' +
+        (options || []).filter(function (option) { return option !== ''; }).map(function (option) {
+          return '<option value="' + escapeAttrValue(option) + '">' + escapeHtml(option) + '</option>';
+        }).join('') +
+        '</select></div>';
+    }
+
+    function proposalInputHtml(name, label, type, step) {
+      return '<div><label>' + escapeHtml(label) + '</label><input class="proposal-field" data-field="' + escapeAttrValue(name) + '" type="' + escapeAttrValue(type || 'text') + '"' + (step ? ' step="' + escapeAttrValue(step) + '"' : '') + '></div>';
+    }
+
+    function addProposalRow() {
+      var container = document.getElementById('proposalRows');
+      if (!container) return;
+      var index = container.querySelectorAll('.proposal-row').length;
+      container.insertAdjacentHTML('beforeend', proposalRowHtml(index));
+      updateProposalRowNumbers();
+      updateCompleteButtonState();
+    }
+
+    function removeProposalRow(button) {
+      var row = button ? button.closest('.proposal-row') : null;
+      if (row) row.parentNode.removeChild(row);
+      updateProposalRowNumbers();
+      updateCompleteButtonState();
+    }
+
+    function updateProposalRowNumbers() {
+      [].slice.call(document.querySelectorAll('.proposal-row')).forEach(function (row, i) {
+        row.setAttribute('data-proposal-row', String(i));
+        var heading = row.querySelector('h3');
+        if (heading) heading.textContent = 'Diamond ' + (i + 1);
+      });
     }
 
     function renderOrderDecisionRows(rows) {
@@ -1207,7 +1528,7 @@
       return '<div class="mini-table">' + proposing.map(function (row) {
         return '<div class="mini-row three" data-row-index="' + escapeAttrValue(row.rowIndex) + '">' +
           '<div><strong>' + escapeHtml(diamondLabel(row)) + '</strong><div class="meta">' + escapeHtml(row.vendor || '') + '</div></div>' +
-          '<select class="diamond-order-decision"><option value="">No change</option><option>On the Way</option><option>Not Approved</option></select>' +
+          '<select class="diamond-order-decision"><option value="">Select decision</option><option>On the Way</option><option>Not Approved</option></select>' +
           '<div class="meta">Row ' + escapeHtml(row.rowIndex || '') + '</div>' +
         '</div>';
       }).join('') + '</div>';
@@ -1251,6 +1572,8 @@
         'CONFIRM_DIAMOND_DELIVERY',
         'RECORD_DIAMOND_DECISIONS',
         'RETURN_DIAMONDS',
+        'ACK_DIAMONDS_ORDERED_ASSIGNED_REP',
+        'ACK_DIAMONDS_ORDERED_JOC',
         'REVIEW_DIAMOND_ETA_ASSIGNED_REP',
         'REVIEW_DIAMOND_ETA_JOC'
       ].indexOf(taskType) >= 0;
@@ -1390,12 +1713,15 @@
       var text = document.getElementById('completionText');
       if (text && task.taskType === 'PROCESS_APPOINTMENT_DATA') payload.recapText = text.value;
       if (text && task.taskType === 'APPROVE_RECAP_MESSAGE') payload.approvedText = text.value;
+      if (task.taskType === 'PROPOSE_DIAMONDS') {
+        payload.proposalStones = collectProposalStones();
+      }
       if (task.taskType === 'ORDER_DIAMONDS') {
         payload.orderedDate = valueOf('orderedDate');
         payload.diamondOrderDecisions = [].slice.call(document.querySelectorAll('.diamond-order-decision')).map(function (select) {
           var row = select.closest('.mini-row');
           return { rowIndex: row ? row.getAttribute('data-row-index') : '', decision: select.value };
-        }).filter(function (item) { return item.decision; });
+        });
       }
       if (task.taskType === 'TRACK_DIAMONDS') {
         payload.trackingEta = valueOf('trackingEta');
@@ -1416,6 +1742,40 @@
         }).filter(function (item) { return item.decision; });
       }
       return payload;
+    }
+
+    function collectProposalStones() {
+      return [].slice.call(document.querySelectorAll('.proposal-row')).map(function (row) {
+        var stone = {};
+        [].slice.call(row.querySelectorAll('.proposal-field')).forEach(function (field) {
+          stone[field.getAttribute('data-field')] = field.value;
+        });
+        return stone;
+      }).filter(function (stone) {
+        return !!(stone.certNo || stone.shape || stone.carat || stone.vendor);
+      });
+    }
+
+    function updateCompleteButtonState() {
+      var button = document.querySelector('.js-complete-task');
+      if (!button) return;
+      var detail = appState.detail || {};
+      var task = detail.task || {};
+      var disabled = false;
+      (detail.checklist || []).forEach(function (item) {
+        if (item.required === false) return;
+        var el = document.getElementById('check-' + item.id);
+        if (!el || !el.checked) disabled = true;
+      });
+      if (task.taskType === 'ORDER_DIAMONDS') {
+        var selects = [].slice.call(document.querySelectorAll('.diamond-order-decision'));
+        if (selects.length && selects.some(function (select) { return !select.value; })) disabled = true;
+      }
+      if (task.taskType === 'PROPOSE_DIAMONDS' && !collectProposalStones().length) {
+        disabled = true;
+      }
+      button.disabled = disabled;
+      button.title = disabled ? 'Complete required checklist items and diamond decisions first.' : '';
     }
 
     function valueOf(id) {

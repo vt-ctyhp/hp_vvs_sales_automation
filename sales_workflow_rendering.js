@@ -29,8 +29,19 @@ function swValidateCompletion_(ss, task, data) {
   if (task.taskType === SW_TASKS.DIAMOND_TRACK && !swTrim_(data.trackingEta) && !swTrim_(data.trackingStatus)) {
     throw new Error('Enter a tracking ETA or tracking status before saving this task.');
   }
+  if (task.taskType === SW_TASKS.DIAMOND_PROPOSE && (!data.proposalStones || !data.proposalStones.length)) {
+    throw new Error('Add at least one proposed diamond before completing this task.');
+  }
   if (task.taskType === SW_TASKS.DIAMOND_ORDER && (!data.diamondOrderDecisions || !data.diamondOrderDecisions.length)) {
     throw new Error('Select at least one diamond order decision before completing this task.');
+  }
+  if (task.taskType === SW_TASKS.DIAMOND_ORDER) {
+    var missingOrderDecision = (data.diamondOrderDecisions || []).filter(function (item) {
+      return item && item.rowIndex && !swTrim_(item.decision);
+    });
+    if (missingOrderDecision.length) {
+      throw new Error('Select On the Way or Not Approved for every proposed diamond before completing this task.');
+    }
   }
   if (task.taskType === SW_TASKS.DIAMOND_DECISIONS && (!data.diamondDecisions || !data.diamondDecisions.length)) {
     throw new Error('Select at least one Purchase/Return decision before completing this task.');
@@ -106,6 +117,8 @@ function swIsDiamondTaskType_(taskType) {
     SW_TASKS.DIAMOND_DELIVERY,
     SW_TASKS.DIAMOND_DECISIONS,
     SW_TASKS.DIAMOND_RETURN,
+    SW_TASKS.DIAMOND_ORDER_ACK_REP,
+    SW_TASKS.DIAMOND_ORDER_ACK_JOC,
     SW_TASKS.DIAMOND_ETA_REP,
     SW_TASKS.DIAMOND_ETA_JOC
   ].indexOf(taskType) >= 0;

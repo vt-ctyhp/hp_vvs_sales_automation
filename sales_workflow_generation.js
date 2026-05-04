@@ -418,6 +418,8 @@ function swLifecycleForTask_(taskType) {
   map[SW_TASKS.DIAMOND_DELIVERY] = 'Diamond Delivery';
   map[SW_TASKS.DIAMOND_DECISIONS] = 'Diamond Decisions';
   map[SW_TASKS.DIAMOND_RETURN] = 'Diamond Return';
+  map[SW_TASKS.DIAMOND_ORDER_ACK_REP] = 'Diamond Ordered';
+  map[SW_TASKS.DIAMOND_ORDER_ACK_JOC] = 'Diamond Ordered';
   map[SW_TASKS.DIAMOND_ETA_REP] = 'Diamond ETA Risk';
   map[SW_TASKS.DIAMOND_ETA_JOC] = 'Diamond ETA Risk';
   return map[taskType] || '';

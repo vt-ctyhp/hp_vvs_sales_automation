@@ -23,6 +23,8 @@ function swGenerateDiamondWorkflowTasks_(ss, state, ctx, rec, now, summary, visi
   if (diamond.counts.onTheWay > 0) {
     swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.DIAMOND_TRACK, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT, dueNow, '', now, base), summary);
     swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.DIAMOND_DELIVERY, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN, dueNow, '', now, base), summary);
+    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.DIAMOND_ORDER_ACK_REP, SW_OWNER_ROLES.SALES_REP, dueNow, '', now, base), summary);
+    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.DIAMOND_ORDER_ACK_JOC, SW_OWNER_ROLES.JOC, dueNow, '', now, base), summary);
   }
 
   var decisionDue = visitAt && visitAt.getTime() > now.getTime() ? swDayOfDue_(visitAt) : dueNow;
@@ -321,11 +323,137 @@ function swDiamondDateValue_(value) {
 
 function swDiamondHandleTaskCompletion_(ss, task, data, user) {
   data = data || {};
+  if (task.taskType === SW_TASKS.DIAMOND_PROPOSE) return swDiamondCompleteProposals_(ss, task, data, user);
   if (task.taskType === SW_TASKS.DIAMOND_ORDER) return swDiamondCompleteOrder_(task, data, user);
   if (task.taskType === SW_TASKS.DIAMOND_TRACK) return swDiamondCompleteTracking_(task, data, user);
   if (task.taskType === SW_TASKS.DIAMOND_DELIVERY) return swDiamondCompleteDelivery_(task, data);
   if (task.taskType === SW_TASKS.DIAMOND_DECISIONS) return swDiamondCompleteDecisions_(task, data);
+  if (task.taskType === SW_TASKS.DIAMOND_RETURN) return swDiamondCompleteReturn_(task, data, user);
   return null;
+}
+
+function swDiamondCompleteProposals_(ss, task, data, user) {
+  var stones = (data.proposalStones || []).filter(function (stone) {
+    return stone && (stone.certNo || stone.shape || stone.carat || stone.vendor);
+  });
+  if (!stones.length) throw new Error('Add at least one proposed diamond.');
+  if (typeof dp_get200Sheet_ !== 'function' ||
+      typeof dp_headerMapFor200_ !== 'function' ||
+      typeof dp_validateStoneInput_ !== 'function' ||
+      typeof dp_build200RowArray_ !== 'function') {
+    throw new Error('Diamond proposal functions are not available.');
+  }
+
+  var target = dp_get200Sheet_();
+  var sh200 = target.sheet;
+  var hm200 = dp_headerMapFor200_(sh200);
+  var ctx = swDiamondProposalContext_(ss, task);
+  var tz = ss.getSpreadsheetTimeZone ? ss.getSpreadsheetTimeZone() : swTimezone_();
+  var lastCol = sh200.getLastColumn();
+  var composedApptDateTime = typeof dp_composeApptDateTimeString_ === 'function'
+    ? dp_composeApptDateTimeString_(ctx.visitDateValue, ctx.visitTimeValue, tz)
+    : [ctx.visitDateStr, ctx.visitTimeStr].filter(Boolean).join(' ');
+
+  var toAppend = [];
+  var certNosNew = [];
+  stones.forEach(function (stone, i) {
+    var validated = dp_validateStoneInput_(stone, i);
+    certNosNew.push(validated.certificateNo);
+    toAppend.push(dp_build200RowArray_({
+      stone: validated,
+      ctx: ctx,
+      hm200: hm200,
+      composedApptDateTime: composedApptDateTime,
+      lastCol: lastCol
+    }));
+  });
+
+  var duplicateWarnings = typeof dp_warnDuplicateCerts_ === 'function'
+    ? dp_warnDuplicateCerts_(sh200, hm200, certNosNew)
+    : [];
+  var insertAt = typeof DP200_INSERT_AT_ROW !== 'undefined' ? DP200_INSERT_AT_ROW : 3;
+  if (toAppend.length) {
+    sh200.insertRowsBefore(insertAt, toAppend.length);
+    try {
+      var templateRowIdx = insertAt + toAppend.length;
+      if (sh200.getLastRow() >= templateRowIdx) {
+        sh200.getRange(templateRowIdx, 1, 1, lastCol)
+          .copyTo(sh200.getRange(insertAt, 1, toAppend.length, lastCol), { formatOnly: true });
+      }
+    } catch (e) {
+      try { Logger.log('swDiamondCompleteProposals_ format copy error: ' + e.message); } catch (_) {}
+    }
+    sh200.getRange(insertAt, 1, toAppend.length, lastCol).setValues(toAppend);
+  }
+
+  var counts = typeof dp_computeCountsForAppointment_ === 'function'
+    ? dp_computeCountsForAppointment_(sh200, hm200, ctx.rootApptId)
+    : {};
+  if (typeof dp_update100AfterPropose_ === 'function') dp_update100AfterPropose_(ctx, stones, counts);
+  try { if (typeof dp_onCsosChanged_ === 'function') dp_onCsosChanged_(ctx.rootApptId, 'Diamond Memo – Proposed'); } catch (_) {}
+
+  return {
+    ok: true,
+    added: toAppend.length,
+    duplicates: duplicateWarnings,
+    counts: counts,
+    targetSpreadsheetUrl: target.ss.getUrl(),
+    targetSpreadsheetName: target.ss.getName(),
+    targetTabName: target.tab,
+    appendedFirstRow: insertAt,
+    appendedLastRow: insertAt + toAppend.length - 1,
+    proposedBy: user && user.email || ''
+  };
+}
+
+function swDiamondProposalContext_(ss, task) {
+  var payload = swParseJson_(task.payloadJson, {});
+  var appt = payload.appointment || {};
+  var sh = ss.getSheetByName(SW_SHEETS.MASTER);
+  if (!sh) throw new Error('Missing sheet: ' + SW_SHEETS.MASTER);
+  var rowIndex = Number(appt.row || 0);
+  if (!(rowIndex >= 2)) rowIndex = swDiamondFindMasterRowForTask_(sh, task);
+  if (!(rowIndex >= 2)) throw new Error('Could not locate the appointment row in 00_Master Appointments.');
+
+  var hm = typeof dp_headerMap_ === 'function' ? dp_headerMap_(sh) : null;
+  var visitDateValue = appt.visitDate || task.visitDate || '';
+  var visitTimeValue = appt.visitTime || task.visitTime || '';
+  if (hm && typeof dp_getCellByHeader_ === 'function') {
+    try { visitDateValue = dp_getCellByHeader_(sh, hm, rowIndex, dp_aliases100_['Visit Date'], false) || visitDateValue; } catch (_) {}
+    try { visitTimeValue = dp_getCellByHeader_(sh, hm, rowIndex, dp_aliases100_['Visit Time'], false) || visitTimeValue; } catch (_) {}
+  }
+
+  var tz = ss.getSpreadsheetTimeZone ? ss.getSpreadsheetTimeZone() : swTimezone_();
+  return {
+    sheet: sh,
+    rowIndex: rowIndex,
+    headerMap: hm || (typeof dp_headerMap_ === 'function' ? dp_headerMap_(sh) : {}),
+    centerStoneStatus: appt.centerStoneStatus || '',
+    rootApptId: task.root || appt.root || task.appt || '',
+    customerName: task.customerName || appt.customerName || '',
+    visitDateValue: visitDateValue,
+    visitTimeValue: visitTimeValue,
+    visitDateStr: typeof dp_formatDateOnly_ === 'function' ? dp_formatDateOnly_(visitDateValue, tz) : task.visitDate,
+    visitTimeStr: typeof dp_formatTimeOnly_ === 'function' ? dp_formatTimeOnly_(visitTimeValue, tz) : task.visitTime,
+    companyBrand: task.brand || appt.brand || '',
+    assignedRep: appt.assignedRep || ''
+  };
+}
+
+function swDiamondFindMasterRowForTask_(sh, task) {
+  var lr = sh.getLastRow();
+  var lc = sh.getLastColumn();
+  if (lr < 2 || lc < 1) return 0;
+  var headers = sh.getRange(1, 1, 1, lc).getDisplayValues()[0];
+  var H = swHeaderMapFromArray_(headers);
+  var rootCol = swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'APPT_ID']);
+  if (rootCol < 0) return 0;
+  var values = sh.getRange(2, rootCol + 1, lr - 1, 1).getDisplayValues();
+  var root = swTrim_(task.root || task.appt);
+  for (var i = 0; i < values.length; i++) {
+    if (swTrim_(values[i][0]) === root) return i + 2;
+  }
+  return 0;
 }
 
 function swDiamondCompleteOrder_(task, data, user) {
@@ -339,7 +467,7 @@ function swDiamondCompleteOrder_(task, data, user) {
       orderedDate: data.orderedDate || ''
     };
   });
-  if (!items.length) return { skipped: true, reason: 'No order decisions supplied.' };
+  if (!items.length) throw new Error('No order decisions supplied.');
   if (typeof dp_submitOrderApprovals !== 'function') throw new Error('Diamond order approval function is not available.');
   return dp_submitOrderApprovals({
     applyDefaultsToAll: true,
@@ -355,7 +483,7 @@ function swDiamondCompleteTracking_(task, data, user) {
   var sh = target.sheet;
   var rows = swDeepValue_(swParseJson_(task.payloadJson, {}), ['extra', 'diamond', 'rows']) || [];
   var onTheWay = rows.filter(function (row) { return swNorm_(row.orderStatus) === 'on the way'; });
-  if (!onTheWay.length) return { skipped: true, reason: 'No on-the-way stones found.' };
+  if (!onTheWay.length) throw new Error('No on-the-way stones found.');
 
   var cEta = swDiamondEnsure200Column_(sh, 'Tracking ETA');
   var cStatus = swDiamondEnsure200Column_(sh, 'Tracking Status');
@@ -384,7 +512,7 @@ function swDiamondCompleteDelivery_(task, data) {
   var selected = rows.filter(function (row) { return swNorm_(row.orderStatus) === 'on the way'; }).map(function (row) {
     return { rowIndex: Number(row.rowIndex), rootApptId: task.root, memoDate: data.memoDate || '', selected: true };
   });
-  if (!selected.length) return { skipped: true, reason: 'No on-the-way stones found.' };
+  if (!selected.length) throw new Error('No on-the-way stones found.');
   if (typeof dp_submitConfirmDelivery !== 'function') throw new Error('Diamond delivery confirmation function is not available.');
   return dp_submitConfirmDelivery({
     applyDefaultToAll: true,
@@ -403,9 +531,42 @@ function swDiamondCompleteDecisions_(task, data) {
       hold: !!item.hold
     };
   });
-  if (!items.length) return { skipped: true, reason: 'No diamond decisions supplied.' };
+  if (!items.length) throw new Error('No diamond decisions supplied.');
   if (typeof dp_submitStoneDecisions !== 'function') throw new Error('Diamond decision function is not available.');
   return dp_submitStoneDecisions({ items: items });
+}
+
+function swDiamondCompleteReturn_(task, data, user) {
+  var target = swDiamond200Target_();
+  if (!target || !target.sheet) throw new Error('Diamond tracking sheet is unavailable.');
+  var sh = target.sheet;
+  var rows = swDeepValue_(swParseJson_(task.payloadJson, {}), ['extra', 'diamond', 'returnRows']) || [];
+  if (!rows.length) throw new Error('No return rows found.');
+
+  var hm = swDiamond200HeaderMap_(sh);
+  var cStoneStatus = swDiamondFind200Column_(hm, ['Stone Status', 'StoneStatus']);
+  var cNotes = swDiamondEnsure200Column_(sh, 'Return Notes');
+  if (!cStoneStatus) throw new Error('Stone Status column is missing in 200_.');
+  var now = swIso_(new Date());
+  var updatedRows = [];
+  rows.forEach(function (row) {
+    var r = Number(row.rowIndex);
+    if (!(r >= 3)) return;
+    var status = sh.getRange(r, cStoneStatus).getDisplayValue();
+    sh.getRange(r, cStoneStatus).setValue(swDiamondMergeStatus_(status, 'Return in Progress'));
+    sh.getRange(r, cNotes).setValue('Return in progress @ ' + now + (user && user.email ? ' by ' + user.email : ''));
+    updatedRows.push(r);
+  });
+  return { ok: true, status: 'Return in Progress', updatedRows: updatedRows };
+}
+
+function swDiamondMergeStatus_(current, add) {
+  var cur = swTrim_(current);
+  add = swTrim_(add);
+  if (!cur) return add;
+  var parts = cur.split(/\s*[;|,]\s*|\s*•\s*/g).map(function (p) { return swTrim_(p); }).filter(Boolean);
+  if (!parts.some(function (p) { return swNorm_(p) === swNorm_(add); })) parts.push(add);
+  return parts.join(', ');
 }
 
 function sw_refreshDiamondQuoteFromTracking(authToken, taskId) {

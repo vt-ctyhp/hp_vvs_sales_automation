@@ -185,6 +185,7 @@ function sw_getBootstrap(authToken) {
       views: {
         mine: true,
         calendar: true,
+        diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
         coverage: user.isJoc || user.isAdmin,
         admin: user.isAdmin
       },
@@ -281,6 +282,145 @@ function sw_getCalendarAppointments(authToken, monthKey) {
       todayKey: swDateKey_(todayStart),
       appointmentCount: appointments.length,
       appointments: appointments
+    };
+  });
+}
+
+/**
+ * Read-only UI diamond tracking dashboard for diamond order roles.
+ */
+function sw_getDiamondTrackingDashboard(authToken) {
+  return swTimed_('sw_getDiamondTrackingDashboard', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant)) {
+      throw new Error('Diamond order access required.');
+    }
+
+    var target = swDiamond200Target_();
+    if (!target || !target.sheet) {
+      return { ok: true, available: false, rows: [], stats: {}, missingColumns: [] };
+    }
+
+    var sh = target.sheet;
+    var lr = sh.getLastRow();
+    var lc = sh.getLastColumn();
+    if (lr < 3 || lc < 1) {
+      return { ok: true, available: true, spreadsheetUrl: target.ss.getUrl(), tab: target.tab, rows: [], stats: {} };
+    }
+
+    var hm = swDiamond200HeaderMap_(sh);
+    var C = {
+      root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
+      customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
+      appointment: swDiamondFind200Column_(hm, ['Customer Appt Time & Date', 'Customer Appointment Date', 'Appointment Date']),
+      assignedRep: swDiamondFind200Column_(hm, ['Assigned Rep', 'Sales Rep']),
+      vendor: swDiamondFind200Column_(hm, ['Vendor']),
+      shape: swDiamondFind200Column_(hm, ['Shape']),
+      carat: swDiamondFind200Column_(hm, ['Carat']),
+      color: swDiamondFind200Column_(hm, ['Color']),
+      clarity: swDiamondFind200Column_(hm, ['Clarity']),
+      certNo: swDiamondFind200Column_(hm, ['Certificate No', 'Cert #', 'Cert No', 'Certificate #']),
+      orderStatus: swDiamondFind200Column_(hm, ['Order Status', 'OrderStatus']),
+      stoneStatus: swDiamondFind200Column_(hm, ['Stone Status', 'StoneStatus']),
+      decision: swDiamondFind200Column_(hm, ['Stone Decision (PO, Return)', 'Stone Decision', 'StoneDecision']),
+      orderDate: swDiamondFind200Column_(hm, ['Purchased / Ordered Date', 'Purchased/Ordered Date', 'PurchasedOrderedDate']),
+      returnDueDate: swDiamondFind200Column_(hm, ['Return DUE DATE', 'Return Due Date', 'Return Due']),
+      trackingEta: swDiamondFind200Column_(hm, ['Tracking ETA', 'Tracking ETA Date', 'ETA Date', 'ETA']),
+      trackingStatus: swDiamondFind200Column_(hm, ['Tracking Status', 'ETA Status', 'Shipment Status']),
+      carrier: swDiamondFind200Column_(hm, ['Carrier', 'Shipping Carrier']),
+      trackingNumber: swDiamondFind200Column_(hm, ['Tracking Number', 'Tracking #', 'Tracking No']),
+      trackingUrl: swDiamondFind200Column_(hm, ['Tracking URL', 'Tracking Link'])
+    };
+    var missingColumns = [];
+    if (!C.trackingEta) missingColumns.push('Tracking ETA');
+    if (!C.trackingStatus) missingColumns.push('Tracking Status');
+
+    var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+    var today = new Date();
+    var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    var warningMs = todayMs + 7 * 24 * 60 * 60 * 1000;
+    var rows = [];
+    var stats = {
+      total: 0,
+      onTheWay: 0,
+      delivered: 0,
+      returns: 0,
+      missingEta: 0,
+      issues: 0
+    };
+
+    values.forEach(function (row, i) {
+      var orderStatus = swDiamondCell_(row, C.orderStatus);
+      var stoneStatus = swDiamondCell_(row, C.stoneStatus);
+      var decision = swDiamondCell_(row, C.decision);
+      var trackingEta = swDiamondCell_(row, C.trackingEta);
+      var trackingStatus = swDiamondCell_(row, C.trackingStatus);
+      var orderNorm = swNorm_(orderStatus);
+      var stoneNorm = swNorm_(stoneStatus);
+      var decisionNorm = swNorm_(decision);
+      var trackingNorm = swNorm_(trackingStatus);
+      var relevant = orderNorm === 'on the way' || orderNorm === 'delivered' ||
+        decisionNorm === 'return' || trackingEta || trackingStatus ||
+        stoneNorm.indexOf('return in progress') >= 0;
+      if (!relevant) return;
+
+      var etaMs = swDiamondDateValue_(trackingEta);
+      var returnMs = swDiamondDateValue_(swDiamondCell_(row, C.returnDueDate));
+      var issue = '';
+      if (orderNorm === 'on the way' && !trackingEta) issue = 'Missing ETA';
+      if (!issue && /(delay|unavailable|cancel|concern|problem)/.test(trackingNorm)) issue = 'Tracking concern';
+      if (!issue && etaMs && etaMs < todayMs && orderNorm === 'on the way') issue = 'ETA overdue';
+      if (!issue && decisionNorm === 'return' && returnMs && returnMs <= warningMs) issue = returnMs < todayMs ? 'Return overdue' : 'Return due soon';
+
+      var out = {
+        rowIndex: i + 3,
+        root: swDiamondCell_(row, C.root),
+        customerName: swDiamondCell_(row, C.customerName),
+        appointment: swDiamondCell_(row, C.appointment),
+        assignedRep: swDiamondCell_(row, C.assignedRep),
+        vendor: swDiamondCell_(row, C.vendor),
+        certNo: swDiamondCell_(row, C.certNo),
+        diamond: [swDiamondCell_(row, C.shape), swDiamondCell_(row, C.carat), swDiamondCell_(row, C.color), swDiamondCell_(row, C.clarity)].filter(Boolean).join(' '),
+        orderStatus: orderStatus,
+        stoneStatus: stoneStatus,
+        decision: decision,
+        orderDate: swDiamondCell_(row, C.orderDate),
+        returnDueDate: swDiamondCell_(row, C.returnDueDate),
+        trackingEta: trackingEta,
+        trackingStatus: trackingStatus,
+        carrier: swDiamondCell_(row, C.carrier),
+        trackingNumber: swDiamondCell_(row, C.trackingNumber),
+        trackingUrl: swDiamondCell_(row, C.trackingUrl),
+        issue: issue
+      };
+      rows.push(out);
+      stats.total++;
+      if (orderNorm === 'on the way') stats.onTheWay++;
+      if (orderNorm === 'delivered') stats.delivered++;
+      if (decisionNorm === 'return' || stoneNorm.indexOf('return in progress') >= 0) stats.returns++;
+      if (orderNorm === 'on the way' && !trackingEta) stats.missingEta++;
+      if (issue) stats.issues++;
+    });
+
+    rows.sort(function (a, b) {
+      if (!!a.issue !== !!b.issue) return a.issue ? -1 : 1;
+      var av = swDiamondDateValue_(a.trackingEta || a.returnDueDate) || 9999999999999;
+      var bv = swDiamondDateValue_(b.trackingEta || b.returnDueDate) || 9999999999999;
+      return av - bv;
+    });
+
+    return {
+      ok: true,
+      available: true,
+      generatedAt: swIso_(new Date()),
+      spreadsheetUrl: target.ss.getUrl(),
+      spreadsheetName: target.ss.getName(),
+      tab: target.tab,
+      missingColumns: missingColumns,
+      stats: stats,
+      rows: rows.slice(0, 200)
     };
   });
 }
@@ -660,6 +800,8 @@ function sw_reviewDiamondWorkflowSetup() {
     SW_TASKS.DIAMOND_DELIVERY,
     SW_TASKS.DIAMOND_DECISIONS,
     SW_TASKS.DIAMOND_RETURN,
+    SW_TASKS.DIAMOND_ORDER_ACK_REP,
+    SW_TASKS.DIAMOND_ORDER_ACK_JOC,
     SW_TASKS.DIAMOND_ETA_REP,
     SW_TASKS.DIAMOND_ETA_JOC
   ].forEach(function (taskType) {
@@ -686,11 +828,18 @@ function sw_reviewDiamondWorkflowSetup() {
   });
 
   var target = swDiamond200Target_();
+  var missingTrackingColumns = [];
+  if (target && target.sheet) {
+    var trackingHm = swDiamond200HeaderMap_(target.sheet);
+    if (!swDiamondFind200Column_(trackingHm, ['Tracking ETA', 'Tracking ETA Date', 'ETA Date', 'ETA'])) missingTrackingColumns.push('Tracking ETA');
+    if (!swDiamondFind200Column_(trackingHm, ['Tracking Status', 'ETA Status', 'Shipment Status'])) missingTrackingColumns.push('Tracking Status');
+  }
   out.diamondTracking = {
     available: !!(target && target.sheet),
     spreadsheetName: target && target.ss ? target.ss.getName() : '',
     tab: target ? target.tab : '',
-    url: target && target.ss ? target.ss.getUrl() : ''
+    url: target && target.ss ? target.ss.getUrl() : '',
+    missingColumns: missingTrackingColumns
   };
   Logger.log('SW_DIAMOND_WORKFLOW_SETUP_REVIEW ' + JSON.stringify(out, null, 2));
   return out;
