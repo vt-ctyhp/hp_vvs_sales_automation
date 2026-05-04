@@ -381,6 +381,62 @@
       padding-bottom: 0;
     }
 
+    .snooze-panel summary {
+      align-items: center;
+      color: var(--ink-muted);
+      cursor: pointer;
+      display: flex;
+      font-size: 10px;
+      gap: 12px;
+      justify-content: space-between;
+      letter-spacing: 0.14em;
+      list-style: none;
+      text-transform: uppercase;
+    }
+
+    .snooze-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .snooze-panel summary::after {
+      border: 1px solid var(--rule);
+      color: var(--ink-primary);
+      content: '+';
+      flex: 0 0 auto;
+      font-size: 13px;
+      height: 24px;
+      line-height: 22px;
+      text-align: center;
+      width: 24px;
+    }
+
+    .snooze-panel[open] summary {
+      margin-bottom: 14px;
+    }
+
+    .snooze-panel[open] summary::after {
+      content: '-';
+    }
+
+    .snooze-panel summary:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: 4px;
+    }
+
+    .snooze-summary-text {
+      min-width: 0;
+    }
+
+    .snooze-current {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0;
+      line-height: 1.5;
+      margin-top: 6px;
+      text-transform: none;
+    }
+
     .template-box {
       background: var(--surface-inset);
       color: var(--ink-primary);
@@ -2042,16 +2098,20 @@
 
     function renderSnoozeControls(task) {
       if (task.status === 'Completed' || task.status === 'Blocked') return '';
+      var snoozeUntilValue = dateInputValue(task.snoozeUntil);
+      var currentSnooze = [
+        task.snoozeUntil ? 'Until ' + (snoozeUntilValue || task.snoozeUntil) : '',
+        task.snoozeReason || ''
+      ].filter(Boolean).join(' | ');
       return [
-        '<div class="detail-section">',
-          '<label>Snooze Task</label>',
+        '<details class="detail-section snooze-panel">',
+          '<summary><span class="snooze-summary-text">Snooze Task' + (currentSnooze ? '<span class="snooze-current">' + escapeHtml(currentSnooze) + '</span>' : '') + '</span></summary>',
           '<div class="field-grid">',
-            '<div><label for="snoozeUntil">Snooze Until</label><input id="snoozeUntil" type="date"></div>',
-            '<div class="wide"><label for="snoozeReason">Reason</label><textarea id="snoozeReason" placeholder="Required"></textarea></div>',
+            '<div><label for="snoozeUntil">Snooze Until</label><input id="snoozeUntil" type="date" value="' + escapeAttrValue(snoozeUntilValue) + '"></div>',
+            '<div class="wide"><label for="snoozeReason">Reason</label><textarea id="snoozeReason" placeholder="Required">' + escapeHtml(task.snoozeReason || '') + '</textarea></div>',
           '</div>',
-          task.snoozeReason ? '<div class="meta">Current snooze reason: ' + escapeHtml(task.snoozeReason) + '</div>' : '',
           '<div class="actions"><button class="js-snooze-task" type="button">Snooze</button></div>',
-        '</div>'
+        '</details>'
       ].join('');
     }
 
