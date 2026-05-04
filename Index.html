@@ -162,7 +162,7 @@
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 420px;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
       gap: 24px;
       align-items: start;
     }
@@ -170,6 +170,7 @@
     .panel {
       background: var(--surface-card);
       border: 1px solid var(--rule);
+      min-width: 0;
       padding: 28px;
     }
 
@@ -366,10 +367,12 @@
     .detail-body {
       display: grid;
       gap: 18px;
+      min-width: 0;
     }
 
     .detail-section {
       border-bottom: 1px solid var(--rule);
+      min-width: 0;
       padding-bottom: 18px;
     }
 
@@ -382,9 +385,12 @@
       background: var(--surface-inset);
       color: var(--ink-primary);
       line-height: 1.55;
+      max-width: 100%;
       min-height: 96px;
+      overflow-wrap: anywhere;
       padding: 16px;
       white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .attachment-list {
@@ -394,7 +400,13 @@
 
     .attachment-row {
       border-bottom: 1px solid var(--rule);
+      overflow-wrap: anywhere;
       padding-bottom: 12px;
+    }
+
+    .attachment-row a {
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .attachment-row:last-child {
@@ -1781,7 +1793,7 @@
             '<div class="task-top">',
               '<div class="task-main">',
                 '<div class="task-title">' + escapeHtml(task.taskTitle || task.taskType) + '</div>',
-                '<div class="meta">' + escapeHtml(task.customerName || 'No customer') + ' · ' + escapeHtml(task.visitDate || 'No date') + ' ' + escapeHtml(task.visitTime || '') + '</div>',
+                '<div class="meta">' + escapeHtml(task.customerName || 'No customer') + ' · ' + escapeHtml(task.visitDate || 'No date') + ' ' + escapeHtml(formatCalendarTime(task.visitTime)) + '</div>',
                 '<div class="meta">Owner: ' + escapeHtml(task.currentOwner || 'Unassigned') + '</div>',
               '</div>',
               '<div class="task-side">',
@@ -1830,13 +1842,17 @@
 
     function renderDetail(res) {
       var task = res.task || {};
+      var clientMessage = isClientMessageTaskType(task.taskType);
       var missing = (res.missingFields || []).length
         ? '<div class="error">Missing template fields: ' + escapeHtml(res.missingFields.join(', ')) + '</div>'
         : '';
+      var templateLabel = clientMessage ? 'Copyable Message' : 'Template';
+      var copyLabel = clientMessage ? 'Copy Message' : 'Copy Template';
       var template = res.renderedTemplate
-        ? '<div class="detail-section"><label>Template</label><div class="template-box" id="renderedTemplate">' + escapeHtml(res.renderedTemplate) + '</div><div class="actions"><button class="js-copy-template" type="button">Copy Template</button></div>' + missing + '</div>'
+        ? '<div class="detail-section"><label>' + templateLabel + '</label><div class="template-box" id="renderedTemplate">' + escapeHtml(res.renderedTemplate) + '</div><div class="actions"><button class="js-copy-template" type="button">' + copyLabel + '</button></div>' + missing + '</div>'
         : '';
-      var attachments = renderAttachments(res.attachments || (res.attachment && res.attachment.url ? [res.attachment] : []));
+      var attachments = renderAttachments(res.attachments || (res.attachment && res.attachment.url ? [res.attachment] : []), clientMessage ? 'Message Links' : 'Attachments');
+      var messageBlocks = clientMessage ? attachments + template : template + attachments;
       var checklist = renderChecklist(res.checklist || []);
       var diamondControls = renderDiamondControls(task, res);
       var textArea = renderCompletionTextArea(task, res);
@@ -1852,13 +1868,12 @@
         '<div class="detail-body">',
           '<div class="detail-section">',
             '<div class="meta">' + escapeHtml(task.customerName || '') + '</div>',
-            '<div class="meta">' + escapeHtml(task.visitDate || '') + ' ' + escapeHtml(task.visitTime || '') + '</div>',
+            '<div class="meta">' + escapeHtml(task.visitDate || '') + ' ' + escapeHtml(formatCalendarTime(task.visitTime)) + '</div>',
             '<div class="meta">Current owner: ' + escapeHtml(task.currentOwner || 'Unassigned') + '</div>',
             task.coverageReason ? '<div class="error">' + escapeHtml(task.coverageReason) + '</div>' : '',
           '</div>',
           '<div class="detail-section"><label>Instructions</label><div>' + escapeHtml(task.instructions || 'No instructions provided.') + '</div></div>',
-          template,
-          attachments,
+          messageBlocks,
           diamondControls,
           checklist,
           textArea,
@@ -1869,12 +1884,12 @@
       updateCompleteButtonState();
     }
 
-    function renderAttachments(attachments) {
+    function renderAttachments(attachments, label) {
       attachments = attachments || [];
       if (!attachments.length) return '';
       return [
         '<div class="detail-section">',
-          '<label>Attachments</label>',
+          '<label>' + escapeHtml(label || 'Attachments') + '</label>',
           '<div class="attachment-list">',
             attachments.map(function (attachment) {
               var preview = isImageUrl(attachment.url) ? '<img class="attachment-image" src="' + escapeHref(attachment.url) + '" alt="">' : '';
@@ -2030,7 +2045,7 @@
         '<div class="detail-section">',
           '<label>Proposed Diamonds</label>',
           '<div class="template-box">Add proposed diamonds here. Use the In-Stock Diamonds tab first if you want to select store inventory and confirm the return date works for this appointment. Completing this task uses the same Sheet 100 proposal flow: it validates the stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps the appointment context tied to this customer.</div>',
-          '<div class="meta" style="margin-top:10px">' + escapeHtml([appt.customerName, appt.visitDate, appt.visitTime].filter(Boolean).join(' | ')) + '</div>',
+          '<div class="meta" style="margin-top:10px">' + escapeHtml([appt.customerName, appt.visitDate, formatCalendarTime(appt.visitTime)].filter(Boolean).join(' | ')) + '</div>',
           '<div id="proposalRows" class="proposal-rows" style="margin-top:16px">',
             proposalRowHtml(0),
           '</div>',
@@ -2502,14 +2517,31 @@
     function copyTemplate() {
       var text = document.getElementById('renderedTemplate');
       if (!text) return;
-      navigator.clipboard.writeText(text.textContent || '').then(function () {
-        setStatus('Template copied');
+      var copyText = text.textContent || '';
+      var clientMessage = appState.detail && isClientMessageTaskType((appState.detail.task || {}).taskType);
+      if (clientMessage) {
+        copyText = stripGoogleDriveLinksForCopy_(copyText);
+      }
+      navigator.clipboard.writeText(copyText).then(function () {
+        setStatus(clientMessage ? 'Message copied' : 'Template copied');
         if (appState.selectedTaskId) {
           google.script.run.sw_logTemplateCopied(appState.token, appState.selectedTaskId);
         }
       }, function () {
         setStatus('Copy failed. Select the template text manually.', true);
       });
+    }
+
+    function isClientMessageTaskType(taskType) {
+      return ['SEND_WELCOME', 'SEND_HYBRID_WELCOME', 'SEND_MAP_INSTRUCTIONS', 'SEND_FINAL_RECAP'].indexOf(taskType) >= 0;
+    }
+
+    function stripGoogleDriveLinksForCopy_(text) {
+      return String(text || '')
+        .replace(/\b(?:https?:\/\/)?(?:drive|docs)\.google\.com\/[^\s<>"')]+/gi, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
     }
 
     function copyManufacturingMessage() {

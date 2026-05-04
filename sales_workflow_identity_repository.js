@@ -122,7 +122,7 @@ function swCanActOnTask_(task, user) {
 }
 
 function swCanClaimTask_(task, user) {
-  if (task.status !== SW_STATUSES.PENDING) return false;
+  if (!swTaskPendingLike_(task, new Date().getTime())) return false;
   if (!(user.isJoc || user.isAdmin)) return false;
   if (task.ownerRole !== 'JOC') return false;
   if (swTaskOwnedByUser_(task, user)) return false;
@@ -321,7 +321,7 @@ function swReadTemplates_(ss, readOnly) {
   rows.forEach(function (r) {
     var type = swTrim_(r['Task Type']);
     if (!type) return;
-    out[type] = {
+    out[type] = swEffectiveTemplateForTaskType_(type, {
       taskTitle: r['Task Title'] || type,
       instructions: r['Instructions'] || '',
       template: r['Template'] || '',
@@ -329,7 +329,7 @@ function swReadTemplates_(ss, readOnly) {
       attachmentUrl: r['Attachment URL'] || '',
       checklistJson: r['Checklist JSON'] || '',
       primaryAction: r['Primary Action'] || 'Complete'
-    };
+    });
   });
   return out;
 }
@@ -342,7 +342,7 @@ function swDefaultTemplate_(taskType) {
   var all = swDefaultTemplates_();
   for (var i = 0; i < all.length; i++) {
     if (all[i][0] === taskType) {
-      return {
+      return swEffectiveTemplateForTaskType_(taskType, {
         taskTitle: all[i][1],
         instructions: all[i][2],
         template: all[i][3],
@@ -350,7 +350,7 @@ function swDefaultTemplate_(taskType) {
         attachmentUrl: all[i][5],
         checklistJson: all[i][6],
         primaryAction: all[i][7]
-      };
+      });
     }
   }
   return { taskTitle: taskType, instructions: '', template: '', checklistJson: '', primaryAction: 'Complete' };

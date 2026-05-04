@@ -592,7 +592,7 @@ function swDiamondProposalContext_(ss, task) {
     visitDateValue: visitDateValue,
     visitTimeValue: visitTimeValue,
     visitDateStr: typeof dp_formatDateOnly_ === 'function' ? dp_formatDateOnly_(visitDateValue, tz) : task.visitDate,
-    visitTimeStr: typeof dp_formatTimeOnly_ === 'function' ? dp_formatTimeOnly_(visitTimeValue, tz) : task.visitTime,
+    visitTimeStr: swFormatAppointmentTime_(typeof dp_formatTimeOnly_ === 'function' ? dp_formatTimeOnly_(visitTimeValue, tz) : task.visitTime),
     companyBrand: task.brand || appt.brand || '',
     assignedRep: appt.assignedRep || ''
   };
@@ -753,7 +753,7 @@ function swDiamondQuoteAction_(authToken, taskId, mode) {
     appt: task.appt || appt.appt,
     name: task.customerName || appt.customerName,
     visitDate: task.visitDate || appt.visitDate,
-    visitTime: task.visitTime || appt.visitTime,
+    visitTime: swFormatAppointmentTime_(task.visitTime || appt.visitTime),
     quotationUrl: swDeepValue_(payload, ['extra', 'quotationUrl']) || appt.quotationUrl || '',
     tracker3dUrl: swDeepValue_(payload, ['extra', 'tracker3dUrl']) || appt.tracker3dUrl || '',
     dvStonesSummary: swDeepValue_(payload, ['extra', 'diamondSummary']) || appt.dvStonesSummary || '',

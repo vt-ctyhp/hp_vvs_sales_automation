@@ -52,6 +52,9 @@ function swValidateCompletion_(ss, task, data) {
   if (task.taskType === SW_TASKS.DIAMOND_DECISIONS && (!data.diamondDecisions || !data.diamondDecisions.length)) {
     throw new Error('Select at least one Purchase/Return decision before completing this task.');
   }
+  if (typeof swValidatePostConsultCompletion_ === 'function') {
+    swValidatePostConsultCompletion_(task, data);
+  }
 }
 
 function swRenderDataForTask_(task, payload) {
@@ -60,13 +63,14 @@ function swRenderDataForTask_(task, payload) {
   var extra = payload.extra || {};
   var completion = payload.completion || {};
   var rawBrand = task.brand || appt.brand || '';
+  var visitTime = swFormatAppointmentTime_(task.visitTime || appt.visitTime || '');
   return {
     customerName: task.customerName || appt.customerName || '',
     brand: swTemplateBrandName_(rawBrand),
     brandRaw: rawBrand,
     appointmentDate: task.visitDate || appt.visitDate || '',
-    appointmentTime: task.visitTime || appt.visitTime || '',
-    appointmentDateTime: [task.visitDate || appt.visitDate || '', task.visitTime || appt.visitTime || ''].filter(Boolean).join(' '),
+    appointmentTime: visitTime,
+    appointmentDateTime: [task.visitDate || appt.visitDate || '', visitTime].filter(Boolean).join(' '),
     visitType: task.visitType || appt.visitType || '',
     clientAdvisor: appt.assignedRep || '',
     assignedRep: appt.assignedRep || '',
@@ -77,6 +81,18 @@ function swRenderDataForTask_(task, payload) {
     reportUrl: appt.reportUrl || '',
     quotationUrl: extra.quotationUrl || appt.quotationUrl || '',
     tracker3dUrl: extra.tracker3dUrl || appt.tracker3dUrl || '',
+    soNumber: extra.soNumber || appt.so || 'Not assigned yet',
+    salesStage: extra.salesStage || appt.salesStage || '',
+    convStatus: extra.convStatus || appt.convStatus || '',
+    customOrder: extra.customOrder || appt.customOrder || '',
+    nextSteps: extra.nextSteps || appt.nextSteps || 'Not captured yet',
+    designRequest: extra.designRequest || appt.designRequest || 'Not captured yet',
+    deadline3d: extra.deadline3d || appt.deadline3d || 'Not recorded yet',
+    productionDeadline: extra.productionDeadline || appt.productionDeadline || 'Not recorded yet',
+    waxStatus: extra.waxStatus || appt.waxStatus || 'No active wax request',
+    waxDeadlineAdmin: extra.waxDeadlineAdmin || appt.waxDeadlineAdmin || 'Not recorded yet',
+    waxRequestUrl: extra.waxRequestUrl || appt.waxRequestUrl || '',
+    waxRequestSummary: extra.waxRequestSummary || 'No open wax requests',
     diamondTrackerUrl: extra.diamondTrackerUrl || '',
     diamondSummary: extra.diamondSummary || appt.dvStonesSummary || '',
     diamondProposalTarget: extra.diamondProposalTarget || '',
@@ -94,12 +110,102 @@ function swRenderDataForTask_(task, payload) {
   };
 }
 
+function swEffectiveTemplateForTaskType_(taskType, template) {
+  template = template || {};
+  var out = {
+    taskTitle: template.taskTitle || taskType,
+    instructions: template.instructions || '',
+    template: template.template || '',
+    attachmentLabel: template.attachmentLabel || '',
+    attachmentUrl: template.attachmentUrl || '',
+    checklistJson: template.checklistJson || '',
+    primaryAction: template.primaryAction || 'Complete'
+  };
+  if (taskType === SW_TASKS.WELCOME) {
+    if (swShouldUseDefaultWelcomeTemplate_(out.template)) out.template = '{{welcomeMessage}}';
+    if (String(out.attachmentUrl || '').indexOf('welcomeImageUrl') < 0) {
+      out.attachmentLabel = 'Welcome Journey Image';
+      out.attachmentUrl = '{{welcomeImageUrl}}';
+    }
+  }
+  if (taskType === SW_TASKS.MAP) {
+    if (swShouldUseDefaultMapTemplate_(out.template)) out.template = '{{locationMsg}}';
+    if (String(out.attachmentUrl || '').indexOf('mapLink') < 0) {
+      out.attachmentLabel = 'Map / Instructions';
+      out.attachmentUrl = '{{mapLink}}';
+    }
+  }
+  if (taskType === SW_TASKS.HYBRID) {
+    if (swShouldUseDefaultHybridTemplate_(out.template)) out.template = '{{welcomeMessage}}\n\n{{locationMsg}}';
+    if (String(out.attachmentUrl || '').indexOf('mapLink') < 0) {
+      out.attachmentLabel = 'Map / Instructions';
+      out.attachmentUrl = '{{mapLink}}';
+    }
+  }
+  return out;
+}
+
+function swShouldUseDefaultWelcomeTemplate_(template) {
+  var text = String(template || '');
+  if (!swTrim_(text)) return true;
+  if (text.indexOf('welcomeMessage') < 0) return true;
+  if (text.indexOf('welcomeImageUrl') >= 0) return true;
+  return swContainsGoogleDriveLink_(text);
+}
+
+function swShouldUseDefaultMapTemplate_(template) {
+  var text = String(template || '');
+  if (!swTrim_(text)) return true;
+  if (text.indexOf('locationMsg') < 0) return true;
+  if (text.indexOf('mapLink') >= 0) return true;
+  return swContainsGoogleDriveLink_(text);
+}
+
+function swShouldUseDefaultHybridTemplate_(template) {
+  var text = String(template || '');
+  if (!swTrim_(text)) return true;
+  if (text.indexOf('welcomeMessage') < 0) return true;
+  if (text.indexOf('locationMsg') < 0) return true;
+  if (text.indexOf('mapLink') >= 0) return true;
+  if (/we are looking forward to seeing you/i.test(text)) return true;
+  return swContainsGoogleDriveLink_(text);
+}
+
+function swContainsGoogleDriveLink_(text) {
+  return /\b(?:https?:\/\/)?(?:drive|docs)\.google\.com\//i.test(String(text || ''));
+}
+
+function swRenderedCopyableTemplateForTask_(task, template, data) {
+  var rendered = template && template.template ? swRenderTemplate_(template.template, data) : '';
+  return swIsClientMessageTaskType_(task && task.taskType) ? swStripGoogleDriveLinks_(rendered) : rendered;
+}
+
+function swIsClientMessageTaskType_(taskType) {
+  return [
+    SW_TASKS.WELCOME,
+    SW_TASKS.HYBRID,
+    SW_TASKS.MAP,
+    SW_TASKS.FINAL
+  ].indexOf(taskType) >= 0;
+}
+
+function swStripGoogleDriveLinks_(text) {
+  var out = String(text || '');
+  out = out.replace(/\b(?:https?:\/\/)?(?:drive|docs)\.google\.com\/[^\s<>"')]+/gi, '');
+  out = out.replace(/[ \t]+\n/g, '\n');
+  out = out.replace(/\n{3,}/g, '\n\n');
+  return swTrim_(out);
+}
+
 function swAttachmentsForTask_(task, template, data) {
   var out = [];
   var primaryUrl = template.attachmentUrl ? swRenderTemplate_(template.attachmentUrl, data) : '';
   var primaryLabel = template.attachmentLabel ? swRenderTemplate_(template.attachmentLabel, data) : '';
   swPushAttachment_(out, primaryLabel, primaryUrl);
 
+  if (task.taskType === SW_TASKS.MAP || task.taskType === SW_TASKS.HYBRID) {
+    swPushAttachment_(out, 'Map / Instructions', data.mapLink || '');
+  }
   if (task.taskType === SW_TASKS.WELCOME || task.taskType === SW_TASKS.HYBRID) {
     swPushAttachment_(out, 'Welcome Journey Image', data.welcomeImageUrl || '');
   }

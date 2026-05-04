@@ -101,7 +101,79 @@ function swBuildContext_(ss, readOnly) {
   var ctx = swBuildTaskDetailContext_(ss, readOnly);
   ctx.rosterIndex = swReadRosterAvailabilityIndex_(ss);
   ctx.scheduleChangesIndex = swReadScheduleChangesIndex_(ss);
+  ctx.waxIndex = swReadWaxRequestIndex_(ss);
   return ctx;
+}
+
+function swReadWaxRequestIndex_(ss) {
+  var out = { byRoot: {}, activeByRoot: {}, needsUpdateByRoot: {}, statusOptions: [] };
+  var sheetName = (typeof WAX !== 'undefined' && WAX.SHEET) ? WAX.SHEET : '05_Wax_Requests';
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh || sh.getLastRow() < 2 || sh.getLastColumn() < 1) return out;
+
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var C = {
+    id: swPickIndex_(H, ['WaxRequestID']),
+    root: swPickIndex_(H, ['RootApptID']),
+    so: swPickIndex_(H, ['SO/MO Number', 'SO Number', 'SO#']),
+    customer: swPickIndex_(H, ['Customer Name']),
+    priority: swPickIndex_(H, ['Priority']),
+    status: swPickIndex_(H, ['Wax Print Status']),
+    repNeed: swPickIndex_(H, ['Needed By (Rep)', 'Needed by (Rep)', 'Rep Needed By']),
+    adminDeadline: swPickIndex_(H, ['Wax Deadline (Admin)', 'Wax Admin Deadline']),
+    estPrint: swPickIndex_(H, ['Estimated Print Date']),
+    completed: swPickIndex_(H, ['Completed Print Date']),
+    notes: swPickIndex_(H, ['Status Notes']),
+    link: swPickIndex_(H, ['Master Row Link'])
+  };
+  var now = new Date();
+  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    var root = swTrim_(swCell_(row, C.root));
+    if (!root) continue;
+    var status = swTrim_(swCell_(row, C.status));
+    var statusNorm = swNorm_(status);
+    var active = !/(^|\s)(completed|canceled|cancelled)(\s|$)/.test(statusNorm);
+    var adminDeadline = swTrim_(swCell_(row, C.adminDeadline));
+    var adminMs = adminDeadline ? swDateValue_(adminDeadline) : 0;
+    var needsUpdate = active && (!status || !adminDeadline || (adminMs && adminMs < todayStart));
+    var rowUrl = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit#gid=' + sh.getSheetId() + '&range=A' + (i + 1);
+    var item = {
+      id: swTrim_(swCell_(row, C.id)),
+      root: root,
+      so: swTrim_(swCell_(row, C.so)),
+      customerName: swTrim_(swCell_(row, C.customer)),
+      priority: swTrim_(swCell_(row, C.priority)),
+      status: status,
+      repNeed: swTrim_(swCell_(row, C.repNeed)),
+      adminDeadline: adminDeadline,
+      estPrint: swTrim_(swCell_(row, C.estPrint)),
+      completed: swTrim_(swCell_(row, C.completed)),
+      notes: swTrim_(swCell_(row, C.notes)),
+      link: swTrim_(swCell_(row, C.link)) || rowUrl,
+      rowUrl: rowUrl,
+      active: active,
+      needsUpdate: needsUpdate
+    };
+    if (!out.byRoot[root]) out.byRoot[root] = [];
+    out.byRoot[root].push(item);
+    if (active) {
+      if (!out.activeByRoot[root]) out.activeByRoot[root] = [];
+      out.activeByRoot[root].push(item);
+    }
+    if (needsUpdate) {
+      if (!out.needsUpdateByRoot[root]) out.needsUpdateByRoot[root] = [];
+      out.needsUpdateByRoot[root].push(item);
+    }
+  }
+  try {
+    if (typeof wax_statusOptions === 'function') out.statusOptions = wax_statusOptions();
+  } catch (_) {}
+  return out;
 }
 
 function swReadAppointments_(ss) {
@@ -136,6 +208,17 @@ function swReadAppointments_(ss) {
     reportUrl: swPickIndex_(H, ['Client Status Report URL', 'Report URL']),
     quotationUrl: swPickIndex_(H, ['Quotation URL', 'QuotationURL', 'Quote URL']),
     tracker3d: swPickIndex_(H, ['3D Tracker', '3D Log', '3D Tracker URL']),
+    salesStage: swPickIndex_(H, ['Sales Stage']),
+    convStatus: swPickIndex_(H, ['Conversion Status']),
+    customOrder: swPickIndex_(H, ['Custom Order Status']),
+    inProduction: swPickIndex_(H, ['In Production Status']),
+    nextSteps: swPickIndex_(H, ['Next Steps']),
+    designRequest: swPickIndex_(H, ['Design Request']),
+    deadline3d: swPickIndex_(H, ['3D Deadline']),
+    productionDeadline: swPickIndex_(H, ['Production Deadline', 'Prod. Deadline']),
+    waxStatus: swPickIndex_(H, ['Wax Print Status']),
+    waxDeadlineAdmin: swPickIndex_(H, ['Wax Deadline (Admin)', 'Wax Admin Deadline']),
+    waxRequestUrl: swPickIndex_(H, ['Wax Request URL']),
     centerStoneStatus: swPickIndex_(H, ['Center Stone Order Status', 'Center Stone Status', 'CSOS', 'Diamond Memo Status', 'DV Status']),
     dvStonesJson: swPickIndex_(H, ['DV Stones (JSON Lines)', 'DV Stones JSON Lines', 'DV Stones-JSON Lines']),
     dvStonesSummary: swPickIndex_(H, ['DV Stones Summary', 'DV Stones- Summary']),
@@ -160,7 +243,7 @@ function swReadAppointments_(ss) {
       phone: swNormPhone_(swCell_(drow, idx.phoneNorm) || swCell_(drow, idx.phone)),
       brand: swTrim_(swCell_(drow, idx.brand)),
       visitDate: swTrim_(swCell_(drow, idx.visitDate)),
-      visitTime: swTrim_(swCell_(drow, idx.visitTime)),
+      visitTime: swFormatAppointmentTime_(swCell_(drow, idx.visitTime), swCell_(vrow, idx.visitTime)),
       visitType: swTrim_(swCell_(drow, idx.visitType)),
       visitDateRaw: swCell_(vrow, idx.visitDate),
       visitTimeRaw: swCell_(vrow, idx.visitTime),
@@ -174,6 +257,17 @@ function swReadAppointments_(ss) {
       reportUrl: swTrim_(swCell_(drow, idx.reportUrl)),
       quotationUrl: swTrim_(swCell_(drow, idx.quotationUrl)),
       tracker3dUrl: swTrim_(swCell_(drow, idx.tracker3d)),
+      salesStage: swTrim_(swCell_(drow, idx.salesStage)),
+      convStatus: swTrim_(swCell_(drow, idx.convStatus)),
+      customOrder: swTrim_(swCell_(drow, idx.customOrder)),
+      inProduction: swTrim_(swCell_(drow, idx.inProduction)),
+      nextSteps: swTrim_(swCell_(drow, idx.nextSteps)),
+      designRequest: swTrim_(swCell_(drow, idx.designRequest)),
+      deadline3d: swTrim_(swCell_(drow, idx.deadline3d)),
+      productionDeadline: swTrim_(swCell_(drow, idx.productionDeadline)),
+      waxStatus: swTrim_(swCell_(drow, idx.waxStatus)),
+      waxDeadlineAdmin: swTrim_(swCell_(drow, idx.waxDeadlineAdmin)),
+      waxRequestUrl: swTrim_(swCell_(drow, idx.waxRequestUrl)),
       centerStoneStatus: swTrim_(swCell_(drow, idx.centerStoneStatus)),
       dvStonesJson: swTrim_(swCell_(drow, idx.dvStonesJson)),
       dvStonesSummary: swTrim_(swCell_(drow, idx.dvStonesSummary)),

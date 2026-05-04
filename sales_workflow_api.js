@@ -911,7 +911,7 @@ function sw_getTaskDetail(authToken, taskId) {
     mark('payloadParse');
     var template = ctx.templates[task.taskType] || swDefaultTemplate_(task.taskType);
     var renderData = swRenderDataForTask_(task, payload);
-    var renderedTemplate = template.template ? swRenderTemplate_(template.template, renderData) : '';
+    var renderedTemplate = swRenderedCopyableTemplateForTask_(task, template, renderData);
     var renderedAttachmentUrl = template.attachmentUrl ? swRenderTemplate_(template.attachmentUrl, renderData) : '';
     var renderedAttachmentLabel = template.attachmentLabel ? swRenderTemplate_(template.attachmentLabel, renderData) : '';
     var attachments = swAttachmentsForTask_(task, template, renderData);
@@ -930,6 +930,7 @@ function sw_getTaskDetail(authToken, taskId) {
         url: renderedAttachmentUrl
       },
       attachments: attachments,
+      formOptions: typeof swTaskFormOptions_ === 'function' ? swTaskFormOptions_(ss, task) : {},
       missingFields: missingFields,
       checklist: checklist,
       canComplete: swCanActOnTask_(task, user),
@@ -978,16 +979,19 @@ function sw_completeTask(authToken, taskId, data) {
   var task = swGetTaskById_(ss, taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
-  if (task.status !== SW_STATUSES.PENDING) throw new Error('Only pending tasks can be completed.');
+  if (!swTaskPendingLike_(task, new Date().getTime())) throw new Error('Only pending or due snoozed tasks can be completed.');
 
   data = data || {};
   swValidateCompletion_(ss, task, data);
   var diamondAction = swDiamondHandleTaskCompletion_(ss, task, data, user);
+  var postConsultAction = typeof swHandlePostConsultTaskCompletion_ === 'function'
+    ? swHandlePostConsultTaskCompletion_(ss, task, data, user)
+    : null;
 
   var template = swTemplateForType_(ss, task.taskType);
   var payload = swParseJson_(task.payloadJson, {});
   var renderData = swRenderDataForTask_(task, payload);
-  var renderedTemplate = template.template ? swRenderTemplate_(template.template, renderData) : '';
+  var renderedTemplate = swRenderedCopyableTemplateForTask_(task, template, renderData);
   var renderedAttachments = swAttachmentsForTask_(task, template, renderData);
   payload.completion = data;
   payload.renderedTemplate = renderedTemplate;
@@ -996,6 +1000,7 @@ function sw_completeTask(authToken, taskId, data) {
   payload.completedByEmail = user.email;
   payload.completedAt = swIso_(new Date());
   if (diamondAction) payload.diamondAction = diamondAction;
+  if (postConsultAction) payload.postConsultAction = postConsultAction;
 
   var oldOwner = task.currentOwner;
   task.status = SW_STATUSES.COMPLETED;
@@ -1004,6 +1009,10 @@ function sw_completeTask(authToken, taskId, data) {
   task.completedAt = payload.completedAt;
   task.updatedAt = payload.completedAt;
   task.lastEvent = 'COMPLETE';
+  task.snoozeUntil = '';
+  task.snoozeReason = '';
+  task.snoozedBy = '';
+  task.snoozedAt = '';
   task.payloadJson = swStringify_(payload);
   swWriteTaskRow_(ss, task);
   swAppendTaskLog_(ss, 'COMPLETE', task, user, oldOwner, task.currentOwner, data);
@@ -1014,6 +1023,56 @@ function sw_completeTask(authToken, taskId, data) {
     task: swGetTaskById_(ss, taskId),
     generation: generation
   };
+}
+
+/**
+ * Mutating task action: snoozes a pending workflow task until a future date.
+ * Snoozed tasks are hidden from active queues and do not count late until then.
+ */
+function sw_snoozeTask(authToken, taskId, data) {
+  if (/^SW\|/.test(String(authToken || ''))) {
+    data = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
+  data = data || {};
+  var untilDate = swTrim_(data.untilDate || data.date || '');
+  var reason = swTrim_(data.reason || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) throw new Error('Select a valid snooze date.');
+  if (!reason) throw new Error('Enter a snooze reason.');
+
+  var parts = untilDate.split('-').map(Number);
+  var until = new Date(parts[0], parts[1] - 1, parts[2], 9, 30, 0, 0);
+  var today = new Date();
+  var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+  if (until.getTime() < todayStart.getTime()) throw new Error('Snooze date must be today or later.');
+
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  var user = swAuthUserForApi_(ss, authToken);
+  var task = swGetTaskById_(ss, taskId);
+  if (!task) throw new Error('Task not found: ' + taskId);
+  if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
+  if (task.status !== SW_STATUSES.PENDING && task.status !== SW_STATUSES.SNOOZED) {
+    throw new Error('Only pending or snoozed tasks can be snoozed.');
+  }
+
+  var oldOwner = task.currentOwner;
+  var now = swIso_(new Date());
+  task.status = SW_STATUSES.SNOOZED;
+  task.snoozeUntil = swIso_(until);
+  task.snoozeReason = reason;
+  task.snoozedBy = user.name || user.email;
+  task.snoozedAt = now;
+  task.updatedAt = now;
+  task.lastEvent = 'SNOOZE';
+  swWriteTaskRow_(ss, task);
+  swAppendTaskLog_(ss, 'SNOOZE', task, user, oldOwner, task.currentOwner, {
+    untilDate: untilDate,
+    snoozeUntil: task.snoozeUntil,
+    reason: reason
+  });
+  return { ok: true, task: swGetTaskById_(ss, taskId) };
 }
 
 /**

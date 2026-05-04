@@ -117,7 +117,8 @@ function swMigrateTemplateRows_(sh) {
     var rowIndex = i + 2;
     var taskType = swTrim_(row[0]);
     if (taskType === SW_TASKS.WELCOME) {
-      if (String(row[3] || '').indexOf('welcomeMessage') < 0) {
+      var welcomeTemplate = String(row[3] || '');
+      if (swShouldUseDefaultWelcomeTemplate_(welcomeTemplate)) {
         sh.getRange(rowIndex, 4).setValue('{{welcomeMessage}}');
       }
       if (String(row[5] || '').indexOf('welcomeImageUrl') < 0) {
@@ -125,11 +126,26 @@ function swMigrateTemplateRows_(sh) {
         sh.getRange(rowIndex, 6).setValue('{{welcomeImageUrl}}');
       }
     }
-    if (taskType === SW_TASKS.MAP && String(row[3] || '').indexOf('locationMsg') < 0) {
-      sh.getRange(rowIndex, 4).setValue('{{locationMsg}}\n{{mapLink}}');
+    if (taskType === SW_TASKS.MAP) {
+      if (swShouldUseDefaultMapTemplate_(String(row[3] || ''))) {
+        sh.getRange(rowIndex, 4).setValue('{{locationMsg}}');
+      }
+      if (String(row[5] || '').indexOf('mapLink') < 0) {
+        sh.getRange(rowIndex, 5).setValue('Map / Instructions');
+        sh.getRange(rowIndex, 6).setValue('{{mapLink}}');
+      }
     }
-    if (taskType === SW_TASKS.HYBRID && String(row[3] || '').indexOf('locationMsg') < 0) {
-      sh.getRange(rowIndex, 4).setValue(String(row[3] || '') + '\n\n{{locationMsg}}\n{{mapLink}}');
+    if (taskType === SW_TASKS.HYBRID) {
+      if (swShouldUseDefaultHybridTemplate_(String(row[3] || ''))) {
+        sh.getRange(rowIndex, 4).setValue('{{welcomeMessage}}\n\n{{locationMsg}}');
+      }
+      if (String(row[5] || '').indexOf('mapLink') < 0) {
+        sh.getRange(rowIndex, 5).setValue('Map / Instructions');
+        sh.getRange(rowIndex, 6).setValue('{{mapLink}}');
+      }
+    }
+    if (taskType === SW_TASKS.CHECKLIST && String(row[6] || '').indexOf('consult_outcome') < 0) {
+      sh.getRange(rowIndex, 7).setValue('[{"id":"printed_intake","label":"Printed intake form","required":true},{"id":"recorded_appointment","label":"Recorded appointment","required":true},{"id":"uploaded_recap","label":"Uploaded recap","required":true},{"id":"uploaded_photos","label":"Uploaded intake photos","required":true},{"id":"goody_bag","label":"Gave goody bag","required":true},{"id":"consult_outcome","label":"Recorded consult outcome and next client step for JOC handoff","required":true},{"id":"custom_order_handoff","label":"Added 3D/wax/design notes when a custom order may be needed","required":true}]');
     }
   }
 }
@@ -171,13 +187,18 @@ function swDefaultTemplates_() {
   return [
     [SW_TASKS.ASSIGN, 'Assign Appointment', 'System-owned assignment record. No manual action needed.', '', '', '', '', 'Assigned'],
     [SW_TASKS.WELCOME, 'Send Welcome to Your Ring Journey Text', 'Send the brand-specific welcome message and welcome image, then mark it sent.', '{{welcomeMessage}}', 'Welcome Journey Image', '{{welcomeImageUrl}}', '', 'Mark Sent'],
-    [SW_TASKS.HYBRID, 'Send Hybrid Welcome + Instructions', 'Appointment is within 24 hours. Send the combined welcome and instructions.', 'Hi {{customerName}}, we are looking forward to seeing you {{appointmentDate}} at {{appointmentTime}}. Please review the map/instructions before you arrive. Your stylist is {{assignedRep}}.\n\n{{locationMsg}}\n{{mapLink}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
-    [SW_TASKS.MAP, 'Send Map & Instructions', 'Send the map and appointment instructions.', '{{locationMsg}}\n{{mapLink}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
+    [SW_TASKS.HYBRID, 'Send Hybrid Welcome + Instructions', 'Appointment is within 24 hours. Send the combined welcome and instructions.', '{{welcomeMessage}}\n\n{{locationMsg}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
+    [SW_TASKS.MAP, 'Send Map & Instructions', 'Send the map and appointment instructions.', '{{locationMsg}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
     [SW_TASKS.REVIEW, 'Review Appointment Folder', 'Review the intake form, inspiration images, and customer folder before the appointment.', '', 'Client Folder', '{{clientFolder}}', '', 'Acknowledged & Reviewed'],
-    [SW_TASKS.CHECKLIST, 'Appointment Day Checklist', 'Complete each appointment-day item before marking complete.', '', '', '', '[{"id":"printed_intake","label":"Printed intake form","required":true},{"id":"recorded_appointment","label":"Recorded appointment","required":true},{"id":"uploaded_recap","label":"Uploaded recap","required":true},{"id":"uploaded_photos","label":"Uploaded intake photos","required":true},{"id":"goody_bag","label":"Gave goody bag","required":true}]', 'Complete Checklist'],
+    [SW_TASKS.CHECKLIST, 'Appointment Day Checklist', 'Complete each appointment-day item before marking complete. The last two items are the required handoff that lets JOC pick up post-consult operations without scanning the master sheet.', '', '', '', '[{"id":"printed_intake","label":"Printed intake form","required":true},{"id":"recorded_appointment","label":"Recorded appointment","required":true},{"id":"uploaded_recap","label":"Uploaded recap","required":true},{"id":"uploaded_photos","label":"Uploaded intake photos","required":true},{"id":"goody_bag","label":"Gave goody bag","required":true},{"id":"consult_outcome","label":"Recorded consult outcome and next client step for JOC handoff","required":true},{"id":"custom_order_handoff","label":"Added 3D/wax/design notes when a custom order may be needed","required":true}]', 'Complete Checklist'],
     [SW_TASKS.PROCESS, 'Process Appointment Data', 'Upload the recording, generate the recap draft, and submit it here.', '', 'Client Folder', '{{clientFolder}}', '', 'Submit Recap Draft'],
     [SW_TASKS.APPROVE, 'Approve/Edit Recap Message', 'Review the JOC recap draft. Edit if needed, then finalize.', '{{recapDraft}}', '', '', '', 'Finalized'],
     [SW_TASKS.FINAL, 'Send Final Recap Text', 'Send the finalized recap message, then mark it sent.', '{{approvedText}}', '', '', '', 'Mark Sent'],
+    [SW_TASKS.POST_CONSULT_STATUS, 'Post-Consult Client Status Update', 'JOC owns the first post-consult operational checkpoint. Update the client status, record next steps, and decide whether 3D or wax work is needed. If 3D is not needed, enter the reason in the task form.', 'Customer: {{customerName}}\nAppointment: {{appointmentDateTime}}\nAssigned rep: {{assignedRep}}\nCurrent SO: {{soNumber}}\n3D deadline: {{deadline3d}}\nWax status: {{waxStatus}}', 'Client Status Report', '{{reportUrl}}', '', 'Submit Client Status'],
+    [SW_TASKS.START_3D, 'Start 3D Design', 'Start the 3D design from this dashboard task using the same Start 3D / Assign SO workflow. If 3D is not needed, mark No 3D Needed with a reason.', 'Customer: {{customerName}}\nBrand: {{brandRaw}}\nDesign request: {{designRequest}}\nNext steps: {{nextSteps}}\nClient folder: {{clientFolder}}', 'Client Folder', '{{clientFolder}}', '', 'Start 3D'],
+    [SW_TASKS.RECORD_3D_DEADLINE, 'Record 3D Deadline', 'Record the 3D deadline the day after Start 3D. If the deadline cannot be obtained today, snooze this task with a reason so it is not counted late until the snooze date.', 'Customer: {{customerName}}\nSO: {{soNumber}}\n3D tracker: {{tracker3dUrl}}\nCurrent 3D deadline: {{deadline3d}}', '3D Tracker', '{{tracker3dUrl}}', '', 'Save 3D Deadline'],
+    [SW_TASKS.REQUEST_WAX, 'Request Wax Print', 'Create the wax request from the dashboard so the Wax queue, Master mirror fields, and request folder stay aligned.', 'Customer: {{customerName}}\nSO/MO: {{soNumber}}\nWax status: {{waxStatus}}\nNext steps: {{nextSteps}}', '', '', '', 'Create Wax Request'],
+    [SW_TASKS.UPDATE_WAX, 'Update Wax Request', 'Update open wax requests that are missing an admin deadline/status or are past their admin deadline.', 'Customer: {{customerName}}\nOpen wax requests: {{waxRequestSummary}}', 'Wax Request', '{{waxRequestUrl}}', '', 'Update Wax'],
     [SW_TASKS.DIAMOND_PROPOSE, 'Propose Diamonds for Viewing', 'For Diamond Viewing appointments, capture the structured customer requirements, then propose stones in the dashboard. Check the In-Stock Diamonds tab first if store inventory may work for the appointment date. Completing this task writes the customer requirements to Sheet 100, validates stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps the appointment context aligned.', 'Customer: {{customerName}}\nAppointment: {{appointmentDate}} {{appointmentTime}}\nDiamond status: {{diamondSummary}}\nLatest safe proposal target: {{diamondProposalTarget}}', '200_ Diamond Tracker', '{{diamondTrackerUrl}}', '[{"id":"reviewed_customer_needs","label":"Captured customer requirements, deciding factor, and variety strategy in this task","required":true},{"id":"checked_in_stock_options","label":"Checked in-stock diamonds and return dates where relevant","required":true},{"id":"entered_proposed_stones","label":"Entered proposed diamonds in this dashboard task","required":true},{"id":"confirmed_writeback","label":"Ready to write requirements to Sheet 100 and proposed diamonds to 200_","required":true}]', 'Submit Proposed Diamonds'],
     [SW_TASKS.DIAMOND_QUOTE, 'Prepare Diamond Viewing Quotation', 'Fill the quotation sheet and complete price research against the structured customer requirements from Sheet 100. Use the refresh buttons on the task card if 200_ diamond data or 3D tracker details changed after the quote was created.', 'Customer requirements:\n{{diamondCustomerRequirements}}\n\nQuotation: {{quotationUrl}}\n3D Tracker: {{tracker3dUrl}}\nDiamond tracker: {{diamondTrackerUrl}}\nDiamond status: {{diamondSummary}}', 'Quotation Sheet', '{{quotationUrl}}', '[{"id":"quote_link_checked","label":"Quotation sheet link opens correctly","required":true},{"id":"requirements_reviewed","label":"Reviewed customer requirements and variety strategy from Sheet 100","required":true},{"id":"diamonds_refreshed","label":"Diamond options refreshed from 200_ or confirmed current","required":true},{"id":"settings_refreshed","label":"3D setting details refreshed or confirmed current","required":true},{"id":"price_research_done","label":"Price research completed in quotation sheet","required":true}]', 'Quotation Ready'],
     [SW_TASKS.DIAMOND_ORDER, 'Order Diamonds', 'Review each proposed diamond against the structured customer requirements from Sheet 100. Select On the Way or Not Approved for every proposed stone; completion writes order status/date to 200_ and creates acknowledgement tasks for JOC and the assigned rep.', 'Customer requirements:\n{{diamondCustomerRequirements}}\n\nPending proposed stones: {{diamondActionSummary}}\nTracker: {{diamondTrackerUrl}}', '200_ Diamond Tracker', '{{diamondTrackerUrl}}', '[{"id":"reviewed_customer_requirements","label":"Reviewed proposed diamonds against the Sheet 100 customer requirements","required":true},{"id":"selected_every_stone","label":"Selected On the Way or Not Approved for every proposed diamond","required":true},{"id":"confirmed_order_date","label":"Confirmed Purchased / Ordered Date is accurate","required":true},{"id":"ready_to_notify_team","label":"Ready for JOC and assigned rep to acknowledge ordered diamonds","required":true}]', 'Confirm Order Updates'],

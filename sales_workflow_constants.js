@@ -16,7 +16,8 @@ var SW_SHEETS = {
 var SW_STATUSES = {
   PENDING: 'Pending',
   COMPLETED: 'Completed',
-  BLOCKED: 'Blocked'
+  BLOCKED: 'Blocked',
+  SNOOZED: 'Snoozed'
 };
 var SW_TASKS = {
   ASSIGN: 'ASSIGN_APPOINTMENT',
@@ -28,6 +29,11 @@ var SW_TASKS = {
   PROCESS: 'PROCESS_APPOINTMENT_DATA',
   APPROVE: 'APPROVE_RECAP_MESSAGE',
   FINAL: 'SEND_FINAL_RECAP',
+  POST_CONSULT_STATUS: 'POST_CONSULT_CLIENT_STATUS',
+  START_3D: 'START_3D_DESIGN',
+  RECORD_3D_DEADLINE: 'RECORD_3D_DEADLINE',
+  REQUEST_WAX: 'REQUEST_WAX_PRINT',
+  UPDATE_WAX: 'UPDATE_WAX_REQUEST',
   DIAMOND_PROPOSE: 'PROPOSE_DIAMONDS',
   DIAMOND_QUOTE: 'PREPARE_DV_QUOTATION',
   DIAMOND_ORDER: 'ORDER_DIAMONDS',
@@ -79,7 +85,11 @@ var SW_TASK_HEADERS = [
   'Payload JSON',
   'Template Key',
   'Instructions',
-  'Primary Action'
+  'Primary Action',
+  'Snooze Until',
+  'Snooze Reason',
+  'Snoozed By',
+  'Snoozed At'
 ];
 var SW_TASK_LIST_HEADERS = [
   'TaskID',
@@ -101,7 +111,9 @@ var SW_TASK_LIST_HEADERS = [
   'Coverage Reason',
   'Due At',
   'Status',
-  'Primary Action'
+  'Primary Action',
+  'Snooze Until',
+  'Snooze Reason'
 ];
 var SW_LOG_HEADERS = [
   'Event At',

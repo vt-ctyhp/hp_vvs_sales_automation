@@ -32,6 +32,10 @@ function swTimeParts_(raw, display) {
   if (raw instanceof Date && !isNaN(raw.getTime())) {
     return { h: raw.getHours(), min: raw.getMinutes() };
   }
+  if (typeof raw === 'number' && isFinite(raw)) {
+    var totalMinutes = Math.round((raw % 1) * 24 * 60);
+    return { h: Math.floor(totalMinutes / 60) % 24, min: totalMinutes % 60 };
+  }
   var s = swTrim_(display || raw);
   if (!s) return { h: 9, min: 0 };
   var m12 = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i.exec(s);
@@ -45,6 +49,52 @@ function swTimeParts_(raw, display) {
   var m24 = /^(\d{1,2}):(\d{2})/.exec(s);
   if (m24) return { h: Number(m24[1]), min: Number(m24[2]) };
   return { h: 9, min: 0 };
+}
+
+function swFormatAppointmentTime_(display, raw) {
+  var s = swTrim_(display);
+  if (!s && raw == null) return '';
+  var parsed = swParseTimeParts_(raw, s);
+  if (!parsed) return s;
+  var hour12 = parsed.h % 12 || 12;
+  var suffix = parsed.h < 12 ? 'am' : 'pm';
+  return swPad2_(hour12) + ':' + swPad2_(parsed.min) + ' ' + suffix;
+}
+
+function swParseTimeParts_(raw, display) {
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    return { h: raw.getHours(), min: raw.getMinutes() };
+  }
+  if (typeof raw === 'number' && isFinite(raw)) {
+    var totalMinutes = Math.round((raw % 1) * 24 * 60);
+    return { h: Math.floor(totalMinutes / 60) % 24, min: totalMinutes % 60 };
+  }
+  var s = swTrim_(display || raw);
+  if (!s) return null;
+  var m12 = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*(AM|PM)$/i.exec(s);
+  if (m12) {
+    var hour12 = Number(m12[1]);
+    if (!hour12) hour12 = 12;
+    hour12 = ((hour12 - 1) % 12) + 1;
+    var suffix = m12[3].toUpperCase();
+    var hour = hour12;
+    if (suffix === 'PM' && hour !== 12) hour += 12;
+    if (suffix === 'AM' && hour === 12) hour = 0;
+    return { h: hour, min: Number(m12[2]) };
+  }
+  var m24 = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(s);
+  if (m24) {
+    var hour24 = Number(m24[1]);
+    var minute = Number(m24[2]);
+    if (hour24 >= 0 && hour24 <= 23 && minute >= 0 && minute <= 59) {
+      return { h: hour24, min: minute };
+    }
+  }
+  return null;
+}
+
+function swPad2_(value) {
+  return String(value).length < 2 ? '0' + value : String(value);
 }
 
 function swDayOfDue_(visitAt) {
@@ -67,16 +117,41 @@ function swDateValue_(iso) {
   return isNaN(d.getTime()) ? 9999999999999 : d.getTime();
 }
 
+function swSnoozeDateValue_(task) {
+  if (!task || !task.snoozeUntil) return 0;
+  var d = new Date(task.snoozeUntil);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function swTaskSnoozedInFuture_(task, nowMs) {
+  if (!task || task.status !== SW_STATUSES.SNOOZED) return false;
+  var snoozeMs = swSnoozeDateValue_(task);
+  return snoozeMs && snoozeMs > (nowMs || new Date().getTime());
+}
+
+function swTaskPendingLike_(task, nowMs) {
+  if (!task) return false;
+  if (task.status === SW_STATUSES.PENDING) return true;
+  if (task.status === SW_STATUSES.SNOOZED) return !swTaskSnoozedInFuture_(task, nowMs || new Date().getTime());
+  return false;
+}
+
 function swIsOverdue_(task, nowMs) {
-  return task.status === SW_STATUSES.PENDING && swDateValue_(task.dueAt) < nowMs;
+  if (!swTaskPendingLike_(task, nowMs)) return false;
+  return swDateValue_(task.dueAt) < nowMs;
 }
 
 function swTaskDueForQueue_(task, nowMs) {
+  if (!swTaskPendingLike_(task, nowMs)) return false;
   if (!task.dueAt) return true;
   return swDateValue_(task.dueAt) <= nowMs;
 }
 
 function swDueLabel_(task, nowMs) {
+  if (swTaskSnoozedInFuture_(task, nowMs)) {
+    var sd = new Date(task.snoozeUntil);
+    return 'Snoozed until ' + Utilities.formatDate(sd, swTimezone_(), 'MMM d, h:mm a');
+  }
   var t = swDateValue_(task.dueAt);
   if (t === 9999999999999) return 'No due time';
   var diff = t - nowMs;

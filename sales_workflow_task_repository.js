@@ -25,9 +25,11 @@ function swReadTaskListState_(ss, readOnly, options) {
   if (lastRow < 2) return { rows: [], byId: {}, tasks: [] };
 
   var statusCol = swTaskHeaderColumn_('Status');
+  var snoozeCol = swTaskHeaderColumn_('Snooze Until');
+  var readCols = Math.min(sh.getLastColumn(), Math.max(statusCol, snoozeCol, SW_TASK_HEADERS.length));
   if (statusCol <= 0 || sh.getLastColumn() < statusCol) return swReadTaskState_(ss, readOnly, options);
 
-  var rows = sh.getRange(2, 1, lastRow - 1, statusCol).getDisplayValues();
+  var rows = sh.getRange(2, 1, lastRow - 1, readCols).getDisplayValues();
   var rawTasks = [];
 
   for (var i = 0; i < rows.length; i++) {
@@ -80,6 +82,7 @@ function swBetterTaskRecord_(a, b) {
 function swTaskCanonicalRank_(t) {
   var statusRank = 0;
   if (t.status === SW_STATUSES.BLOCKED) statusRank = 100;
+  if (t.status === SW_STATUSES.SNOOZED) statusRank = 150;
   if (t.status === SW_STATUSES.PENDING) statusRank = 200;
   if (t.status === SW_STATUSES.COMPLETED) statusRank = 300;
   if (t.claimedBy) statusRank += 20;
@@ -108,7 +111,7 @@ function swTaskListFromValues_(row, primaryAction, rowNumber) {
     customerName: val('Customer Name'),
     brand: val('Brand'),
     visitDate: val('Visit Date'),
-    visitTime: val('Visit Time'),
+    visitTime: swFormatAppointmentTime_(val('Visit Time')),
     visitType: val('Visit Type'),
     lifecycleStage: val('Lifecycle Stage'),
     taskType: val('Task Type'),
@@ -122,6 +125,8 @@ function swTaskListFromValues_(row, primaryAction, rowNumber) {
     dueAt: val('Due At'),
     status: val('Status') || SW_STATUSES.PENDING,
     primaryAction: primaryAction || '',
+    snoozeUntil: val('Snooze Until'),
+    snoozeReason: val('Snooze Reason'),
     rowNumber: rowNumber || 0
   };
 }
@@ -134,7 +139,7 @@ function swTaskFromRow_(r) {
     customerName: r['Customer Name'] || '',
     brand: r['Brand'] || '',
     visitDate: r['Visit Date'] || '',
-    visitTime: r['Visit Time'] || '',
+    visitTime: swFormatAppointmentTime_(r['Visit Time'] || ''),
     visitType: r['Visit Type'] || '',
     lifecycleStage: r['Lifecycle Stage'] || '',
     taskType: r['Task Type'] || '',
@@ -160,6 +165,10 @@ function swTaskFromRow_(r) {
     templateKey: r['Template Key'] || '',
     instructions: r['Instructions'] || '',
     primaryAction: r['Primary Action'] || '',
+    snoozeUntil: r['Snooze Until'] || '',
+    snoozeReason: r['Snooze Reason'] || '',
+    snoozedBy: r['Snoozed By'] || '',
+    snoozedAt: r['Snoozed At'] || '',
     rowNumber: r.__rowNumber || 0
   };
 }
@@ -178,12 +187,11 @@ function swBuildVisibleTaskBuckets_(state, user) {
   var tasks = state.tasks || Object.keys(state.byId || {}).map(function (id) { return state.byId[id]; });
   var buckets = { mine: [], coverage: [], admin: [] };
   tasks.forEach(function (t) {
-    if (t.status === SW_STATUSES.PENDING && swTaskDueForQueue_(t, now) && swTaskOwnedByUser_(t, user)) {
+    if (swTaskDueForQueue_(t, now) && swTaskOwnedByUser_(t, user)) {
       buckets.mine.push(t);
     }
     if ((user.isJoc || user.isAdmin) && t.ownerRole === 'JOC' &&
       swTaskDueForQueue_(t, now) &&
-      t.status === SW_STATUSES.PENDING &&
       (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'))) {
       buckets.coverage.push(t);
     }
@@ -202,7 +210,7 @@ function swTaskStateMayNeedNameIdentity_(state) {
   var tasks = state.tasks || [];
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
-    if (t.status !== SW_STATUSES.PENDING) continue;
+    if (!swTaskPendingLike_(t, new Date().getTime())) continue;
     if (t.currentOwnerEmail) continue;
     if (swNorm_(t.ownerRole) === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) ||
         swNorm_(t.ownerRole) === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) continue;
@@ -243,7 +251,9 @@ function swPublicTask_(t, nowMs) {
     dueAt: t.dueAt,
     dueLabel: swDueLabel_(t, nowMs || new Date().getTime()),
     status: t.status,
-    primaryAction: t.primaryAction
+    primaryAction: t.primaryAction,
+    snoozeUntil: t.snoozeUntil || '',
+    snoozeReason: t.snoozeReason || ''
   };
 }
 
@@ -376,7 +386,11 @@ function swTaskToRow_(task) {
     'Payload JSON': task.payloadJson,
     'Template Key': task.templateKey,
     'Instructions': task.instructions,
-    'Primary Action': task.primaryAction
+    'Primary Action': task.primaryAction,
+    'Snooze Until': task.snoozeUntil,
+    'Snooze Reason': task.snoozeReason,
+    'Snoozed By': task.snoozedBy,
+    'Snoozed At': task.snoozedAt
   };
   return SW_TASK_HEADERS.map(function (h) { return map[h] == null ? '' : map[h]; });
 }

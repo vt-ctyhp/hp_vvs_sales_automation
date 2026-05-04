@@ -31,6 +31,7 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
   }
 
   swGenerateDiamondWorkflowTasks_(ss, state, ctx, rec, now, summary, visitAt);
+  swGeneratePostConsultTasks_(ss, state, ctx, rec, now, summary);
 
   var checklistId = swTaskId_(rec, SW_TASKS.CHECKLIST);
   var processId = swTaskId_(rec, SW_TASKS.PROCESS);
@@ -60,6 +61,7 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
   var template = ctx.templates[taskType] || swDefaultTemplate_(taskType);
   var existing = state.byId[swTaskId_(rec, taskType)] || null;
   var owner = swResolveOwner_(ss, ctx, rec, ownerRole, dueAt || now, existing);
+  var visitTime = swFormatAppointmentTime_(rec.visitTime, rec.visitTimeRaw);
   var payload = {
     appointment: {
       row: rec.row,
@@ -71,7 +73,7 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
       phone: rec.phone,
       brand: rec.brand,
       visitDate: rec.visitDate,
-      visitTime: rec.visitTime,
+      visitTime: visitTime,
       visitType: rec.visitType,
       assignedRep: rec.assignedRep,
       assignedRepEmail: rec.assignedRepEmail,
@@ -81,6 +83,17 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
       reportUrl: rec.reportUrl,
       quotationUrl: rec.quotationUrl,
       tracker3dUrl: rec.tracker3dUrl,
+      salesStage: rec.salesStage,
+      convStatus: rec.convStatus,
+      customOrder: rec.customOrder,
+      inProduction: rec.inProduction,
+      nextSteps: rec.nextSteps,
+      designRequest: rec.designRequest,
+      deadline3d: rec.deadline3d,
+      productionDeadline: rec.productionDeadline,
+      waxStatus: rec.waxStatus,
+      waxDeadlineAdmin: rec.waxDeadlineAdmin,
+      waxRequestUrl: rec.waxRequestUrl,
       centerStoneStatus: rec.centerStoneStatus,
       dvStonesSummary: rec.dvStonesSummary,
       dvCustomerLookingFor: rec.dvCustomerLookingFor,
@@ -105,7 +118,7 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
     customerName: rec.name,
     brand: rec.brand,
     visitDate: rec.visitDate,
-    visitTime: rec.visitTime,
+    visitTime: visitTime,
     visitType: rec.visitType,
     lifecycleStage: swLifecycleForTask_(taskType),
     taskType: taskType,
@@ -131,6 +144,10 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
     templateKey: taskType,
     instructions: template.instructions,
     primaryAction: template.primaryAction,
+    snoozeUntil: existing ? existing.snoozeUntil : '',
+    snoozeReason: existing ? existing.snoozeReason : '',
+    snoozedBy: existing ? existing.snoozedBy : '',
+    snoozedAt: existing ? existing.snoozedAt : '',
     rowNumber: existing ? existing.rowNumber : 0
   };
 }
@@ -414,6 +431,11 @@ function swLifecycleForTask_(taskType) {
   map[SW_TASKS.PROCESS] = 'Post-Appointment';
   map[SW_TASKS.APPROVE] = 'Post-Appointment';
   map[SW_TASKS.FINAL] = 'Final Follow-Up';
+  map[SW_TASKS.POST_CONSULT_STATUS] = 'Post-Consult Ops';
+  map[SW_TASKS.START_3D] = 'Post-Consult Ops';
+  map[SW_TASKS.RECORD_3D_DEADLINE] = 'Post-Consult Ops';
+  map[SW_TASKS.REQUEST_WAX] = 'Wax';
+  map[SW_TASKS.UPDATE_WAX] = 'Wax';
   map[SW_TASKS.DIAMOND_PROPOSE] = 'Diamond Viewing';
   map[SW_TASKS.DIAMOND_QUOTE] = 'Diamond Viewing';
   map[SW_TASKS.DIAMOND_ORDER] = 'Diamond Order';
