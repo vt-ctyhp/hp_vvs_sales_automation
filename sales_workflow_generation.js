@@ -83,6 +83,9 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
       tracker3dUrl: rec.tracker3dUrl,
       centerStoneStatus: rec.centerStoneStatus,
       dvStonesSummary: rec.dvStonesSummary,
+      dvCustomerLookingFor: rec.dvCustomerLookingFor,
+      dvVarietyStrategy: rec.dvVarietyStrategy,
+      dvCustomerRequirementsJson: rec.dvCustomerRequirementsJson,
       so: rec.so,
       orderFolder: rec.orderFolder
     },

@@ -24,6 +24,7 @@ function sw_setupSalesWorkflow() {
   swSeedConfig_(configSheet);
   swSeedTemplates_(templateSheet);
   swSeedAuthUsers_(usersSheet);
+  swEnsureDiamondRequirementMasterHeaders_(ss);
 
   return {
     ok: true,
@@ -1170,6 +1171,7 @@ function sw_reviewDiamondWorkflowSetup() {
     diamondRoles: {},
     diamondTemplates: {},
     authUsers: [],
+    masterDiamondRequirementColumns: {},
     diamondTracking: {},
     accessModel: {
       diamondOrderAdmin: 'Role-based via _SalesWorkflowUsers role DIAMOND_ORDER_ADMIN.',
@@ -1185,6 +1187,19 @@ function sw_reviewDiamondWorkflowSetup() {
       rows: sh ? Math.max(0, sh.getLastRow() - 1) : 0
     };
   });
+
+  var master = ss.getSheetByName(SW_SHEETS.MASTER);
+  if (master) {
+    var masterHeaders = master.getRange(1, 1, 1, Math.max(master.getLastColumn(), 1)).getDisplayValues()[0];
+    var masterMap = swHeaderMapFromArray_(masterHeaders);
+    [
+      'DV Customer Looking For',
+      'DV Variety Strategy',
+      'DV Customer Requirements (JSON)'
+    ].forEach(function (header) {
+      out.masterDiamondRequirementColumns[header] = swPickIndex_(masterMap, [header]) >= 0;
+    });
+  }
 
   var config = ss.getSheetByName(SW_SHEETS.CONFIG)
     ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)

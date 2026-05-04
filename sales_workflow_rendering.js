@@ -32,6 +32,12 @@ function swValidateCompletion_(ss, task, data) {
   if (task.taskType === SW_TASKS.DIAMOND_PROPOSE && (!data.proposalStones || !data.proposalStones.length)) {
     throw new Error('Add at least one proposed diamond before completing this task.');
   }
+  if (task.taskType === SW_TASKS.DIAMOND_PROPOSE) {
+    var missingRequirements = swDiamondCustomerRequirementsMissing_(data.customerDiamondRequirements || {});
+    if (missingRequirements.length) {
+      throw new Error('Complete customer diamond requirements: ' + missingRequirements.join(', ') + '.');
+    }
+  }
   if (task.taskType === SW_TASKS.DIAMOND_ORDER && (!data.diamondOrderDecisions || !data.diamondOrderDecisions.length)) {
     throw new Error('Select at least one diamond order decision before completing this task.');
   }
@@ -53,12 +59,16 @@ function swRenderDataForTask_(task, payload) {
   var appt = payload.appointment || {};
   var extra = payload.extra || {};
   var completion = payload.completion || {};
+  var rawBrand = task.brand || appt.brand || '';
   return {
     customerName: task.customerName || appt.customerName || '',
-    brand: task.brand || appt.brand || '',
+    brand: swTemplateBrandName_(rawBrand),
+    brandRaw: rawBrand,
     appointmentDate: task.visitDate || appt.visitDate || '',
     appointmentTime: task.visitTime || appt.visitTime || '',
+    appointmentDateTime: [task.visitDate || appt.visitDate || '', task.visitTime || appt.visitTime || ''].filter(Boolean).join(' '),
     visitType: task.visitType || appt.visitType || '',
+    clientAdvisor: appt.assignedRep || '',
     assignedRep: appt.assignedRep || '',
     assignedRepEmail: appt.assignedRepEmail || '',
     assistedRep: appt.assistedRep || '',
@@ -72,6 +82,8 @@ function swRenderDataForTask_(task, payload) {
     diamondProposalTarget: extra.diamondProposalTarget || '',
     diamondActionSummary: extra.diamondActionSummary || '',
     diamondEtaIssue: extra.diamondEtaIssue || '',
+    diamondCustomerRequirements: extra.diamondCustomerRequirements || appt.dvCustomerLookingFor || 'Not captured yet.',
+    diamondVarietyStrategy: extra.diamondVarietyStrategy || appt.dvVarietyStrategy || 'Not captured yet.',
     manufacturingMessage: extra.manufacturingMessage || '',
     mapLink: extra.mapLink || '',
     locationMsg: extra.locationMsg || '',
@@ -97,6 +109,14 @@ function swAttachmentsForTask_(task, template, data) {
     swPushAttachment_(out, '200_ Diamond Tracker', data.diamondTrackerUrl || '');
   }
   return out;
+}
+
+function swTemplateBrandName_(brand) {
+  var b = swHeaderKey_(brand);
+  if (!b) return '';
+  if (b.indexOf('vvs') >= 0) return 'VVS Jewelry Co.';
+  if (b.indexOf('hung') >= 0 || b.indexOf('phat') >= 0 || b.indexOf('hpusa') >= 0 || b === 'hp') return 'Hung Phat';
+  return swTrim_(brand);
 }
 
 function swPushAttachment_(out, label, url) {
@@ -125,9 +145,74 @@ function swIsDiamondTaskType_(taskType) {
 }
 
 function swRenderTemplate_(template, data) {
-  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function (_, key) {
-    return data[key] == null ? '' : String(data[key]);
-  });
+  return swRenderTemplatePasses_(template, data, 4);
+}
+
+function swRenderTemplatePasses_(template, data, maxPasses) {
+  var out = String(template || '');
+  var passes = Number(maxPasses) || 1;
+  for (var i = 0; i < passes; i++) {
+    var changed = false;
+    out = out.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (match, rawKey) {
+      var value = swTemplateValue_(data, rawKey);
+      changed = true;
+      if (value == null) return '';
+      return String(value);
+    });
+    if (!changed || out.indexOf('{{') < 0) break;
+  }
+  return out;
+}
+
+function swTemplateValue_(data, rawKey) {
+  if (!data) return null;
+  var key = swTrim_(rawKey);
+  if (!key) return null;
+  if (Object.prototype.hasOwnProperty.call(data, key)) return data[key];
+
+  var alias = swTemplateAliasKey_(key);
+  if (alias && Object.prototype.hasOwnProperty.call(data, alias)) return data[alias];
+  return null;
+}
+
+function swTemplateAliasKey_(key) {
+  var norm = swHeaderKey_(key);
+  var aliases = {
+    customername: 'customerName',
+    customer: 'customerName',
+    clientname: 'customerName',
+    client: 'customerName',
+    name: 'customerName',
+    appointmentdate: 'appointmentDate',
+    apptdate: 'appointmentDate',
+    visitdate: 'appointmentDate',
+    date: 'appointmentDate',
+    appointmenttime: 'appointmentTime',
+    appttime: 'appointmentTime',
+    visittime: 'appointmentTime',
+    time: 'appointmentTime',
+    appointmentdatetime: 'appointmentDateTime',
+    appointmentdateandtime: 'appointmentDateTime',
+    apptdatetime: 'appointmentDateTime',
+    visitdatetime: 'appointmentDateTime',
+    brand: 'brand',
+    company: 'brand',
+    brandname: 'brand',
+    brandraw: 'brandRaw',
+    rawbrand: 'brandRaw',
+    visittype: 'visitType',
+    appointmenttype: 'visitType',
+    clientadvisor: 'clientAdvisor',
+    clientadviser: 'clientAdvisor',
+    advisor: 'clientAdvisor',
+    adviser: 'clientAdvisor',
+    assignedrep: 'assignedRep',
+    stylist: 'assignedRep',
+    assignedrepemail: 'assignedRepEmail',
+    assistedrep: 'assistedRep',
+    assistedrepemail: 'assistedRepEmail'
+  };
+  return aliases[norm] || null;
 }
 
 function swMissingFieldsForTask_(task, template, data) {
@@ -143,9 +228,19 @@ function swMissingFieldsForTask_(task, template, data) {
 
 function swMissingTemplateFields_(template, data) {
   var missing = {};
-  String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function (_, key) {
-    if (!data[key]) missing[key] = true;
+  swScanMissingTemplateFields_(template, data, missing, 0);
+  return Object.keys(missing).sort();
+}
+
+function swScanMissingTemplateFields_(template, data, missing, depth) {
+  if (depth > 4) return;
+  String(template || '').replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (_, key) {
+    var value = swTemplateValue_(data, key);
+    if (!value) {
+      missing[swTrim_(key)] = true;
+    } else if (String(value).indexOf('{{') >= 0) {
+      swScanMissingTemplateFields_(value, data, missing, depth + 1);
+    }
     return '';
   });
-  return Object.keys(missing).sort();
 }

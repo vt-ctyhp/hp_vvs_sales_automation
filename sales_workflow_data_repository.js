@@ -139,6 +139,9 @@ function swReadAppointments_(ss) {
     centerStoneStatus: swPickIndex_(H, ['Center Stone Order Status', 'Center Stone Status', 'CSOS', 'Diamond Memo Status', 'DV Status']),
     dvStonesJson: swPickIndex_(H, ['DV Stones (JSON Lines)', 'DV Stones JSON Lines', 'DV Stones-JSON Lines']),
     dvStonesSummary: swPickIndex_(H, ['DV Stones Summary', 'DV Stones- Summary']),
+    dvCustomerLookingFor: swPickIndex_(H, ['DV Customer Looking For', 'Diamond Customer Looking For', 'Customer Diamond Requirements']),
+    dvVarietyStrategy: swPickIndex_(H, ['DV Variety Strategy', 'Diamond Variety Strategy']),
+    dvCustomerRequirementsJson: swPickIndex_(H, ['DV Customer Requirements (JSON)', 'DV Customer Requirements JSON', 'Customer Diamond Requirements JSON']),
     so: swPickIndex_(H, ['SO#', 'SO #', 'SO']),
     orderFolder: swPickIndex_(H, ['Order Folder', '05-3D Folder'])
   };
@@ -174,6 +177,9 @@ function swReadAppointments_(ss) {
       centerStoneStatus: swTrim_(swCell_(drow, idx.centerStoneStatus)),
       dvStonesJson: swTrim_(swCell_(drow, idx.dvStonesJson)),
       dvStonesSummary: swTrim_(swCell_(drow, idx.dvStonesSummary)),
+      dvCustomerLookingFor: swTrim_(swCell_(drow, idx.dvCustomerLookingFor)),
+      dvVarietyStrategy: swTrim_(swCell_(drow, idx.dvVarietyStrategy)),
+      dvCustomerRequirementsJson: swTrim_(swCell_(drow, idx.dvCustomerRequirementsJson)),
       so: swTrim_(swCell_(drow, idx.so)),
       orderFolder: swTrim_(swCell_(drow, idx.orderFolder))
     };

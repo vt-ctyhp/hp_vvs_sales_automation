@@ -104,6 +104,7 @@ function swDiamondSnapshotForRec_(ss, ctx, rec, visitAt) {
 
 function swDiamondPayloadExtra_(rec, diamond) {
   diamond = diamond || {};
+  var requirements = swDiamondCustomerRequirementsFromRec_(rec);
   return {
     quotationUrl: diamond.quotationUrl || rec.quotationUrl || '',
     tracker3dUrl: diamond.tracker3dUrl || rec.tracker3dUrl || '',
@@ -112,9 +113,124 @@ function swDiamondPayloadExtra_(rec, diamond) {
     diamondProposalTarget: diamond.proposalTarget || '',
     diamondActionSummary: swDiamondActionSummary_(diamond),
     diamondEtaIssue: diamond.etaIssue || '',
+    diamondCustomerRequirements: swDiamondCustomerRequirementsSummary_(requirements, rec.dvCustomerLookingFor, rec.dvVarietyStrategy),
+    diamondVarietyStrategy: rec.dvVarietyStrategy || swDiamondVarietyStrategy_(requirements),
+    customerDiamondRequirements: requirements,
     manufacturingMessage: swDiamondManufacturingMessage_(rec, diamond),
     diamond: diamond
   };
+}
+
+function swDiamondCustomerRequirementsFromRec_(rec) {
+  rec = rec || {};
+  var parsed = swParseJson_(rec.dvCustomerRequirementsJson || '', {});
+  return swDiamondNormalizeCustomerRequirements_({
+    summary: parsed.summary || rec.dvCustomerLookingFor || '',
+    stoneType: parsed.stoneType || '',
+    shape: parsed.shape || '',
+    caratMin: parsed.caratMin || '',
+    caratMax: parsed.caratMax || '',
+    colorMin: parsed.colorMin || '',
+    colorMax: parsed.colorMax || '',
+    clarityMin: parsed.clarityMin || '',
+    clarityMax: parsed.clarityMax || '',
+    ratioPreference: parsed.ratioPreference || '',
+    budgetNote: parsed.budgetNote || '',
+    primaryDecisionFactor: parsed.primaryDecisionFactor || '',
+    varietyFocus: parsed.varietyFocus || [],
+    notes: parsed.notes || ''
+  });
+}
+
+function swDiamondNormalizeCustomerRequirements_(requirements) {
+  requirements = requirements || {};
+  if (typeof requirements === 'string') {
+    requirements = swParseJson_(requirements, { summary: requirements });
+  }
+  var out = {
+    summary: swTrim_(requirements.summary),
+    stoneType: swTrim_(requirements.stoneType),
+    shape: swTrim_(requirements.shape),
+    caratMin: swTrim_(requirements.caratMin),
+    caratMax: swTrim_(requirements.caratMax),
+    colorMin: swTrim_(requirements.colorMin),
+    colorMax: swTrim_(requirements.colorMax),
+    clarityMin: swTrim_(requirements.clarityMin),
+    clarityMax: swTrim_(requirements.clarityMax),
+    ratioPreference: swTrim_(requirements.ratioPreference),
+    budgetNote: swTrim_(requirements.budgetNote),
+    primaryDecisionFactor: swTrim_(requirements.primaryDecisionFactor),
+    varietyFocus: [],
+    notes: swTrim_(requirements.notes)
+  };
+  var seen = {};
+  (Array.isArray(requirements.varietyFocus) ? requirements.varietyFocus : []).forEach(function (value) {
+    value = swTrim_(value);
+    if (!value || seen[value]) return;
+    seen[value] = true;
+    out.varietyFocus.push(value);
+  });
+  return out;
+}
+
+function swDiamondCustomerRequirementsMissing_(requirements) {
+  requirements = swDiamondNormalizeCustomerRequirements_(requirements);
+  var missing = [];
+  if (!requirements.summary) missing.push('customer brief');
+  if (!requirements.primaryDecisionFactor) missing.push('primary deciding factor');
+  if (!requirements.varietyFocus.length) missing.push('variety to show');
+  return missing;
+}
+
+function swDiamondCustomerRequirementsSummary_(requirements, fallbackSummary, fallbackStrategy) {
+  requirements = swDiamondNormalizeCustomerRequirements_(requirements);
+  var lines = [];
+  if (requirements.summary) lines.push('Looking for: ' + requirements.summary);
+  var specs = [];
+  if (requirements.stoneType) specs.push(requirements.stoneType);
+  if (requirements.shape) specs.push(requirements.shape);
+  var carat = swDiamondRange_(requirements.caratMin, requirements.caratMax, 'ct');
+  if (carat) specs.push(carat);
+  var color = swDiamondRange_(requirements.colorMin, requirements.colorMax, 'color');
+  if (color) specs.push(color);
+  var clarity = swDiamondRange_(requirements.clarityMin, requirements.clarityMax, 'clarity');
+  if (clarity) specs.push(clarity);
+  if (specs.length) lines.push('Specs: ' + specs.join(', '));
+  if (requirements.ratioPreference) lines.push('Ratio: ' + requirements.ratioPreference);
+  if (requirements.budgetNote) lines.push('Budget/value: ' + requirements.budgetNote);
+  if (requirements.primaryDecisionFactor) lines.push('Primary deciding factor: ' + requirements.primaryDecisionFactor);
+  var strategy = swDiamondVarietyStrategy_(requirements) || fallbackStrategy || '';
+  if (strategy) lines.push(strategy);
+  if (requirements.notes) lines.push('Notes: ' + requirements.notes);
+  if (!lines.length && fallbackSummary) lines.push('Looking for: ' + fallbackSummary);
+  return lines.join('\n');
+}
+
+function swDiamondVarietyStrategy_(requirements) {
+  requirements = swDiamondNormalizeCustomerRequirements_(requirements);
+  var labels = requirements.varietyFocus.map(swDiamondVarietyLabel_);
+  return labels.length ? 'Show variety: ' + labels.join(', ') : '';
+}
+
+function swDiamondVarietyLabel_(value) {
+  var labels = {
+    different_ratios: 'different ratios',
+    different_carat_sizes: 'different carat sizes',
+    different_clarities: 'different clarities',
+    different_colors: 'different colors',
+    different_price_points: 'different price points',
+    in_stock_options: 'in-stock options',
+    other: 'other'
+  };
+  return labels[value] || value;
+}
+
+function swDiamondRange_(min, max, label) {
+  min = swTrim_(min);
+  max = swTrim_(max);
+  if (!min && !max) return '';
+  if (min && max) return min + '-' + max + (label === 'ct' ? ' ct' : ' ' + label);
+  return (min || max) + (label === 'ct' ? ' ct' : ' ' + label);
 }
 
 function swDiamondRowsForRec_(ss, ctx, rec) {
@@ -333,6 +449,11 @@ function swDiamondHandleTaskCompletion_(ss, task, data, user) {
 }
 
 function swDiamondCompleteProposals_(ss, task, data, user) {
+  var requirements = swDiamondNormalizeCustomerRequirements_(data.customerDiamondRequirements || {});
+  var missingRequirements = swDiamondCustomerRequirementsMissing_(requirements);
+  if (missingRequirements.length) {
+    throw new Error('Complete customer diamond requirements: ' + missingRequirements.join(', ') + '.');
+  }
   var stones = (data.proposalStones || []).filter(function (stone) {
     return stone && (stone.certNo || stone.shape || stone.carat || stone.vendor);
   });
@@ -389,6 +510,7 @@ function swDiamondCompleteProposals_(ss, task, data, user) {
   var counts = typeof dp_computeCountsForAppointment_ === 'function'
     ? dp_computeCountsForAppointment_(sh200, hm200, ctx.rootApptId)
     : {};
+  swDiamondWriteCustomerRequirements_(ctx, requirements);
   if (typeof dp_update100AfterPropose_ === 'function') dp_update100AfterPropose_(ctx, stones, counts);
   try { if (typeof dp_onCsosChanged_ === 'function') dp_onCsosChanged_(ctx.rootApptId, 'Diamond Memo – Proposed'); } catch (_) {}
 
@@ -402,8 +524,44 @@ function swDiamondCompleteProposals_(ss, task, data, user) {
     targetTabName: target.tab,
     appendedFirstRow: insertAt,
     appendedLastRow: insertAt + toAppend.length - 1,
-    proposedBy: user && user.email || ''
+    proposedBy: user && user.email || '',
+    customerRequirements: requirements
   };
+}
+
+function swDiamondWriteCustomerRequirements_(ctx, requirements) {
+  requirements = swDiamondNormalizeCustomerRequirements_(requirements);
+  var sh = ctx.sheet;
+  var rowIndex = ctx.rowIndex;
+  var cLookingFor = swDiamondEnsureMasterColumn_(sh, 'DV Customer Looking For');
+  var cStrategy = swDiamondEnsureMasterColumn_(sh, 'DV Variety Strategy');
+  var cJson = swDiamondEnsureMasterColumn_(sh, 'DV Customer Requirements (JSON)');
+  sh.getRange(rowIndex, cLookingFor).setValue(requirements.summary);
+  sh.getRange(rowIndex, cStrategy).setValue(swDiamondVarietyStrategy_(requirements));
+  sh.getRange(rowIndex, cJson).setValue(swStringify_(requirements));
+}
+
+function swEnsureDiamondRequirementMasterHeaders_(ss) {
+  try {
+    var sh = ss && ss.getSheetByName ? ss.getSheetByName(SW_SHEETS.MASTER) : null;
+    if (!sh) return;
+    swDiamondEnsureMasterColumn_(sh, 'DV Customer Looking For');
+    swDiamondEnsureMasterColumn_(sh, 'DV Variety Strategy');
+    swDiamondEnsureMasterColumn_(sh, 'DV Customer Requirements (JSON)');
+  } catch (e) {
+    try { Logger.log('swEnsureDiamondRequirementMasterHeaders_ skipped: ' + e.message); } catch (_) {}
+  }
+}
+
+function swDiamondEnsureMasterColumn_(sh, header) {
+  var lastCol = Math.max(sh.getLastColumn(), 1);
+  var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+  for (var i = 0; i < headers.length; i++) {
+    if (swHeaderKey_(headers[i]) === swHeaderKey_(header)) return i + 1;
+  }
+  var col = sh.getLastColumn() + 1;
+  sh.getRange(1, col).setValue(header);
+  return col;
 }
 
 function swDiamondProposalContext_(ss, task) {

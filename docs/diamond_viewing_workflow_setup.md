@@ -10,10 +10,11 @@ The workflow keeps ownership editable in `_SalesWorkflowConfig`, message/task co
 - `_SalesWorkflowTemplates`: task titles, instructions, checklist JSON, attachments, and primary action labels.
 - `_SalesWorkflowUsers`: email/password login users with salted password hashes. Do not store raw passwords.
 - `_SalesTaskQueue`: generated task rows and payload snapshots.
+- `00_Master Appointments`: source of truth for the customer diamond brief in `DV Customer Looking For`, `DV Variety Strategy`, and `DV Customer Requirements (JSON)`.
 - 200_ diamond tracker: source of truth for stone status, order status, tracking ETA/status, decisions, and return due dates. If `Tracking ETA` or `Tracking Status` are missing, the Track Diamonds task creates them when saved.
 
 ## Ownership Rows
-Run `sw_setupSalesWorkflow()` to seed the system/config rows. Diamond order access is role-based from `_SalesWorkflowUsers`; you do not need to fill Name or Email on `_SalesWorkflowConfig` for these roles.
+Run `sw_setupSalesWorkflow()` to seed the system/config rows and append the Sheet 100 customer-requirement columns if they are missing. Diamond order access is role-based from `_SalesWorkflowUsers`; you do not need to fill Name or Email on `_SalesWorkflowConfig` for these roles.
 
 - `USER | DIAMOND_ORDER_ADMIN_1 | Role=DIAMOND_ORDER_ADMIN`
 - `USER | DIAMOND_ORDER_ASSISTANT_1 | Role=DIAMOND_ORDER_ASSISTANT`
@@ -55,11 +56,11 @@ Admins can also manage users from:
 Both surfaces write to `_SalesWorkflowUsers`, support role checkboxes, and either auto-generate a password or use the password typed by the admin.
 
 ## Generated Diamond Tasks
-- `PROPOSE_DIAMONDS`: assigned rep enters proposed stones directly in the dashboard. Completion runs the same Sheet 100 proposal flow: validates stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps appointment context tied to the customer.
-- `PREPARE_DV_QUOTATION`: JOC fills quotation, performs price research, and can refresh quotation data from 200_ and latest 3D tracker.
-- `ORDER_DIAMONDS`: diamond order admin selects `On the Way` or `Not Approved` for every proposed stone. Completion writes order status/date to 200_, then the generator creates acknowledgement tasks for the assigned rep and JOC.
-- `ACK_DIAMONDS_ORDERED_ASSIGNED_REP`: assigned rep acknowledges which diamonds were ordered and checks customer impact.
-- `ACK_DIAMONDS_ORDERED_JOC`: JOC acknowledges ordered diamonds and updates quotation notes if assumptions changed.
+- `PROPOSE_DIAMONDS`: assigned rep captures the structured customer requirements, primary deciding factor, and variety strategy, then enters proposed stones directly in the dashboard. Completion writes the customer brief to Sheet 100 and runs the same proposal flow: validates stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps appointment context tied to the customer.
+- `PREPARE_DV_QUOTATION`: JOC fills quotation, performs price research against the Sheet 100 customer requirements, and can refresh quotation data from 200_ and latest 3D tracker.
+- `ORDER_DIAMONDS`: diamond order admin reviews proposed stones against the Sheet 100 customer requirements, then selects `On the Way` or `Not Approved` for every proposed stone. Completion writes order status/date to 200_, then the generator creates acknowledgement tasks for the assigned rep and JOC.
+- `ACK_DIAMONDS_ORDERED_ASSIGNED_REP`: assigned rep acknowledges which diamonds were ordered and checks customer requirements/customer impact.
+- `ACK_DIAMONDS_ORDERED_JOC`: JOC acknowledges ordered diamonds and updates quotation notes if assumptions changed against the customer requirements.
 - `TRACK_DIAMONDS`: diamond order assistant writes tracking ETA/status to 200_. This appears only when 200_ has at least one matching `On the Way` stone.
 - `CONFIRM_DIAMOND_DELIVERY`: diamond order admin confirms receipt. This appears only when 200_ has at least one matching `On the Way` stone.
 - `RECORD_DIAMOND_DECISIONS`: JOC marks Purchase/Return, confirms dimensions against 3D tracker, and copies the manufacturing message. This appears after a matching stone is delivered or in stock.
@@ -94,12 +95,14 @@ It returns and logs:
 - diamond role rows from `_SalesWorkflowConfig`
 - diamond task template presence from `_SalesWorkflowTemplates`
 - login users without exposing password hashes
+- Sheet 100 customer-requirement column presence
 - 200_ diamond tracker availability
 
 ## Operational Notes
 - 200_ remains the source of truth for diamond tracking and ETA. Task payloads only cache small snapshots for performance.
 - The Order Diamonds task does not ask users to manually update 200_; submitting the dashboard task performs the 200_ writeback through the existing diamond order approval function.
-- The Propose Diamonds task does not duplicate a separate workflow; it uses the same validation and writeback path as the current Sheet 100 Propose Diamonds dialog.
+- The Propose Diamonds task does not duplicate a separate workflow; it uses the same validation and writeback path as the current Sheet 100 Propose Diamonds dialog, plus writes the customer requirements fields into Sheet 100.
+- Customer requirements are intentionally stored once on Sheet 100, not copied to every 200_ stone row. Downstream task cards read the Sheet 100 brief through the generated task payload.
 - Before proposing diamonds, reps can open `In-Stock Diamonds`, compare the Diamond Viewing date against each stone's return due date, copy the stock details, then enter the chosen stone into the Propose Diamonds task with vendor `From In Stock`.
 - Diamond order admins can use `Bulk Returns` when multiple stones are being shipped back together, instead of completing one return task at a time.
 - If new 200_ diamond data or 3D tracker data arrives after the task was generated, use the quotation task buttons to refresh diamonds, 3D settings, or both.

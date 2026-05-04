@@ -194,6 +194,41 @@
       border-top: 2px solid var(--accent);
     }
 
+    .task-side {
+      align-content: start;
+      display: grid;
+      gap: 8px;
+      justify-items: end;
+      min-width: 72px;
+    }
+
+    .task-main {
+      min-width: 0;
+    }
+
+    .brand-chip {
+      border: 1px solid var(--rule);
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      line-height: 1;
+      padding: 5px 7px;
+      text-transform: uppercase;
+    }
+
+    .brand-chip.hp {
+      background: #FCEAF3;
+      border-color: #F3B8D5;
+      color: #A71358;
+    }
+
+    .brand-chip.vvs {
+      background: #FFF4CC;
+      border-color: #E8C75C;
+      color: #725500;
+    }
+
     .calendar-nav {
       align-items: center;
       display: flex;
@@ -596,6 +631,22 @@
 
     .proposal-grid .wide {
       grid-column: 1 / -1;
+    }
+
+    .requirement-checks {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 8px;
+    }
+
+    .requirement-checks .check-row {
+      align-items: flex-start;
+    }
+
+    .requirement-status {
+      margin-top: 10px;
+      min-height: 18px;
     }
 
     .login-status {
@@ -1699,6 +1750,20 @@
       });
     }
 
+    function taskBrandCode(brand) {
+      var b = String(brand || '').trim().toUpperCase();
+      if (!b) return '';
+      if (b.indexOf('VVS') >= 0) return 'VVS';
+      if (b.indexOf('HP') >= 0 || b.indexOf('HUNG PHAT') >= 0) return 'HP';
+      return '';
+    }
+
+    function taskBrandChipHtml(brand) {
+      var code = taskBrandCode(brand);
+      if (!code) return '';
+      return '<span class="brand-chip ' + (code === 'HP' ? 'hp' : 'vvs') + '">' + escapeHtml(code) + '</span>';
+    }
+
     function renderTasks(tasks) {
       var list = document.getElementById('taskList');
       if (!tasks.length) {
@@ -1708,15 +1773,19 @@
       list.innerHTML = tasks.map(function (task) {
         var overdue = /^Overdue/.test(task.dueLabel || '');
         var coverage = task.coverageReason ? '<span class="badge">' + escapeHtml(task.coverageReason) + '</span>' : '';
+        var brand = taskBrandChipHtml(task.brand);
         return [
           '<article class="task-card ' + (overdue ? 'overdue' : '') + '">',
             '<div class="task-top">',
-              '<div>',
+              '<div class="task-main">',
                 '<div class="task-title">' + escapeHtml(task.taskTitle || task.taskType) + '</div>',
                 '<div class="meta">' + escapeHtml(task.customerName || 'No customer') + ' · ' + escapeHtml(task.visitDate || 'No date') + ' ' + escapeHtml(task.visitTime || '') + '</div>',
                 '<div class="meta">Owner: ' + escapeHtml(task.currentOwner || 'Unassigned') + '</div>',
               '</div>',
-              '<div class="meta">' + escapeHtml(task.dueLabel || '') + '</div>',
+              '<div class="task-side">',
+                brand,
+                '<div class="meta">' + escapeHtml(task.dueLabel || '') + '</div>',
+              '</div>',
             '</div>',
             '<span class="badge">' + escapeHtml(task.lifecycleStage || task.ownerRole || '') + '</span>',
             coverage,
@@ -1854,15 +1923,17 @@
         return quoteButtons + renderProposalDiamondForm(payload);
       }
 
+      var requirements = renderDiamondRequirementContext(extra);
+
       if (task.taskType === 'ORDER_DIAMONDS') {
-        return quoteButtons + '<div class="detail-section"><label>Order Decisions</label>' +
+        return quoteButtons + requirements + '<div class="detail-section"><label>Order Decisions</label>' +
           '<div class="template-box">Select an order result for every proposed diamond. Completing this task writes the Order Status and Purchased / Ordered Date directly to 200_, then creates acknowledgement tasks for JOC and the assigned rep.</div>' +
           renderOrderDecisionRows(rows) +
           '<div class="field-grid" style="margin-top:14px"><div><label for="orderedDate">Purchased / Ordered Date</label><input id="orderedDate" type="date" value="' + escapeAttrValue(currentDateKey()) + '"></div></div></div>';
       }
 
       if (task.taskType === 'TRACK_DIAMONDS') {
-        return quoteButtons + [
+        return quoteButtons + requirements + [
           '<div class="detail-section">',
             '<label>Tracking Update</label>',
             '<div class="field-grid">',
@@ -1878,29 +1949,82 @@
       }
 
       if (task.taskType === 'CONFIRM_DIAMOND_DELIVERY') {
-        return quoteButtons + '<div class="detail-section"><label>Delivery Confirmation</label>' +
+        return quoteButtons + requirements + '<div class="detail-section"><label>Delivery Confirmation</label>' +
           renderReadonlyDiamondRows(rows.filter(function (row) { return norm(row.orderStatus) === 'on the way'; })) +
           '<div class="field-grid" style="margin-top:14px"><div><label for="memoDate">Memo / Invoice Date</label><input id="memoDate" type="date"></div></div></div>';
       }
 
       if (task.taskType === 'RECORD_DIAMOND_DECISIONS') {
-        return quoteButtons + '<div class="detail-section"><label>Diamond Decisions</label>' +
+        return quoteButtons + requirements + '<div class="detail-section"><label>Diamond Decisions</label>' +
           renderStoneDecisionRows(rows) +
           '<div class="template-box" style="margin-top:14px" id="manufacturingMessage">' + escapeHtml(extra.manufacturingMessage || '') + '</div>' +
           '<div class="actions"><button class="js-copy-manufacturing" type="button">Copy Manufacturing Message</button></div></div>';
       }
 
       if (task.taskType === 'RETURN_DIAMONDS') {
-        return quoteButtons + '<div class="detail-section"><label>Return Queue</label><div class="template-box">Completing this task marks the listed rows in 200_ as Return in Progress and writes return notes with the completion time.</div>' + renderReadonlyDiamondRows(diamond.returnRows || []) + '</div>';
+        return quoteButtons + requirements + '<div class="detail-section"><label>Return Queue</label><div class="template-box">Completing this task marks the listed rows in 200_ as Return in Progress and writes return notes with the completion time.</div>' + renderReadonlyDiamondRows(diamond.returnRows || []) + '</div>';
       }
 
-      return quoteButtons;
+      return quoteButtons + requirements;
+    }
+
+    function renderDiamondRequirementContext(extra) {
+      extra = extra || {};
+      var brief = extra.diamondCustomerRequirements || '';
+      var strategy = extra.diamondVarietyStrategy || '';
+      if (!brief && !strategy) {
+        brief = 'Customer requirements have not been captured yet.';
+      }
+      var strategyText = strategy && String(brief || '').indexOf(strategy) < 0 ? '\n\n' + escapeHtml(strategy) : '';
+      return [
+        '<div class="detail-section">',
+          '<label>Customer Requirements</label>',
+          '<div class="template-box">',
+            escapeHtml(brief || ''),
+            strategyText,
+          '</div>',
+        '</div>'
+      ].join('');
     }
 
     function renderProposalDiamondForm(payload) {
       payload = payload || {};
       var appt = payload.appointment || {};
+      var extra = payload.extra || {};
+      var requirements = normalizeCustomerDiamondRequirements(extra.customerDiamondRequirements || appt.customerDiamondRequirements || {});
       return [
+        '<div class="detail-section">',
+          '<label>Customer Requirements</label>',
+          '<div class="template-box">Capture the buying brief before entering stones so JOC and diamond order admin can review every option against the same customer goal.</div>',
+          '<div class="proposal-grid" style="margin-top:16px">',
+            requirementTextareaHtml('summary', 'What customer is looking for *', requirements.summary, 'Example: 2-3 ct emerald-cut lab diamond, D-E color, VVS-VS1 clarity, wants to compare ratios.'),
+            requirementSelectHtml('stoneType', 'Stone Type', ['Lab Diamond', 'Natural Diamond', 'Sapphire', 'Emerald', 'Ruby'], requirements.stoneType),
+            requirementSelectHtml('shape', 'Shape', ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other'], requirements.shape),
+            requirementInputHtml('caratMin', 'Carat Min', 'number', requirements.caratMin, '0.01'),
+            requirementInputHtml('caratMax', 'Carat Max', 'number', requirements.caratMax, '0.01'),
+            requirementSelectHtml('primaryDecisionFactor', 'Primary Deciding Factor *', ['Ratio / shape appearance', 'Carat size', 'Color', 'Clarity', 'Price / value', 'Availability / return date', 'Lab / certification', 'Unsure / compare multiple'], requirements.primaryDecisionFactor),
+            requirementSelectHtml('colorMin', 'Color From', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMin),
+            requirementSelectHtml('colorMax', 'Color To', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMax),
+            requirementSelectHtml('clarityMin', 'Clarity From', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMin),
+            requirementSelectHtml('clarityMax', 'Clarity To', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMax),
+            requirementInputHtml('ratioPreference', 'Ratio Preference', 'text', requirements.ratioPreference),
+            requirementInputHtml('budgetNote', 'Budget / Value Note', 'text', requirements.budgetNote),
+            '<div class="wide">',
+              '<label>Variety to Show *</label>',
+              '<div class="requirement-checks">',
+                requirementCheckboxHtml('different_ratios', 'Different ratios', requirements.varietyFocus),
+                requirementCheckboxHtml('different_carat_sizes', 'Different carat sizes', requirements.varietyFocus),
+                requirementCheckboxHtml('different_clarities', 'Different clarities', requirements.varietyFocus),
+                requirementCheckboxHtml('different_colors', 'Different colors', requirements.varietyFocus),
+                requirementCheckboxHtml('different_price_points', 'Different price points', requirements.varietyFocus),
+                requirementCheckboxHtml('in_stock_options', 'In-stock options', requirements.varietyFocus),
+                requirementCheckboxHtml('other', 'Other', requirements.varietyFocus),
+              '</div>',
+            '</div>',
+            requirementTextareaHtml('notes', 'Do Not Show / Additional Notes', requirements.notes, 'Optional constraints, vendor notes, timing concerns, or options to avoid.'),
+            '<div class="wide requirement-status error" id="proposalRequirementStatus"></div>',
+          '</div>',
+        '</div>',
         '<div class="detail-section">',
           '<label>Proposed Diamonds</label>',
           '<div class="template-box">Add proposed diamonds here. Use the In-Stock Diamonds tab first if you want to select store inventory and confirm the return date works for this appointment. Completing this task uses the same Sheet 100 proposal flow: it validates the stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps the appointment context tied to this customer.</div>',
@@ -1911,6 +2035,39 @@
           '<div class="actions"><button class="js-add-proposal-row" type="button">Add Diamond</button></div>',
         '</div>'
       ].join('');
+    }
+
+    function normalizeCustomerDiamondRequirements(value) {
+      value = value || {};
+      if (typeof value === 'string') {
+        try { value = JSON.parse(value); } catch (_) { value = { summary: value }; }
+      }
+      value.varietyFocus = Array.isArray(value.varietyFocus) ? value.varietyFocus : [];
+      return value;
+    }
+
+    function requirementSelectHtml(name, label, options, selected) {
+      selected = selected || '';
+      return '<div><label>' + escapeHtml(label) + '</label><select class="requirement-field" data-field="' + escapeAttrValue(name) + '">' +
+        '<option value="">Select</option>' +
+        (options || []).map(function (option) {
+          return '<option value="' + escapeAttrValue(option) + '"' + (String(option) === String(selected) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>';
+        }).join('') +
+        '</select></div>';
+    }
+
+    function requirementInputHtml(name, label, type, value, step) {
+      return '<div><label>' + escapeHtml(label) + '</label><input class="requirement-field" data-field="' + escapeAttrValue(name) + '" type="' + escapeAttrValue(type || 'text') + '" value="' + escapeAttrValue(value || '') + '"' + (step ? ' step="' + escapeAttrValue(step) + '"' : '') + '></div>';
+    }
+
+    function requirementTextareaHtml(name, label, value, helper) {
+      return '<div class="wide"><label>' + escapeHtml(label) + '</label><textarea class="requirement-field" data-field="' + escapeAttrValue(name) + '">' + escapeHtml(value || '') + '</textarea>' +
+        (helper ? '<div class="meta">' + escapeHtml(helper) + '</div>' : '') + '</div>';
+    }
+
+    function requirementCheckboxHtml(value, label, selected) {
+      selected = selected || [];
+      return '<label class="check-row"><input class="requirement-variety" type="checkbox" value="' + escapeAttrValue(value) + '"' + (selected.indexOf(value) >= 0 ? ' checked' : '') + '><span>' + escapeHtml(label) + '</span></label>';
     }
 
     function proposalRowHtml(index) {
@@ -2173,6 +2330,7 @@
       if (text && task.taskType === 'APPROVE_RECAP_MESSAGE') payload.approvedText = text.value;
       if (task.taskType === 'PROPOSE_DIAMONDS') {
         payload.proposalStones = collectProposalStones();
+        payload.customerDiamondRequirements = collectCustomerDiamondRequirements();
       }
       if (task.taskType === 'ORDER_DIAMONDS') {
         payload.orderedDate = valueOf('orderedDate');
@@ -2214,6 +2372,32 @@
       });
     }
 
+    function collectCustomerDiamondRequirements() {
+      var requirements = {};
+      [].slice.call(document.querySelectorAll('.requirement-field')).forEach(function (field) {
+        requirements[field.getAttribute('data-field')] = field.value;
+      });
+      requirements.varietyFocus = [].slice.call(document.querySelectorAll('.requirement-variety:checked')).map(function (field) {
+        return field.value;
+      });
+      return requirements;
+    }
+
+    function missingCustomerDiamondRequirements(requirements) {
+      requirements = requirements || {};
+      var missing = [];
+      if (!String(requirements.summary || '').trim()) missing.push('customer brief');
+      if (!String(requirements.primaryDecisionFactor || '').trim()) missing.push('primary deciding factor');
+      if (!requirements.varietyFocus || !requirements.varietyFocus.length) missing.push('variety to show');
+      return missing;
+    }
+
+    function updateCustomerDiamondRequirementStatus(missing) {
+      var el = document.getElementById('proposalRequirementStatus');
+      if (!el) return;
+      el.textContent = missing && missing.length ? 'Complete required customer requirements: ' + missing.join(', ') + '.' : '';
+    }
+
     function updateCompleteButtonState() {
       var button = document.querySelector('.js-complete-task');
       if (!button) return;
@@ -2232,8 +2416,13 @@
       if (task.taskType === 'PROPOSE_DIAMONDS' && !collectProposalStones().length) {
         disabled = true;
       }
+      if (task.taskType === 'PROPOSE_DIAMONDS') {
+        var missingRequirements = missingCustomerDiamondRequirements(collectCustomerDiamondRequirements());
+        if (missingRequirements.length) disabled = true;
+        updateCustomerDiamondRequirementStatus(missingRequirements);
+      }
       button.disabled = disabled;
-      button.title = disabled ? 'Complete required checklist items and diamond decisions first.' : '';
+      button.title = disabled ? 'Complete required checklist items, customer requirements, and diamond decisions first.' : '';
     }
 
     function valueOf(id) {
