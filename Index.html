@@ -150,6 +150,10 @@
       opacity: 0.55;
     }
 
+    button.is-loading {
+      pointer-events: none;
+    }
+
     .status {
       color: var(--ink-muted);
       min-height: 20px;
@@ -608,6 +612,27 @@
       gap: 8px;
     }
 
+    .stock-filter-panel {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      margin-bottom: 16px;
+      padding: 14px;
+    }
+
+    .stock-filter-heading {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .stock-filter-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
     .bulk-return-row {
       align-items: flex-start;
       border-top: 1px solid var(--rule);
@@ -764,6 +789,15 @@
         grid-template-columns: 1fr;
       }
 
+      .stock-filter-heading {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .stock-filter-grid {
+        grid-template-columns: 1fr;
+      }
+
       .masthead, .toolbar {
         align-items: flex-start;
         flex-direction: column;
@@ -859,15 +893,33 @@
       calendarAppointments: [],
       diamondTrackingRows: [],
       inStockDiamondsRows: [],
+      inStockDiamondsSource: null,
+      inStockDiamondFilters: {
+        shape: '',
+        caratMin: '',
+        caratMax: '',
+        color: '',
+        clarity: ''
+      },
       bulkReturnRows: [],
       bulkReturnSource: null,
       mainRequestId: 0,
       detailRequestId: 0,
+      lastActionButton: null,
       loginBusy: false,
       busy: false
     };
 
     function bindEvents() {
+      document.addEventListener('click', function (event) {
+        var button = closestMatch_(event.target, 'button');
+        if (!button || button.disabled) return;
+        appState.lastActionButton = button;
+        window.setTimeout(function () {
+          if (appState.lastActionButton === button) appState.lastActionButton = null;
+        }, 0);
+      }, true);
+
       var loginButton = document.getElementById('loginButton');
       if (loginButton) loginButton.addEventListener('click', login);
       var loginPassword = document.getElementById('loginPassword');
@@ -904,6 +956,11 @@
       var taskList = document.getElementById('taskList');
       if (taskList) {
         taskList.addEventListener('click', function (event) {
+          var stockClearButton = closestMatch_(event.target, '.js-stock-filter-clear');
+          if (stockClearButton) {
+            clearInStockDiamondFilters();
+            return;
+          }
           var bulkSelectButton = closestMatch_(event.target, '.js-bulk-return-select');
           if (bulkSelectButton) {
             selectBulkReturnRows(bulkSelectButton.getAttribute('data-select-mode') || '');
@@ -929,6 +986,10 @@
           openTask(button.getAttribute('data-task-id') || '');
         });
         taskList.addEventListener('change', function (event) {
+          if (closestMatch_(event.target, '.js-stock-filter')) {
+            updateInStockDiamondFilters();
+            return;
+          }
           if (closestMatch_(event.target, '.js-bulk-return-checkbox')) {
             updateBulkReturnActionPanel();
           }
@@ -1004,17 +1065,36 @@
       }
     }
 
-    function serverCall(fnName, args, onSuccess, busyMessage) {
+    function lockLoadingButton(sourceButton) {
+      var button = sourceButton || appState.lastActionButton;
+      if (!button || !document.documentElement.contains(button) || button.disabled) return null;
+      button.disabled = true;
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+      return button;
+    }
+
+    function releaseLoadingButton(button) {
+      if (!button) return;
+      button.classList.remove('is-loading');
+      button.removeAttribute('aria-busy');
+      if (document.documentElement.contains(button)) button.disabled = false;
+    }
+
+    function serverCall(fnName, args, onSuccess, busyMessage, sourceButton) {
+      var loadingButton = lockLoadingButton(sourceButton);
       setBusy(true, busyMessage || 'Working');
       var callArgs = args || [];
       if (fnName !== 'sw_login') callArgs = [appState.token].concat(callArgs);
       var runner = google.script.run
         .withSuccessHandler(function (response) {
           setBusy(false, '');
+          releaseLoadingButton(loadingButton);
           onSuccess(response || {});
         })
         .withFailureHandler(function (err) {
           setBusy(false, '');
+          releaseLoadingButton(loadingButton);
           var message = (err && err.message) ? err.message : String(err);
           if (fnName === 'sw_login') {
             setLoginBusy(false);
@@ -1333,6 +1413,7 @@
       serverCall('sw_getInStockDiamonds', [], function (res) {
         if (!isCurrentMainRequest(requestId, 'inStockDiamonds')) return;
         appState.inStockDiamondsRows = res.rows || [];
+        appState.inStockDiamondsSource = res || {};
         renderInStockDiamonds(res);
         renderInStockDiamondsSummary(res);
       }, 'Loading in-stock diamonds');
@@ -1346,7 +1427,11 @@
       }
       var stats = res.stats || {};
       var rows = res.rows || [];
-      var list = rows.length ? rows.map(renderInStockDiamondRow).join('') : '<div class="empty"><h3>No in-stock diamonds found</h3><p>Delivered/In Stock diamonds that are not already purchased or being returned will appear here.</p></div>';
+      var filteredRows = filteredInStockDiamondRows(rows);
+      var emptyMessage = rows.length
+        ? '<div class="empty"><h3>No diamonds match these filters</h3><p>Adjust shape, carat, color, or clarity to widen the list.</p></div>'
+        : '<div class="empty"><h3>No in-stock diamonds found</h3><p>Delivered/In Stock diamonds that are not already purchased or being returned will appear here.</p></div>';
+      var list = filteredRows.length ? filteredRows.map(renderInStockDiamondRow).join('') : emptyMessage;
       document.getElementById('taskList').innerHTML = [
         '<div class="stat-grid">',
           statCardHtml('In Stock', stats.total || 0),
@@ -1354,10 +1439,123 @@
           statCardHtml('Return Soon', stats.returnSoon || 0),
           statCardHtml('Overdue', stats.returnOverdue || 0),
         '</div>',
+        renderInStockDiamondFilters(rows, filteredRows.length),
         '<div class="tracking-list">',
           list,
         '</div>'
       ].join('');
+    }
+
+    function renderInStockDiamondFilters(rows, filteredCount) {
+      var filters = currentInStockDiamondFilters();
+      var total = (rows || []).length;
+      var active = hasActiveInStockDiamondFilters(filters);
+      return [
+        '<div class="stock-filter-panel">',
+          '<div class="stock-filter-heading">',
+            '<div class="meta">Showing ' + escapeHtml(filteredCount) + ' of ' + escapeHtml(total) + ' diamond(s)</div>',
+            active ? '<button class="js-stock-filter-clear" type="button">Clear Filters</button>' : '',
+          '</div>',
+          '<div class="stock-filter-grid">',
+            stockFilterSelectHtml('shape', 'Shape', uniqueStockFilterValues(rows, 'shape'), filters.shape),
+            stockFilterInputHtml('caratMin', 'Carat Min', filters.caratMin),
+            stockFilterInputHtml('caratMax', 'Carat Max', filters.caratMax),
+            stockFilterSelectHtml('color', 'Color', uniqueStockFilterValues(rows, 'color', ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'Fancy']), filters.color),
+            stockFilterSelectHtml('clarity', 'Clarity', uniqueStockFilterValues(rows, 'clarity', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2', 'I1', 'I2']), filters.clarity),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function stockFilterSelectHtml(name, label, options, selected) {
+      var id = 'stockFilter' + name.charAt(0).toUpperCase() + name.slice(1);
+      var tags = ['<option value="">All</option>'].concat((options || []).map(function (option) {
+        var value = String(option || '');
+        return '<option value="' + escapeAttrValue(value) + '"' + (norm(value) === norm(selected) ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
+      })).join('');
+      return '<div><label for="' + escapeAttrValue(id) + '">' + escapeHtml(label) + '</label><select id="' + escapeAttrValue(id) + '" class="js-stock-filter" data-filter="' + escapeAttrValue(name) + '">' + tags + '</select></div>';
+    }
+
+    function stockFilterInputHtml(name, label, value) {
+      var id = 'stockFilter' + name.charAt(0).toUpperCase() + name.slice(1);
+      return '<div><label for="' + escapeAttrValue(id) + '">' + escapeHtml(label) + '</label><input id="' + escapeAttrValue(id) + '" class="js-stock-filter" data-filter="' + escapeAttrValue(name) + '" type="number" min="0" step="0.01" value="' + escapeAttrValue(value || '') + '"></div>';
+    }
+
+    function uniqueStockFilterValues(rows, field, gradeOrder) {
+      var seen = {};
+      var values = [];
+      (rows || []).forEach(function (row) {
+        var value = String(row && row[field] || '').trim();
+        var key = norm(value);
+        if (!value || seen[key]) return;
+        seen[key] = true;
+        values.push(value);
+      });
+      if (gradeOrder && gradeOrder.length) {
+        var gradeRank = {};
+        gradeOrder.forEach(function (grade, index) {
+          gradeRank[String(grade).toUpperCase()] = index;
+        });
+        values.sort(function (a, b) {
+          var ai = gradeRank[String(a).toUpperCase()];
+          var bi = gradeRank[String(b).toUpperCase()];
+          if (ai == null && bi == null) return String(a).localeCompare(String(b));
+          if (ai == null) return 1;
+          if (bi == null) return -1;
+          return ai - bi || String(a).localeCompare(String(b));
+        });
+        return values;
+      }
+      return values.sort(function (a, b) { return String(a).localeCompare(String(b)); });
+    }
+
+    function currentInStockDiamondFilters() {
+      if (!appState.inStockDiamondFilters) {
+        appState.inStockDiamondFilters = { shape: '', caratMin: '', caratMax: '', color: '', clarity: '' };
+      }
+      return appState.inStockDiamondFilters;
+    }
+
+    function updateInStockDiamondFilters() {
+      var filters = currentInStockDiamondFilters();
+      [].slice.call(document.querySelectorAll('.js-stock-filter')).forEach(function (field) {
+        filters[field.getAttribute('data-filter')] = field.value;
+      });
+      appState.inStockDiamondFilters = filters;
+      renderInStockDiamonds(appState.inStockDiamondsSource || { available: true, rows: appState.inStockDiamondsRows || [], stats: {} });
+    }
+
+    function clearInStockDiamondFilters() {
+      appState.inStockDiamondFilters = { shape: '', caratMin: '', caratMax: '', color: '', clarity: '' };
+      renderInStockDiamonds(appState.inStockDiamondsSource || { available: true, rows: appState.inStockDiamondsRows || [], stats: {} });
+    }
+
+    function hasActiveInStockDiamondFilters(filters) {
+      filters = filters || {};
+      return !!(filters.shape || filters.caratMin || filters.caratMax || filters.color || filters.clarity);
+    }
+
+    function filteredInStockDiamondRows(rows) {
+      var filters = currentInStockDiamondFilters();
+      var caratMin = stockCaratNumber(filters.caratMin);
+      var caratMax = stockCaratNumber(filters.caratMax);
+      return (rows || []).filter(function (row) {
+        if (filters.shape && norm(row.shape) !== norm(filters.shape)) return false;
+        if (filters.color && norm(row.color) !== norm(filters.color)) return false;
+        if (filters.clarity && norm(row.clarity) !== norm(filters.clarity)) return false;
+        if (!isNaN(caratMin) || !isNaN(caratMax)) {
+          var carat = stockCaratNumber(row.carat);
+          if (isNaN(carat)) return false;
+          if (!isNaN(caratMin) && carat < caratMin) return false;
+          if (!isNaN(caratMax) && carat > caratMax) return false;
+        }
+        return true;
+      });
+    }
+
+    function stockCaratNumber(value) {
+      var match = String(value || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : NaN;
     }
 
     function renderInStockDiamondRow(row) {

@@ -514,6 +514,10 @@ function sw_getInStockDiamonds(authToken) {
       else if (returnMs < todayMs) issue = 'Return overdue';
       else if (returnMs <= warningMs) issue = 'Return soon';
 
+      var shape = swDiamondCell_(row, C.shape);
+      var carat = swDiamondCell_(row, C.carat);
+      var color = swDiamondCell_(row, C.color);
+      var clarity = swDiamondCell_(row, C.clarity);
       var daysUntilReturn = returnMs ? Math.ceil((returnMs - todayMs) / (24 * 60 * 60 * 1000)) : '';
       rows.push({
         rowIndex: i + 3,
@@ -525,7 +529,11 @@ function sw_getInStockDiamonds(authToken) {
         vendor: swDiamondCell_(row, C.vendor),
         stoneType: swDiamondCell_(row, C.stoneType),
         certNo: swDiamondCell_(row, C.certNo),
-        diamond: [swDiamondCell_(row, C.shape), swDiamondCell_(row, C.carat), swDiamondCell_(row, C.color), swDiamondCell_(row, C.clarity)].filter(Boolean).join(' '),
+        shape: shape,
+        carat: carat,
+        color: color,
+        clarity: clarity,
+        diamond: [shape, carat, color, clarity].filter(Boolean).join(' '),
         measurement: swDiamondCell_(row, C.measurement),
         ratio: swDiamondCell_(row, C.ratio),
         lab: swDiamondCell_(row, C.lab),
