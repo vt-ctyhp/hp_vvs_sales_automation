@@ -237,7 +237,7 @@ function swSetMasterActiveRowForTask_(ss, task) {
   var sh = ss.getSheetByName(SW_SHEETS.MASTER);
   if (!sh || !row) throw new Error('Could not resolve Master row for this task.');
   ss.setActiveSheet(sh);
-  sh.setActiveSelection(sh.getRange(row, 1));
+  ss.setActiveRange(sh.getRange(row, 1));
   return row;
 }
 

@@ -504,6 +504,10 @@
       gap: 14px;
     }
 
+    .field-grid .wide {
+      grid-column: 1 / -1;
+    }
+
     .mini-table {
       border-top: 1px solid var(--rule);
       display: grid;
@@ -520,6 +524,15 @@
 
     .mini-row.three {
       grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) minmax(80px, 110px);
+    }
+
+    .wax-update-row {
+      grid-template-columns: minmax(160px, 1fr) minmax(220px, 2fr);
+    }
+
+    .wax-update-row textarea {
+      margin-top: 8px;
+      min-height: 64px;
     }
 
     .bulk-actions {
@@ -870,6 +883,7 @@
         detailPanel.addEventListener('click', function (event) {
           if (closestMatch_(event.target, '.js-copy-template')) return copyTemplate();
           if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
+          if (closestMatch_(event.target, '.js-snooze-task')) return snoozeTask();
           var refreshButton = closestMatch_(event.target, '.js-refresh-diamond-quote');
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
           var copyStockButton = closestMatch_(event.target, '.js-copy-stock-diamond');
@@ -1855,9 +1869,11 @@
       var messageBlocks = clientMessage ? attachments + template : template + attachments;
       var checklist = renderChecklist(res.checklist || []);
       var diamondControls = renderDiamondControls(task, res);
+      var postConsultControls = renderPostConsultControls(task, res);
       var textArea = renderCompletionTextArea(task, res);
       var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
       var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete') + '</button>' : '';
+      var snooze = res.canComplete ? renderSnoozeControls(task) : '';
       var admin = res.canAdmin ? renderAdminForm(task) : '';
 
       document.getElementById('detailPanel').innerHTML = [
@@ -1875,8 +1891,10 @@
           '<div class="detail-section"><label>Instructions</label><div>' + escapeHtml(task.instructions || 'No instructions provided.') + '</div></div>',
           messageBlocks,
           diamondControls,
+          postConsultControls,
           checklist,
           textArea,
+          snooze,
           '<div class="actions">' + claim + complete + '</div>',
           admin,
         '</div>'
@@ -1913,6 +1931,164 @@
           '</div>',
         '</div>'
       ].join('');
+    }
+
+    function renderPostConsultControls(task, res) {
+      var payload = res.payload || {};
+      var appt = payload.appointment || {};
+      var extra = payload.extra || {};
+      var opts = res.formOptions || {};
+      if (task.taskType === 'POST_CONSULT_CLIENT_STATUS') {
+        return [
+          '<div class="detail-section">',
+            '<label>Client Status Update</label>',
+            '<div class="field-grid">',
+              selectFieldHtml('pcSalesStage', 'Sales Stage', opts.salesStages || [], appt.salesStage || '', true),
+              selectFieldHtml('pcConvStatus', 'Conversion Status', opts.convStatuses || [], appt.convStatus || '', true),
+              selectFieldHtml('pcCustomOrder', 'Custom Order Status', opts.customOrderStatuses || [], appt.customOrder || '', false),
+              selectFieldHtml('pcCenterStone', 'Center Stone Order Status', opts.centerStoneStatuses || [], appt.centerStoneStatus || '', false),
+              selectFieldHtml('pcInProduction', 'In Production Status', opts.inProductionStatuses || [], appt.inProduction || '', false),
+              '<div><label for="pcOrderDate">Order Date</label><input id="pcOrderDate" type="date"></div>',
+              '<div><label for="pcDeadline3d">3D Deadline</label><input id="pcDeadline3d" type="date"></div>',
+              '<div><label for="pcProdDeadline">Production Deadline</label><input id="pcProdDeadline" type="date"></div>',
+              selectFieldHtml('pcThreeDNeeded', '3D Needed', ['', 'Yes', 'Unknown', 'No'], extra.threeDNeeded || 'Unknown', true),
+              selectFieldHtml('pcWaxNeeded', 'Wax Needed', ['', 'No', 'Unknown', 'Yes'], extra.waxNeeded || 'No', false),
+              '<div><label for="pcWaxNeededBy">Wax Needed By</label><input id="pcWaxNeededBy" type="date"></div>',
+              selectFieldHtml('pcWaxPriority', 'Wax Priority', ['', 'Low', 'Normal', 'High', 'Rush'], extra.waxPriority || '', false),
+              '<div class="wide"><label for="pcNo3dReason">No 3D Reason</label><textarea id="pcNo3dReason"></textarea></div>',
+              '<div class="wide"><label for="pcDesignRequest">Design / 3D Handoff Notes</label><textarea id="pcDesignRequest">' + escapeHtml(appt.designRequest || extra.designRequest || '') + '</textarea></div>',
+              '<div class="wide"><label for="pcNextSteps">Next Steps</label><textarea id="pcNextSteps">' + escapeHtml(appt.nextSteps || '') + '</textarea></div>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      if (task.taskType === 'START_3D_DESIGN') {
+        var brand = start3dBrandDefault(appt.brand || task.brand || '');
+        return [
+          '<div class="detail-section">',
+            '<label>Start 3D</label>',
+            '<label class="check-row"><input id="s3dNo3d" type="checkbox"><span>No 3D needed</span></label>',
+            '<div class="field-grid">',
+              selectFieldHtml('s3dBrand', 'Brand', ['HPUSA', 'VVS'], brand, true),
+              '<div><label for="s3dSo">SO#</label><input id="s3dSo" value="' + escapeAttrValue(appt.so || extra.soNumber || '') + '" placeholder="12.34567"></div>',
+              '<div><label for="s3dOdooUrl">Odoo SO URL</label><input id="s3dOdooUrl" placeholder="https://..."></div>',
+              '<div><label for="s3dShortTag">Short Tag</label><input id="s3dShortTag"></div>',
+              '<div><label for="s3dShape">Shape</label><input id="s3dShape"></div>',
+              '<div><label for="s3dRingStyle">Ring Style</label><input id="s3dRingStyle"></div>',
+              selectFieldHtml('s3dWaxNeeded', 'Wax Needed', ['', 'No', 'Unknown', 'Yes'], extra.waxNeeded || 'No', false),
+              '<div><label for="s3dWaxNeededBy">Wax Needed By</label><input id="s3dWaxNeededBy" type="date"></div>',
+              selectFieldHtml('s3dWaxPriority', 'Wax Priority', ['', 'Low', 'Normal', 'High', 'Rush'], extra.waxPriority || '', false),
+              '<div class="wide"><label for="s3dNo3dReason">No 3D Reason</label><textarea id="s3dNo3dReason"></textarea></div>',
+              '<div class="wide"><label for="s3dDesignRequest">Design Request</label><textarea id="s3dDesignRequest">' + escapeHtml(extra.designRequest || appt.designRequest || '') + '</textarea></div>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      if (task.taskType === 'RECORD_3D_DEADLINE') {
+        return [
+          '<div class="detail-section">',
+            '<label>3D Deadline</label>',
+            '<div class="field-grid">',
+              '<div><label for="deadline3dTask">3D Deadline</label><input id="deadline3dTask" type="date"></div>',
+              '<div class="wide"><label for="deadline3dNote">Note</label><textarea id="deadline3dNote"></textarea></div>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      if (task.taskType === 'REQUEST_WAX_PRINT') {
+        return [
+          '<div class="detail-section">',
+            '<label>Wax Request</label>',
+            '<div class="field-grid">',
+              '<div><label for="waxSoMo">SO/MO Number</label><input id="waxSoMo" value="' + escapeAttrValue(appt.so || extra.soNumber || '') + '"></div>',
+              '<div><label for="waxNeededBy">Needed By (Rep)</label><input id="waxNeededBy" type="date" value="' + escapeAttrValue(extra.waxNeededBy || '') + '"></div>',
+              selectFieldHtml('waxPriority', 'Priority', ['', 'Low', 'Normal', 'High', 'Rush'], extra.waxPriority || '', true),
+              '<div class="wide"><label for="waxRequestNotes">Notes</label><textarea id="waxRequestNotes"></textarea></div>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      if (task.taskType === 'UPDATE_WAX_REQUEST') {
+        var requests = extra.waxRequests || [];
+        return [
+          '<div class="detail-section">',
+            '<label>Wax Updates</label>',
+            requests.length ? '<div class="mini-table">' + requests.map(function (w) {
+              return [
+                '<div class="mini-row wax-update-row" data-wax-id="' + escapeAttrValue(w.id || '') + '">',
+                  '<div><strong>' + escapeHtml(w.id || 'Wax request') + '</strong><div class="meta">' + escapeHtml([w.so, w.priority, w.repNeed ? ('Rep needs ' + w.repNeed) : ''].filter(Boolean).join(' | ')) + '</div></div>',
+                  '<div>',
+                    selectInlineHtml('waxStatus', opts.waxStatuses || [], w.status || ''),
+                    '<input class="waxAdminDeadline" type="date" value="' + escapeAttrValue(dateInputValue(w.adminDeadline)) + '">',
+                    '<input class="waxEstPrint" type="date" value="' + escapeAttrValue(dateInputValue(w.estPrint)) + '">',
+                    '<input class="waxCompleted" type="date" value="' + escapeAttrValue(dateInputValue(w.completed)) + '">',
+                    '<textarea class="waxNotes" placeholder="Status notes">' + escapeHtml(w.notes || '') + '</textarea>',
+                  '</div>',
+                '</div>'
+              ].join('');
+            }).join('') + '</div>' : '<div class="empty">No open wax requests in this task snapshot.</div>',
+          '</div>'
+        ].join('');
+      }
+
+      return '';
+    }
+
+    function renderSnoozeControls(task) {
+      if (task.status === 'Completed' || task.status === 'Blocked') return '';
+      return [
+        '<div class="detail-section">',
+          '<label>Snooze Task</label>',
+          '<div class="field-grid">',
+            '<div><label for="snoozeUntil">Snooze Until</label><input id="snoozeUntil" type="date"></div>',
+            '<div class="wide"><label for="snoozeReason">Reason</label><textarea id="snoozeReason" placeholder="Required"></textarea></div>',
+          '</div>',
+          task.snoozeReason ? '<div class="meta">Current snooze reason: ' + escapeHtml(task.snoozeReason) + '</div>' : '',
+          '<div class="actions"><button class="js-snooze-task" type="button">Snooze</button></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function selectFieldHtml(id, label, options, selected, required) {
+      return '<div><label for="' + escapeAttrValue(id) + '">' + escapeHtml(label) + (required ? ' *' : '') + '</label><select id="' + escapeAttrValue(id) + '">' + optionTags(options, selected) + '</select></div>';
+    }
+
+    function selectInlineHtml(className, options, selected) {
+      return '<select class="' + escapeAttrValue(className) + '">' + optionTags(options, selected) + '</select>';
+    }
+
+    function optionTags(options, selected) {
+      var seen = {};
+      options = options && options.length ? options : [''];
+      if (String(options[0] || '') !== '') options = [''].concat(options);
+      return options.filter(function (option) {
+        var key = String(option || '');
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+      }).map(function (option) {
+        var v = String(option || '');
+        return '<option value="' + escapeAttrValue(v) + '"' + (v === String(selected || '') ? ' selected' : '') + '>' + escapeHtml(v || 'Select') + '</option>';
+      }).join('');
+    }
+
+    function start3dBrandDefault(brand) {
+      var b = norm(brand);
+      if (b.indexOf('vvs') >= 0) return 'VVS';
+      return 'HPUSA';
+    }
+
+    function dateInputValue(value) {
+      value = String(value || '').trim();
+      var iso = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+      if (iso) return iso[1];
+      var mdy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(value);
+      if (mdy) return mdy[3] + '-' + ('0' + mdy[1]).slice(-2) + '-' + ('0' + mdy[2]).slice(-2);
+      return '';
     }
 
     function renderDiamondControls(task, res) {
@@ -2374,6 +2550,60 @@
           return { rowIndex: row ? row.getAttribute('data-row-index') : '', decision: select.value, hold: !!(hold && hold.checked) };
         }).filter(function (item) { return item.decision; });
       }
+      if (task.taskType === 'POST_CONSULT_CLIENT_STATUS') {
+        payload.salesStage = valueOf('pcSalesStage');
+        payload.convStatus = valueOf('pcConvStatus');
+        payload.customOrder = valueOf('pcCustomOrder');
+        payload.centerStone = valueOf('pcCenterStone');
+        payload.inProduction = valueOf('pcInProduction');
+        payload.orderDate = valueOf('pcOrderDate');
+        payload.deadline3d = valueOf('pcDeadline3d');
+        payload.prodDeadline = valueOf('pcProdDeadline');
+        payload.threeDNeeded = valueOf('pcThreeDNeeded');
+        payload.no3dReason = valueOf('pcNo3dReason');
+        payload.designRequest = valueOf('pcDesignRequest');
+        payload.nextSteps = valueOf('pcNextSteps');
+        payload.waxNeeded = valueOf('pcWaxNeeded');
+        payload.waxNeededBy = valueOf('pcWaxNeededBy');
+        payload.waxPriority = valueOf('pcWaxPriority');
+      }
+      if (task.taskType === 'START_3D_DESIGN') {
+        payload.start3dMode = checkedOf('s3dNo3d') ? 'no3d' : 'start';
+        payload.no3d = checkedOf('s3dNo3d');
+        payload.no3dReason = valueOf('s3dNo3dReason');
+        payload.brand = valueOf('s3dBrand');
+        payload.so = valueOf('s3dSo');
+        payload.odooUrl = valueOf('s3dOdooUrl');
+        payload.shortTag = valueOf('s3dShortTag');
+        payload.shape = valueOf('s3dShape');
+        payload.ringStyle = valueOf('s3dRingStyle');
+        payload.designRequest = valueOf('s3dDesignRequest');
+        payload.waxNeeded = valueOf('s3dWaxNeeded');
+        payload.waxNeededBy = valueOf('s3dWaxNeededBy');
+        payload.waxPriority = valueOf('s3dWaxPriority');
+      }
+      if (task.taskType === 'RECORD_3D_DEADLINE') {
+        payload.deadline3d = valueOf('deadline3dTask');
+        payload.note = valueOf('deadline3dNote');
+      }
+      if (task.taskType === 'REQUEST_WAX_PRINT') {
+        payload.soMo = valueOf('waxSoMo');
+        payload.neededByRep = valueOf('waxNeededBy');
+        payload.priority = valueOf('waxPriority');
+        payload.notes = valueOf('waxRequestNotes');
+      }
+      if (task.taskType === 'UPDATE_WAX_REQUEST') {
+        payload.waxUpdates = [].slice.call(document.querySelectorAll('.wax-update-row')).map(function (row) {
+          return {
+            id: row.getAttribute('data-wax-id') || '',
+            status: (row.querySelector('.waxStatus') || {}).value || '',
+            adminDeadline: (row.querySelector('.waxAdminDeadline') || {}).value || '',
+            estPrint: (row.querySelector('.waxEstPrint') || {}).value || '',
+            completed: (row.querySelector('.waxCompleted') || {}).value || '',
+            notes: (row.querySelector('.waxNotes') || {}).value || ''
+          };
+        }).filter(function (item) { return item.id; });
+      }
       return payload;
     }
 
@@ -2438,6 +2668,19 @@
         if (missingRequirements.length) disabled = true;
         updateCustomerDiamondRequirementStatus(missingRequirements);
       }
+      if (task.taskType === 'POST_CONSULT_CLIENT_STATUS') {
+        if (!valueOf('pcSalesStage') || !valueOf('pcConvStatus') || !valueOf('pcThreeDNeeded')) disabled = true;
+        if (norm(valueOf('pcThreeDNeeded')) === 'no' && !valueOf('pcNo3dReason')) disabled = true;
+      }
+      if (task.taskType === 'START_3D_DESIGN') {
+        if (checkedOf('s3dNo3d')) {
+          if (!valueOf('s3dNo3dReason')) disabled = true;
+        } else if (!valueOf('s3dBrand') || !valueOf('s3dSo') || !valueOf('s3dOdooUrl')) {
+          disabled = true;
+        }
+      }
+      if (task.taskType === 'RECORD_3D_DEADLINE' && !valueOf('deadline3dTask')) disabled = true;
+      if (task.taskType === 'REQUEST_WAX_PRINT' && (!valueOf('waxSoMo') || !valueOf('waxNeededBy') || !valueOf('waxPriority'))) disabled = true;
       button.disabled = disabled;
       button.title = disabled ? 'Complete required checklist items, customer requirements, and diamond decisions first.' : '';
     }
@@ -2447,10 +2690,29 @@
       return el ? el.value : '';
     }
 
+    function checkedOf(id) {
+      var el = document.getElementById(id);
+      return !!(el && el.checked);
+    }
+
     function completeTask() {
       if (!appState.selectedTaskId) return;
       serverCall('sw_completeTask', [appState.selectedTaskId, completionPayload()], function () {
         setStatus('Task completed');
+        loadTasks(appState.view);
+        appState.selectedTaskId = '';
+        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
+      });
+    }
+
+    function snoozeTask() {
+      if (!appState.selectedTaskId) return;
+      var payload = {
+        untilDate: valueOf('snoozeUntil'),
+        reason: valueOf('snoozeReason')
+      };
+      serverCall('sw_snoozeTask', [appState.selectedTaskId, payload], function () {
+        setStatus('Task snoozed');
         loadTasks(appState.view);
         appState.selectedTaskId = '';
         document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
