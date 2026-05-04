@@ -69,6 +69,7 @@ Both surfaces write to `_SalesWorkflowUsers`, support role checkboxes, and eithe
 ## Dashboard Views
 - `My Queue`: role-filtered task cards for the signed-in user.
 - `Calendar`: monthly appointment view for all users.
+- `In-Stock Diamonds`: read-only store inventory view for all users. It shows diamonds currently marked delivered/in stock in 200_, excludes already purchased/returned stones, and surfaces the return due date so reps can decide whether a store stone will still be available around a Diamond Viewing appointment.
 - `Diamond Tracking`: diamond order admin/assistant/admin view showing on-the-way diamonds, delivered diamonds, return items, missing ETAs, delayed/cancelled/unavailable tracking, and returns due soon. It reads from 200_ and highlights issues first.
 
 ## Return Deadline Rule
@@ -98,5 +99,6 @@ It returns and logs:
 - 200_ remains the source of truth for diamond tracking and ETA. Task payloads only cache small snapshots for performance.
 - The Order Diamonds task does not ask users to manually update 200_; submitting the dashboard task performs the 200_ writeback through the existing diamond order approval function.
 - The Propose Diamonds task does not duplicate a separate workflow; it uses the same validation and writeback path as the current Sheet 100 Propose Diamonds dialog.
+- Before proposing diamonds, reps can open `In-Stock Diamonds`, compare the Diamond Viewing date against each stone's return due date, copy the stock details, then enter the chosen stone into the Propose Diamonds task with vendor `From In Stock`.
 - If new 200_ diamond data or 3D tracker data arrives after the task was generated, use the quotation task buttons to refresh diamonds, 3D settings, or both.
 - Legacy `04_Reminders_Queue` Diamond Viewing reminders can remain as fallback while the Sales Workflow tasks are verified.

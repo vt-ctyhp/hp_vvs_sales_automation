@@ -185,6 +185,7 @@ function sw_getBootstrap(authToken) {
       views: {
         mine: true,
         calendar: true,
+        inStockDiamonds: true,
         diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
         coverage: user.isJoc || user.isAdmin,
         admin: user.isAdmin
@@ -421,6 +422,142 @@ function sw_getDiamondTrackingDashboard(authToken) {
       missingColumns: missingColumns,
       stats: stats,
       rows: rows.slice(0, 200)
+    };
+  });
+}
+
+/**
+ * Read-only UI stock view: all workflow users can see in-store diamonds and
+ * return due dates before proposing stones for a Diamond Viewing appointment.
+ */
+function sw_getInStockDiamonds(authToken) {
+  return swTimed_('sw_getInStockDiamonds', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    swAuthUserForApi_(ss, authToken);
+
+    var target = swDiamond200Target_();
+    if (!target || !target.sheet) {
+      return { ok: true, available: false, rows: [], stats: {} };
+    }
+
+    var sh = target.sheet;
+    var lr = sh.getLastRow();
+    var lc = sh.getLastColumn();
+    if (lr < 3 || lc < 1) {
+      return { ok: true, available: true, spreadsheetUrl: target.ss.getUrl(), tab: target.tab, rows: [], stats: {} };
+    }
+
+    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
+      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
+      : [];
+    var returnWindow = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WINDOW_DAYS', '30')) || 30;
+    var hm = swDiamond200HeaderMap_(sh);
+    var C = {
+      root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
+      customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
+      appointment: swDiamondFind200Column_(hm, ['Customer Appt Time & Date', 'Customer Appointment Date', 'Appointment Date']),
+      assignedRep: swDiamondFind200Column_(hm, ['Assigned Rep', 'Sales Rep']),
+      company: swDiamondFind200Column_(hm, ['Company', 'Brand']),
+      vendor: swDiamondFind200Column_(hm, ['Vendor']),
+      stoneType: swDiamondFind200Column_(hm, ['Stone Type', 'StoneType']),
+      shape: swDiamondFind200Column_(hm, ['Shape']),
+      carat: swDiamondFind200Column_(hm, ['Carat']),
+      color: swDiamondFind200Column_(hm, ['Color']),
+      clarity: swDiamondFind200Column_(hm, ['Clarity']),
+      lab: swDiamondFind200Column_(hm, ['LAB', 'Lab', 'Grading Lab']),
+      certNo: swDiamondFind200Column_(hm, ['Certificate No', 'Cert #', 'Cert No', 'Certificate #']),
+      measurement: swDiamondFind200Column_(hm, ['Measurements', 'Measurement', 'Meas.', 'Meas']),
+      ratio: swDiamondFind200Column_(hm, ['L/W Ratio', 'L-W Ratio', 'LW Ratio', 'Ratio']),
+      orderStatus: swDiamondFind200Column_(hm, ['Order Status', 'OrderStatus']),
+      stoneStatus: swDiamondFind200Column_(hm, ['Stone Status', 'StoneStatus']),
+      decision: swDiamondFind200Column_(hm, ['Stone Decision (PO, Return)', 'Stone Decision', 'StoneDecision']),
+      orderDate: swDiamondFind200Column_(hm, ['Purchased / Ordered Date', 'Purchased/Ordered Date', 'PurchasedOrderedDate']),
+      memoDate: swDiamondFind200Column_(hm, ['Memo/ Invoice Date', 'Memo / Invoice Date', 'Memo Invoice Date']),
+      returnDueDate: swDiamondFind200Column_(hm, ['Return DUE DATE', 'Return Due Date', 'Return Due'])
+    };
+
+    var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+    var today = new Date();
+    var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    var warningMs = todayMs + 7 * 24 * 60 * 60 * 1000;
+    var rows = [];
+    var stats = {
+      total: 0,
+      available: 0,
+      returnSoon: 0,
+      returnOverdue: 0,
+      noReturnDate: 0
+    };
+
+    values.forEach(function (row, i) {
+      var orderStatus = swDiamondCell_(row, C.orderStatus);
+      var stoneStatus = swDiamondCell_(row, C.stoneStatus);
+      var decision = swDiamondCell_(row, C.decision);
+      var orderNorm = swNorm_(orderStatus);
+      var stoneNorm = swNorm_(stoneStatus);
+      var decisionNorm = swNorm_(decision);
+      var isInStock = stoneNorm.indexOf('in stock') >= 0 || orderNorm === 'delivered';
+      var unavailable = /return in progress|returned|sold|customer purchased/.test(stoneNorm) ||
+        decisionNorm === 'purchase' || decisionNorm === 'purchased';
+      if (!isInStock || unavailable) return;
+
+      var returnDueDate = swDiamondCell_(row, C.returnDueDate) ||
+        swDiamondReturnDueDate_(swDiamondCell_(row, C.orderDate), returnWindow);
+      var returnMs = swDiamondDateValue_(returnDueDate);
+      var issue = '';
+      if (!returnDueDate) issue = 'No return date';
+      else if (returnMs < todayMs) issue = 'Return overdue';
+      else if (returnMs <= warningMs) issue = 'Return soon';
+
+      var daysUntilReturn = returnMs ? Math.ceil((returnMs - todayMs) / (24 * 60 * 60 * 1000)) : '';
+      rows.push({
+        rowIndex: i + 3,
+        root: swDiamondCell_(row, C.root),
+        customerName: swDiamondCell_(row, C.customerName),
+        appointment: swDiamondCell_(row, C.appointment),
+        assignedRep: swDiamondCell_(row, C.assignedRep),
+        company: swDiamondCell_(row, C.company),
+        vendor: swDiamondCell_(row, C.vendor),
+        stoneType: swDiamondCell_(row, C.stoneType),
+        certNo: swDiamondCell_(row, C.certNo),
+        diamond: [swDiamondCell_(row, C.shape), swDiamondCell_(row, C.carat), swDiamondCell_(row, C.color), swDiamondCell_(row, C.clarity)].filter(Boolean).join(' '),
+        measurement: swDiamondCell_(row, C.measurement),
+        ratio: swDiamondCell_(row, C.ratio),
+        lab: swDiamondCell_(row, C.lab),
+        orderStatus: orderStatus,
+        stoneStatus: stoneStatus,
+        decision: decision,
+        orderDate: swDiamondCell_(row, C.orderDate),
+        memoDate: swDiamondCell_(row, C.memoDate),
+        returnDueDate: returnDueDate,
+        daysUntilReturn: daysUntilReturn,
+        issue: issue,
+        availabilityLabel: returnDueDate ? ('Available until ' + returnDueDate) : 'Return date missing'
+      });
+      stats.total++;
+      if (!issue) stats.available++;
+      if (issue === 'Return soon') stats.returnSoon++;
+      if (issue === 'Return overdue') stats.returnOverdue++;
+      if (issue === 'No return date') stats.noReturnDate++;
+    });
+
+    rows.sort(function (a, b) {
+      if (!!a.issue !== !!b.issue) return a.issue ? -1 : 1;
+      var av = swDiamondDateValue_(a.returnDueDate) || 9999999999999;
+      var bv = swDiamondDateValue_(b.returnDueDate) || 9999999999999;
+      return av - bv || String(a.diamond).localeCompare(String(b.diamond));
+    });
+
+    return {
+      ok: true,
+      available: true,
+      generatedAt: swIso_(new Date()),
+      spreadsheetUrl: target.ss.getUrl(),
+      spreadsheetName: target.ss.getName(),
+      tab: target.tab,
+      stats: stats,
+      rows: rows.slice(0, 300)
     };
   });
 }

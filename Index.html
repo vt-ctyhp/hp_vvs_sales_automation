@@ -622,6 +622,7 @@
       <div class="tabs">
         <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
         <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
+        <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">In-Stock Diamonds</button>
         <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
@@ -668,6 +669,7 @@
       calendarMonth: '',
       calendarAppointments: [],
       diamondTrackingRows: [],
+      inStockDiamondsRows: [],
       busy: false
     };
 
@@ -687,11 +689,12 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'calendar', 'diamondTracking', 'coverage', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'coverage', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
           if (view === 'calendar') loadCalendar();
+          else if (view === 'inStockDiamonds') loadInStockDiamonds();
           else if (view === 'diamondTracking') loadDiamondTracking();
           else loadTasks(view);
         });
@@ -716,6 +719,11 @@
             renderDiamondTrackingDetail(trackingButton.getAttribute('data-row-index') || '');
             return;
           }
+          var stockButton = closestMatch_(event.target, '.js-instock-diamond-row');
+          if (stockButton) {
+            renderInStockDiamondDetail(stockButton.getAttribute('data-row-index') || '');
+            return;
+          }
           var button = closestMatch_(event.target, '.js-open-task');
           if (!button) return;
           openTask(button.getAttribute('data-task-id') || '');
@@ -729,6 +737,8 @@
           if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
           var refreshButton = closestMatch_(event.target, '.js-refresh-diamond-quote');
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
+          var copyStockButton = closestMatch_(event.target, '.js-copy-stock-diamond');
+          if (copyStockButton) return copyStockDiamondDetails(copyStockButton.getAttribute('data-row-index') || '');
           var addProposalButton = closestMatch_(event.target, '.js-add-proposal-row');
           if (addProposalButton) return addProposalRow();
           var removeProposalButton = closestMatch_(event.target, '.js-remove-proposal-row');
@@ -872,6 +882,7 @@
       return {
         mine: true,
         calendar: true,
+        inStockDiamonds: true,
         diamondTracking: !!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant),
         coverage: !!(user.isJoc || user.isAdmin),
         admin: !!user.isAdmin
@@ -896,6 +907,7 @@
       if (user.isDiamondOrderAdmin) parts.push('Diamond Order Admin');
       if (user.isDiamondOrderAssistant) parts.push('Diamond Order Assistant');
       document.getElementById('userLine').innerHTML = parts.join('<br>');
+      document.getElementById('tab-inStockDiamonds').style.display = res.views && res.views.inStockDiamonds !== false ? '' : 'none';
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
@@ -905,6 +917,10 @@
     function loadTasks(view) {
       if (view === 'calendar') {
         loadCalendar(appState.calendarMonth);
+        return;
+      }
+      if (view === 'inStockDiamonds') {
+        loadInStockDiamonds();
         return;
       }
       if (view === 'diamondTracking') {
@@ -921,7 +937,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'diamondTracking', 'coverage', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'coverage', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -937,6 +953,10 @@
       if (view === 'calendar') {
         title = 'Upcoming appointments by month';
         eyebrow = 'Calendar';
+      }
+      if (view === 'inStockDiamonds') {
+        title = 'Currently in-stock diamonds';
+        eyebrow = 'Store Stock';
       }
       if (view === 'diamondTracking') {
         title = 'Diamond shipment and return tracking';
@@ -1066,6 +1086,150 @@
         if (String(appointments[i].id) === String(appointmentId)) return appointments[i];
       }
       return null;
+    }
+
+    function loadInStockDiamonds() {
+      appState.view = 'inStockDiamonds';
+      appState.selectedTaskId = '';
+      setActiveTab(appState.view);
+      renderViewHeader(appState.view);
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING IN-STOCK DIAMONDS</div>';
+      document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Store Stock</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
+      serverCall('sw_getInStockDiamonds', [], function (res) {
+        appState.inStockDiamondsRows = res.rows || [];
+        renderInStockDiamonds(res);
+        renderInStockDiamondsSummary(res);
+      }, 'Loading in-stock diamonds');
+    }
+
+    function renderInStockDiamonds(res) {
+      res = res || {};
+      if (!res.available) {
+        document.getElementById('taskList').innerHTML = '<div class="empty"><h3>Diamond tracker unavailable</h3><p>Connect the 200_ diamond tracking spreadsheet before using this view.</p></div>';
+        return;
+      }
+      var stats = res.stats || {};
+      var rows = res.rows || [];
+      var list = rows.length ? rows.map(renderInStockDiamondRow).join('') : '<div class="empty"><h3>No in-stock diamonds found</h3><p>Delivered/In Stock diamonds that are not already purchased or being returned will appear here.</p></div>';
+      document.getElementById('taskList').innerHTML = [
+        '<div class="stat-grid">',
+          statCardHtml('In Stock', stats.total || 0),
+          statCardHtml('Clear', stats.available || 0),
+          statCardHtml('Return Soon', stats.returnSoon || 0),
+          statCardHtml('Overdue', stats.returnOverdue || 0),
+        '</div>',
+        '<div class="tracking-list">',
+          list,
+        '</div>'
+      ].join('');
+    }
+
+    function renderInStockDiamondRow(row) {
+      var issue = row.issue ? '<span class="badge">' + escapeHtml(row.issue) + '</span>' : '<span class="badge">In Stock</span>';
+      var availability = [
+        row.returnDueDate ? 'Return ' + row.returnDueDate : 'No return date',
+        row.daysUntilReturn !== '' ? row.daysUntilReturn + 'd left' : '',
+        row.company
+      ].filter(Boolean).join(' | ');
+      return [
+        '<button class="tracking-row js-instock-diamond-row ' + (row.issue ? 'issue' : '') + '" type="button" data-row-index="' + escapeAttrValue(row.rowIndex) + '">',
+          '<div class="task-top">',
+            '<div>',
+              '<div class="task-title">' + escapeHtml(row.diamond || ('Row ' + row.rowIndex)) + '</div>',
+              '<div class="meta">' + escapeHtml([row.vendor, row.lab, row.certNo ? 'Cert ' + row.certNo : ''].filter(Boolean).join(' | ')) + '</div>',
+              '<div class="meta">' + escapeHtml([row.measurement, row.ratio ? 'L/W ' + row.ratio : ''].filter(Boolean).join(' | ')) + '</div>',
+            '</div>',
+            '<div>' + issue + '</div>',
+          '</div>',
+          '<div class="meta">' + escapeHtml(availability) + '</div>',
+          '<div class="meta">' + escapeHtml([row.stoneStatus, row.orderStatus, row.customerName ? 'Held for ' + row.customerName : ''].filter(Boolean).join(' | ')) + '</div>',
+        '</button>'
+      ].join('');
+    }
+
+    function renderInStockDiamondsSummary(res) {
+      res = res || {};
+      var url = res.spreadsheetUrl ? '<a href="' + escapeHref(res.spreadsheetUrl) + '" target="_blank">Open 200_ tracker</a>' : '';
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Store Stock</div>',
+          '<h2>In-Stock Diamonds</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>How To Use</label>',
+            '<div class="template-box">Use this list before proposing diamonds for a viewing. Compare the appointment date against the Return Due Date. If the return date is before or too close to the appointment, confirm an extension or choose another stone.</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Source</label>',
+            '<div class="meta">' + escapeHtml(res.spreadsheetName || '200_ Diamond Tracker') + '</div>',
+            '<div class="meta">' + escapeHtml(res.tab || '') + '</div>',
+            url ? '<div class="actions">' + url + '</div>' : '',
+          '</div>',
+          '<div class="empty">Select a diamond to review details and copy proposal information.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderInStockDiamondDetail(rowIndex) {
+      var row = findInStockDiamondRow(rowIndex);
+      if (!row) return;
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(row.issue || 'In Stock') + '</div>',
+          '<h2>' + escapeHtml(row.diamond || 'Diamond Row ' + row.rowIndex) + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Proposal Details</label>',
+            '<div class="template-box" id="stockDiamondDetails">' + escapeHtml(stockDiamondCopyText(row)) + '</div>',
+            '<div class="actions"><button class="js-copy-stock-diamond" type="button" data-row-index="' + escapeAttrValue(row.rowIndex) + '">Copy Details</button></div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Availability</label>',
+            '<div class="meta">Return due: ' + escapeHtml(row.returnDueDate || 'Missing') + '</div>',
+            '<div class="meta">' + escapeHtml(row.availabilityLabel || '') + '</div>',
+            '<div class="meta">' + escapeHtml([row.stoneStatus, row.orderStatus, row.decision].filter(Boolean).join(' | ')) + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Context</label>',
+            '<div class="meta">' + escapeHtml(row.customerName ? 'Currently tied to ' + row.customerName : 'No customer context listed') + '</div>',
+            '<div class="meta">Assigned rep: ' + escapeHtml(row.assignedRep || '') + '</div>',
+            '<div class="meta">Row ' + escapeHtml(row.rowIndex || '') + '</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function findInStockDiamondRow(rowIndex) {
+      var rows = appState.inStockDiamondsRows || [];
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i].rowIndex) === String(rowIndex)) return rows[i];
+      }
+      return null;
+    }
+
+    function stockDiamondCopyText(row) {
+      return [
+        'Vendor: ' + (row.vendor || ''),
+        'Stone Type: ' + (row.stoneType || ''),
+        'Diamond: ' + (row.diamond || ''),
+        'Lab/Cert: ' + [row.lab, row.certNo].filter(Boolean).join(' '),
+        'Measurements: ' + (row.measurement || ''),
+        'L/W Ratio: ' + (row.ratio || ''),
+        'Return Due Date: ' + (row.returnDueDate || ''),
+        '200_ Row: ' + (row.rowIndex || '')
+      ].join('\n');
+    }
+
+    function copyStockDiamondDetails(rowIndex) {
+      var row = findInStockDiamondRow(rowIndex);
+      if (!row) return;
+      navigator.clipboard.writeText(stockDiamondCopyText(row)).then(function () {
+        setStatus('In-stock diamond details copied');
+      }, function () {
+        setStatus('Copy failed. Select the detail text manually.', true);
+      });
     }
 
     function loadDiamondTracking() {
@@ -1445,7 +1609,7 @@
       return [
         '<div class="detail-section">',
           '<label>Proposed Diamonds</label>',
-          '<div class="template-box">Add proposed diamonds here. Completing this task uses the same Sheet 100 proposal flow: it validates the stones, inserts them into 200_, updates the Sheet 100 diamond counts/status, and keeps the appointment context tied to this customer.</div>',
+          '<div class="template-box">Add proposed diamonds here. Use the In-Stock Diamonds tab first if you want to select store inventory and confirm the return date works for this appointment. Completing this task uses the same Sheet 100 proposal flow: it validates the stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps the appointment context tied to this customer.</div>',
           '<div class="meta" style="margin-top:10px">' + escapeHtml([appt.customerName, appt.visitDate, appt.visitTime].filter(Boolean).join(' | ')) + '</div>',
           '<div id="proposalRows" class="proposal-rows" style="margin-top:16px">',
             proposalRowHtml(0),
