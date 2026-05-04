@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-foundation: #F7F1EB;
+      --surface-card:  #FBF7F1;
+      --surface-inset: #EFE8DD;
+      --ink-primary:   #2A2725;
+      --ink-body:      #4A4540;
+      --ink-muted:     #8A8178;
+      --rule:          #D4CFC4;
+      --accent:        #E91D79;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg-foundation);
+      color: var(--ink-body);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      margin: 0;
+    }
+    .shell { padding: 28px; }
+    .header {
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+    }
+    .eyebrow, label {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    h1, h2 {
+      color: var(--ink-primary);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-weight: 400;
+      margin: 0;
+    }
+    h1 { font-size: 30px; }
+    h2 { font-size: 22px; }
+    .section {
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+    }
+    .section:last-child {
+      border-bottom: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .field-grid {
+      display: grid;
+      gap: 14px;
+    }
+    input {
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--rule);
+      border-radius: 0;
+      color: var(--ink-primary);
+      font: inherit;
+      padding: 6px 2px;
+      width: 100%;
+    }
+    input:focus {
+      border-bottom: 2px solid var(--accent);
+      outline: none;
+      padding-bottom: 5px;
+    }
+    button {
+      background: transparent;
+      border: 1px solid var(--ink-primary);
+      border-radius: 2px;
+      color: var(--ink-primary);
+      cursor: pointer;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      padding: 10px 14px;
+      text-transform: uppercase;
+    }
+    button:hover:not(:disabled) {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+    button.primary {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+    button.primary:hover:not(:disabled) {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    button:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .role-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .role-option {
+      align-items: flex-start;
+      border-bottom: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: grid;
+      font-size: 14px;
+      gap: 10px;
+      grid-template-columns: 18px 1fr;
+      letter-spacing: 0;
+      margin-bottom: 0;
+      padding: 10px 0;
+      text-transform: none;
+    }
+    .role-option input {
+      margin-top: 2px;
+      width: auto;
+    }
+    .meta {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .mini-table {
+      border-top: 1px solid var(--rule);
+      display: grid;
+    }
+    .mini-row {
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(140px, 1fr) minmax(120px, 1fr);
+      padding: 12px 0;
+    }
+    .status {
+      color: var(--ink-muted);
+      min-height: 18px;
+      margin-top: 12px;
+    }
+    .error { color: var(--accent); }
+    .loading, .empty {
+      background: var(--surface-inset);
+      color: var(--ink-muted);
+      padding: 18px;
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="header">
+      <div class="eyebrow">Sales Workflow</div>
+      <h1>Manage Users</h1>
+    </div>
+
+    <section class="section">
+      <label>Add or Update User</label>
+      <div class="field-grid">
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email">
+        </div>
+        <div>
+          <label for="name">Name</label>
+          <input id="name">
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="text" placeholder="Leave blank to auto-generate">
+        </div>
+        <div class="actions">
+          <button id="generatePassword" type="button">Generate Password</button>
+        </div>
+        <div>
+          <label>Role Access</label>
+          <div id="roles" class="role-grid"></div>
+        </div>
+        <div>
+          <label for="notes">Notes</label>
+          <input id="notes">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="save" class="primary" type="button">Save User</button>
+        <button id="close" type="button">Close</button>
+      </div>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="section">
+      <label>Existing Users</label>
+      <div id="users" class="loading">LOADING</div>
+    </section>
+  </main>
+
+  <script>
+    var roleOptions = [];
+
+    function init() {
+      document.getElementById('save').addEventListener('click', saveUser);
+      document.getElementById('close').addEventListener('click', function () { google.script.host.close(); });
+      document.getElementById('generatePassword').addEventListener('click', function () {
+        document.getElementById('password').value = clientGeneratedPassword();
+      });
+      loadUsers();
+    }
+
+    function loadUsers(afterMessage) {
+      setStatus('Loading users');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          roleOptions = res.roleOptions || [];
+          renderRoles(roleOptions);
+          renderUsers(res.users || []);
+          setStatus(afterMessage || '');
+        })
+        .withFailureHandler(function (err) {
+          setStatus(errorMessage(err), true);
+          document.getElementById('users').innerHTML = '<div class="empty">Unable to load users.</div>';
+        })
+        .sw_adminListWorkflowUsers('');
+    }
+
+    function renderRoles(roles) {
+      document.getElementById('roles').innerHTML = roles.map(function (role) {
+        return [
+          '<label class="role-option">',
+            '<input class="role" type="checkbox" value="' + escapeAttr(role.value) + '">',
+            '<span><strong>' + escapeHtml(role.label || role.value) + '</strong><span class="meta">' + escapeHtml(role.description || '') + '</span></span>',
+          '</label>'
+        ].join('');
+      }).join('');
+    }
+
+    function renderUsers(users) {
+      if (!users.length) {
+        document.getElementById('users').innerHTML = '<div class="empty">No workflow users yet.</div>';
+        return;
+      }
+      document.getElementById('users').innerHTML = '<div class="mini-table">' + users.map(function (user) {
+        return '<div class="mini-row">' +
+          '<div><strong>' + escapeHtml(user.name || user.email) + '</strong><span class="meta">' + escapeHtml(user.email || '') + '</span></div>' +
+          '<div class="meta">' + escapeHtml(user.roles || '') + '<br>' + escapeHtml(user.active || '') + (user.passwordSet ? ' · Password set' : ' · No password') + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    function saveUser() {
+      var payload = {
+        email: valueOf('email'),
+        name: valueOf('name'),
+        password: valueOf('password'),
+        notes: valueOf('notes'),
+        roles: [].slice.call(document.querySelectorAll('.role:checked')).map(function (el) { return el.value; })
+      };
+      document.getElementById('save').disabled = true;
+      setStatus('Saving user');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          document.getElementById('save').disabled = false;
+          loadUsers('Saved ' + (res.email || payload.email) + '. Password: ' + (res.password || payload.password));
+        })
+        .withFailureHandler(function (err) {
+          document.getElementById('save').disabled = false;
+          setStatus(errorMessage(err), true);
+        })
+        .sw_adminUpsertWorkflowUser('', payload);
+    }
+
+    function valueOf(id) {
+      var el = document.getElementById(id);
+      return el ? el.value : '';
+    }
+
+    function setStatus(message, isError) {
+      var el = document.getElementById('status');
+      el.textContent = message || '';
+      el.className = isError ? 'status error' : 'status';
+    }
+
+    function clientGeneratedPassword() {
+      var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      var out = '';
+      for (var i = 0; i < 14; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+      return out;
+    }
+
+    function errorMessage(err) {
+      return err && err.message ? err.message : String(err || 'Unknown error');
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+      });
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replace(/`/g, '&#96;');
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

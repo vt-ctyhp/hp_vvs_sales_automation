@@ -13,14 +13,14 @@ The workflow keeps ownership editable in `_SalesWorkflowConfig`, message/task co
 - 200_ diamond tracker: source of truth for stone status, order status, tracking ETA, decisions, and return due dates.
 
 ## Ownership Rows
-Run `sw_setupSalesWorkflow()` to seed these rows, then fill real names/emails:
+Run `sw_setupSalesWorkflow()` to seed the system/config rows. Diamond order access is role-based from `_SalesWorkflowUsers`; you do not need to fill Name or Email on `_SalesWorkflowConfig` for these roles.
 
 - `USER | DIAMOND_ORDER_ADMIN_1 | Role=DIAMOND_ORDER_ADMIN`
 - `USER | DIAMOND_ORDER_ASSISTANT_1 | Role=DIAMOND_ORDER_ASSISTANT`
 - `SYSTEM | SHARED_DIAMOND_ORDER_ADMIN_QUEUE`
 - `SYSTEM | SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE`
 
-Assigned rep and JOC ownership still come from the appointment row (`Assigned Rep`, `Assisted Rep`) and existing roster/config mapping.
+The seeded diamond config rows can remain blank. Assigned rep and JOC ownership still come from the appointment row (`Assigned Rep`, `Assisted Rep`) and existing roster/config mapping.
 
 ## Login Users
 For the first admin user, run this no-argument function from the Apps Script editor function dropdown:
@@ -45,6 +45,12 @@ sw_adminSetWorkflowPassword(
 Use only the roles that person needs. A diamond order admin usually needs `DIAMOND_ORDER_ADMIN`; a diamond order assistant usually needs `DIAMOND_ORDER_ASSISTANT`.
 
 The `Temporary Password?` column is informational only. The dashboard does not force a password change on first login; users can continue using the password assigned to them until an admin resets it.
+
+Admins can also manage users from:
+- Google Sheets menu: `Sales > Manage workflow users`
+- Sales Workflow dashboard: `Manage Users`
+
+Both surfaces write to `_SalesWorkflowUsers`, support role checkboxes, and either auto-generate a password or use the password typed by the admin.
 
 ## Generated Diamond Tasks
 - `PROPOSE_DIAMONDS`: assigned rep proposes stones immediately when a Diamond Viewing appointment is in workflow.

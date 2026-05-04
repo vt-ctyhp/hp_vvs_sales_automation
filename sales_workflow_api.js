@@ -536,7 +536,12 @@ function sw_reviewDiamondWorkflowSetup() {
     diamondRoles: {},
     diamondTemplates: {},
     authUsers: [],
-    diamondTracking: {}
+    diamondTracking: {},
+    accessModel: {
+      diamondOrderAdmin: 'Role-based via _SalesWorkflowUsers role DIAMOND_ORDER_ADMIN.',
+      diamondOrderAssistant: 'Role-based via _SalesWorkflowUsers role DIAMOND_ORDER_ASSISTANT.',
+      configNameEmailRequired: false
+    }
   };
 
   [SW_SHEETS.CONFIG, SW_SHEETS.TEMPLATES, SW_SHEETS.USERS, SW_SHEETS.TASKS].forEach(function (name) {

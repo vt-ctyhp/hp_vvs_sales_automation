@@ -10,19 +10,20 @@ function swCurrentUser_(ss, ctx) {
   var assistedRoster = ctx.assistedRoster || swReadAssistedRoster_(ss);
   var admins = ctx.admins || swReadAdminsFromConfig_(config);
   var peopleIndex = ctx.peopleIndex || swReadPeopleIndex_(ss, config);
+  var authRoles = email ? swAuthRolesForEmail_(ss, email) : [];
   var name = email ? (peopleIndex.nameByEmail[email] || '') : '';
   if (!name && email && !ctx.peopleIndex) name = swLookupNameByEmail_(ss, email);
   if (!name && email) name = email;
-  var isAdmin = admins.length === 0 || admins.indexOf(email) >= 0 || swUserHasConfigRole_(config, email, 'Admin');
-  var isJoc = swUserMatchesRoster_(assistedRoster, name, email) || swUserHasConfigRole_(config, email, 'JOC');
+  var isAdmin = admins.length === 0 || admins.indexOf(email) >= 0 || swUserHasConfigRole_(config, email, 'Admin') || swAuthHasRole_(authRoles, 'Admin');
+  var isJoc = swUserMatchesRoster_(assistedRoster, name, email) || swUserHasConfigRole_(config, email, 'JOC') || swAuthHasRole_(authRoles, 'JOC');
   return {
     email: email,
     name: name,
     isAdmin: isAdmin,
     isJoc: isJoc,
     isRep: !!name,
-    isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
-    isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
+    isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
+    isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
 }
 
@@ -31,6 +32,7 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
   try { email = swNormEmail_(Session.getActiveUser().getEmail()); } catch (_) {}
   var config = swReadConfig_(ss, readOnly);
   var admins = swReadAdminsFromConfig_(config);
+  var authRoles = email ? swAuthRolesForEmail_(ss, email) : [];
   var name = '';
   for (var i = 0; i < config.length; i++) {
     if (email && swNormEmail_(config[i]['Email']) === email) {
@@ -39,16 +41,16 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
     }
   }
   if (!name && email) name = email;
-  var isAdmin = admins.length === 0 || admins.indexOf(email) >= 0 || swUserHasConfigRole_(config, email, 'Admin');
-  var isJoc = swUserHasConfigRole_(config, email, 'JOC');
+  var isAdmin = admins.length === 0 || admins.indexOf(email) >= 0 || swUserHasConfigRole_(config, email, 'Admin') || swAuthHasRole_(authRoles, 'Admin');
+  var isJoc = swUserHasConfigRole_(config, email, 'JOC') || swAuthHasRole_(authRoles, 'JOC');
   return {
     email: email,
     name: name,
     isAdmin: isAdmin,
     isJoc: isJoc,
     isRep: !!name,
-    isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
-    isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
+    isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
+    isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
 }
 
@@ -79,6 +81,15 @@ function swTaskOwnedByUser_(task, user) {
   var email = swNormEmail_(user.email);
   if (email && swNormEmail_(task.currentOwnerEmail) === email) return true;
   if (swNorm_(user.name) && swNorm_(task.currentOwner) === swNorm_(user.name)) return true;
+  if (swTaskRoleOwnedByUser_(task, user)) return true;
+  return false;
+}
+
+function swTaskRoleOwnedByUser_(task, user) {
+  if (!task || !user) return false;
+  var role = swNorm_(task.ownerRole);
+  if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN)) return !!user.isDiamondOrderAdmin;
+  if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) return !!user.isDiamondOrderAssistant;
   return false;
 }
 

@@ -21,11 +21,11 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'DIAMOND_TRACKING_SOURCE', '200_', '', '', '', 'Y', '', 'Diamond tracking ETA/status source of truth. Sales Workflow payloads only cache snapshots for cards.'],
     ['SYSTEM', 'DIAMOND_RETURN_WINDOW_DAYS', '30', '', '', '', 'Y', '', 'Diamonds marked return are due back this many days after Purchased / Ordered Date.'],
     ['SYSTEM', 'DIAMOND_RETURN_WARNING_DAYS', '7', '', '', '', 'Y', '', 'Show return tasks this many days before the 30-day return deadline.'],
-    ['SYSTEM', 'SHARED_DIAMOND_ORDER_ADMIN_QUEUE', 'Diamond Order Admin Coverage', '', '', '', 'Y', '', 'Used when no DIAMOND_ORDER_ADMIN user/email is configured.'],
-    ['SYSTEM', 'SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE', 'Diamond Order Assistant Coverage', '', '', '', 'Y', '', 'Used when no DIAMOND_ORDER_ASSISTANT user/email is configured.'],
+    ['SYSTEM', 'SHARED_DIAMOND_ORDER_ADMIN_QUEUE', 'Diamond Order Admin', '', '', '', 'Y', '', 'Display label for DIAMOND_ORDER_ADMIN role-owned tasks.'],
+    ['SYSTEM', 'SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE', 'Diamond Order Assistant', '', '', '', 'Y', '', 'Display label for DIAMOND_ORDER_ASSISTANT role-owned tasks.'],
     ['USER', 'ADMIN_1', '', 'Admin', '', '', 'Y', '1', 'Optional admin row.'],
-    ['USER', 'DIAMOND_ORDER_ADMIN_1', '', 'DIAMOND_ORDER_ADMIN', '', '', 'Y', '1', 'Diamond ordering admin; fill Name and Email to route order/delivery tasks.'],
-    ['USER', 'DIAMOND_ORDER_ASSISTANT_1', '', 'DIAMOND_ORDER_ASSISTANT', '', '', 'Y', '1', 'Diamond order assistant; fill Name and Email to route tracking/return tasks.'],
+    ['USER', 'DIAMOND_ORDER_ADMIN_1', '', 'DIAMOND_ORDER_ADMIN', '', '', 'Y', '1', 'Legacy config row only; dashboard access now comes from _SalesWorkflowUsers role DIAMOND_ORDER_ADMIN.'],
+    ['USER', 'DIAMOND_ORDER_ASSISTANT_1', '', 'DIAMOND_ORDER_ASSISTANT', '', '', 'Y', '1', 'Legacy config row only; dashboard access now comes from _SalesWorkflowUsers role DIAMOND_ORDER_ASSISTANT.'],
     ['SYSTEM', 'SHARED_JOC_QUEUE', 'JOC Coverage', '', '', '', 'Y', '', 'Used when no scheduled JOC is available.']
   ];
   swAppendMissingConfigRows_(sh, rows);

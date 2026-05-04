@@ -43,6 +43,14 @@ function sw_logout(token) {
   return { ok: true };
 }
 
+function sw_openWorkflowUserDialog() {
+  sw_setupSalesWorkflow();
+  var html = HtmlService.createHtmlOutputFromFile('dlg_sales_workflow_users')
+    .setWidth(560)
+    .setHeight(640);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Sales Workflow Users');
+}
+
 function sw_adminSetWorkflowPassword(email, password, name, roles) {
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
@@ -52,37 +60,61 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
     if (!googleUser.isAdmin) throw new Error('Admin access required to set workflow passwords.');
   }
 
-  email = swNormEmail_(email);
-  password = String(password || '');
-  if (!email) throw new Error('Email is required.');
-  if (password.length < 8) throw new Error('Password must be at least 8 characters.');
+  return swAuthSetWorkflowPassword_(ss, {
+    email: email,
+    password: password,
+    name: name,
+    roles: roles,
+    active: 'Y',
+    temporary: 'Y'
+  });
+}
 
-  var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
-  var found = swAuthFindUserRow_(ss, email);
-  var salt = swAuthNewSalt_();
-  var hash = swAuthHash_(password, salt);
-  var next = {
-    'Email': email,
-    'Name': swTrim_(name) || (found && found['Name']) || email,
-    'Roles': swTrim_(roles) || (found && found['Roles']) || 'staff',
-    'Active?': 'Y',
-    'Password Salt': salt,
-    'Password Hash': hash,
-    'Temporary Password?': 'Y',
-    'Last Login At': found ? found['Last Login At'] : '',
-    'Notes': found ? found['Notes'] : ''
+function sw_adminListWorkflowUsers(authToken) {
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  var user = swAuthUserForApi_(ss, authToken);
+  if (!user.isAdmin) throw new Error('Admin access required.');
+  var rows = swAuthReadUserRows_(ss, false).map(function (row) {
+    return swAuthPublicUserRow_(row);
+  });
+  return {
+    ok: true,
+    user: user,
+    roleOptions: swAuthRoleOptions_(),
+    users: rows
   };
+}
 
-  if (found && found.__rowNumber) {
-    sh.getRange(found.__rowNumber, 1, 1, SW_AUTH_USER_HEADERS.length).setValues([SW_AUTH_USER_HEADERS.map(function (h) {
-      return next[h] == null ? '' : next[h];
-    })]);
-  } else {
-    sh.appendRow(SW_AUTH_USER_HEADERS.map(function (h) {
-      return next[h] == null ? '' : next[h];
-    }));
+function sw_adminUpsertWorkflowUser(authToken, data) {
+  if (typeof authToken === 'object' && data == null) {
+    data = authToken;
+    authToken = '';
   }
-  return { ok: true, email: email, roles: next['Roles'] };
+  data = data || {};
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  var user = swAuthUserForApi_(ss, authToken);
+  if (!user.isAdmin) throw new Error('Admin access required.');
+
+  var password = String(data.password || '');
+  var generated = false;
+  if (!password) {
+    password = swAuthGeneratedPassword_();
+    generated = true;
+  }
+  var out = swAuthSetWorkflowPassword_(ss, {
+    email: data.email,
+    password: password,
+    name: data.name,
+    roles: data.roles,
+    active: data.active == null ? 'Y' : data.active,
+    temporary: generated ? 'Y' : (data.temporary || 'N'),
+    notes: data.notes
+  });
+  out.password = password;
+  out.generatedPassword = generated;
+  return out;
 }
 
 function sw_oneTimeGrantVtAdminAccess() {
@@ -158,6 +190,85 @@ function swAuthUserFromRow_(row) {
   };
 }
 
+function swAuthPublicUserRow_(row) {
+  return {
+    email: swNormEmail_(row['Email']),
+    name: swTrim_(row['Name']),
+    roles: row['Roles'] || '',
+    active: row['Active?'] || '',
+    temporaryPassword: row['Temporary Password?'] || '',
+    passwordSet: !!row['Password Hash'],
+    lastLoginAt: row['Last Login At'] || '',
+    notes: row['Notes'] || ''
+  };
+}
+
+function swAuthSetWorkflowPassword_(ss, options) {
+  options = options || {};
+  var email = swNormEmail_(options.email);
+  var password = String(options.password || '');
+  if (!email) throw new Error('Email is required.');
+  if (password.length < 8) throw new Error('Password must be at least 8 characters.');
+
+  var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
+  var found = swAuthFindUserRow_(ss, email);
+  var salt = swAuthNewSalt_();
+  var hash = swAuthHash_(password, salt);
+  var roles = swAuthRolesForWrite_(options.roles || (found && found['Roles']) || 'SALES_REP');
+  var next = {
+    'Email': email,
+    'Name': swTrim_(options.name) || (found && found['Name']) || email,
+    'Roles': roles,
+    'Active?': swTruthy_(options.active == null ? 'Y' : options.active) ? 'Y' : 'N',
+    'Password Salt': salt,
+    'Password Hash': hash,
+    'Temporary Password?': swTruthy_(options.temporary || '') ? 'Y' : 'N',
+    'Last Login At': found ? found['Last Login At'] : '',
+    'Notes': options.notes != null ? swTrim_(options.notes) : (found ? found['Notes'] : '')
+  };
+
+  if (found && found.__rowNumber) {
+    sh.getRange(found.__rowNumber, 1, 1, SW_AUTH_USER_HEADERS.length).setValues([SW_AUTH_USER_HEADERS.map(function (h) {
+      return next[h] == null ? '' : next[h];
+    })]);
+  } else {
+    sh.appendRow(SW_AUTH_USER_HEADERS.map(function (h) {
+      return next[h] == null ? '' : next[h];
+    }));
+  }
+  return {
+    ok: true,
+    email: email,
+    name: next['Name'],
+    roles: next['Roles'],
+    active: next['Active?']
+  };
+}
+
+function swAuthRoleOptions_() {
+  return [
+    { value: 'SALES_REP', label: 'Sales Rep', description: 'Can see tasks assigned to their email/name.' },
+    { value: 'JOC', label: 'JOC', description: 'Can see assigned JOC work and claim JOC coverage tasks.' },
+    { value: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN, label: 'Diamond Order Admin', description: 'Can complete diamond order and delivery tasks.' },
+    { value: SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT, label: 'Diamond Order Assistant', description: 'Can complete tracking and return tasks.' },
+    { value: 'Admin', label: 'Admin', description: 'Can see all tasks and manage workflow users.' }
+  ];
+}
+
+function swAuthRolesForWrite_(roles) {
+  var allowed = {};
+  swAuthRoleOptions_().forEach(function (role) {
+    allowed[swNorm_(role.value)] = role.value;
+  });
+  var out = [];
+  swAuthRoles_(Array.isArray(roles) ? roles.join(',') : roles).forEach(function (role) {
+    var canonical = allowed[swNorm_(role)];
+    if (canonical && out.indexOf(canonical) < 0) out.push(canonical);
+  });
+  if (!out.length) out.push('SALES_REP');
+  return out.join(',');
+}
+
 function swAuthRoles_(value) {
   var out = [];
   String(value || '').split(/[,\n;]/).forEach(function (role) {
@@ -176,11 +287,33 @@ function swAuthFindUserRow_(ss, email) {
   email = swNormEmail_(email);
   if (!email) return null;
   var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
-  var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_AUTH_USER_HEADERS);
+  var rows = swAuthReadUserRows_(ss, false);
   for (var i = 0; i < rows.length; i++) {
     if (swNormEmail_(rows[i]['Email']) === email) return rows[i];
   }
   return null;
+}
+
+function swAuthFindUserRowReadOnly_(ss, email) {
+  email = swNormEmail_(email);
+  if (!email) return null;
+  var rows = swAuthReadUserRows_(ss, true);
+  for (var i = 0; i < rows.length; i++) {
+    if (swNormEmail_(rows[i]['Email']) === email) return rows[i];
+  }
+  return null;
+}
+
+function swAuthReadUserRows_(ss, readOnly) {
+  var sh = readOnly ? ss.getSheetByName(SW_SHEETS.USERS) : swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
+  if (!sh) return [];
+  return swReadSheetObjectsExpectedHeaders_(sh, SW_AUTH_USER_HEADERS);
+}
+
+function swAuthRolesForEmail_(ss, email) {
+  var row = swAuthFindUserRowReadOnly_(ss, email);
+  if (!row || !swTruthy_(row['Active?'] || '')) return [];
+  return swAuthRoles_(row['Roles']);
 }
 
 function swAuthActiveUserCount_(ss) {

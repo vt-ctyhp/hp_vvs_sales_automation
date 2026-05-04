@@ -40,6 +40,7 @@ function onOpen(e) {
   ui.createMenu('💎 Sales')
     .addItem('Authorize Drive', 'authorizeDriveOnce')
     .addItem('Open dashboard', 'openSalesDashboard')
+    .addItem('Manage workflow users', 'sw_openWorkflowUserDialog')
     .addSeparator()
     .addItem('Start 3D design', 'openStart3D')
     .addItem('Assign SO', 'assignSO')

@@ -230,7 +230,7 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
   }
 
   if (ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN || ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) {
-    return swResolveConfigRoleOwner_(ctx, ownerRole);
+    return swResolveRoleQueueOwner_(ctx, ownerRole);
   }
 
   return {
@@ -239,6 +239,17 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
     currentOwner: '',
     currentOwnerEmail: '',
     coverageReason: 'UNASSIGNED_OWNER_ROLE'
+  };
+}
+
+function swResolveRoleQueueOwner_(ctx, ownerRole) {
+  var label = swRoleQueueLabel_(ctx, ownerRole);
+  return {
+    intendedOwner: label,
+    intendedOwnerEmail: '',
+    currentOwner: label,
+    currentOwnerEmail: '',
+    coverageReason: ''
   };
 }
 
@@ -272,6 +283,16 @@ function swResolveConfigRoleOwner_(ctx, ownerRole) {
     currentOwnerEmail: '',
     coverageReason: 'UNASSIGNED_' + ownerRole
   };
+}
+
+function swRoleQueueLabel_(ctx, ownerRole) {
+  if (ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) {
+    return 'Diamond Order Admin';
+  }
+  if (ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) {
+    return 'Diamond Order Assistant';
+  }
+  return String(ownerRole || '');
 }
 
 function swResolveJocOwner_(ss, ctx, rec, dueAt, existing) {

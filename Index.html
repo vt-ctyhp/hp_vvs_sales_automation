@@ -332,6 +332,30 @@
       width: auto;
     }
 
+    .role-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .role-option {
+      align-items: flex-start;
+      border-bottom: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: grid;
+      font-size: 14px;
+      gap: 10px;
+      grid-template-columns: 18px 1fr;
+      letter-spacing: 0;
+      margin-bottom: 0;
+      padding: 10px 0;
+      text-transform: none;
+    }
+
+    .role-option input {
+      margin-top: 2px;
+      width: auto;
+    }
+
     .admin-form {
       display: grid;
       gap: 12px;
@@ -423,6 +447,7 @@
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
       <div>
+        <button id="manageUsersButton" type="button" style="display:none">Manage Users</button>
         <button id="logoutButton" type="button">Sign Out</button>
         <button id="refreshOwnersButton" type="button">Refresh Owners</button>
         <button id="generateTasksButton" class="primary" type="button">Generate Tasks</button>
@@ -459,6 +484,7 @@
       view: 'mine',
       selectedTaskId: '',
       detail: null,
+      userAdmin: null,
       busy: false
     };
 
@@ -474,6 +500,9 @@
 
       var logoutButton = document.getElementById('logoutButton');
       if (logoutButton) logoutButton.addEventListener('click', logout);
+
+      var manageUsersButton = document.getElementById('manageUsersButton');
+      if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
       ['mine', 'coverage', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
@@ -510,6 +539,8 @@
           if (closestMatch_(event.target, '.js-admin-reassign')) return adminReassign();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+          if (closestMatch_(event.target, '.js-admin-generate-password')) return fillGeneratedUserPassword();
+          if (closestMatch_(event.target, '.js-admin-save-user')) return saveWorkflowUser();
         });
       }
     }
@@ -620,9 +651,12 @@
       parts.push(escapeHtml(user.name || user.email || 'Unknown user'));
       if (user.isAdmin) parts.push('Admin');
       if (user.isJoc) parts.push('JOC');
+      if (user.isDiamondOrderAdmin) parts.push('Diamond Order Admin');
+      if (user.isDiamondOrderAssistant) parts.push('Diamond Order Assistant');
       document.getElementById('userLine').innerHTML = parts.join('<br>');
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
+      document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
     }
 
     function loadTasks(view) {
@@ -912,6 +946,98 @@
           '</div>',
         '</div>'
       ].join('');
+    }
+
+    function openUserAdminPanel() {
+      document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING</div>';
+      serverCall('sw_adminListWorkflowUsers', [], function (res) {
+        appState.userAdmin = res;
+        renderUserAdminPanel(res);
+      }, 'Loading users');
+    }
+
+    function renderUserAdminPanel(res) {
+      var roles = res.roleOptions || [];
+      var users = res.users || [];
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Admin</div>',
+          '<h2>Workflow Users</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Add or Update User</label>',
+            '<div class="field-grid">',
+              '<div><label for="userAdminEmail">Email</label><input id="userAdminEmail" type="email"></div>',
+              '<div><label for="userAdminName">Name</label><input id="userAdminName"></div>',
+              '<div><label for="userAdminPassword">Password</label><input id="userAdminPassword" type="text" placeholder="Leave blank to auto-generate"></div>',
+              '<div class="actions"><button class="js-admin-generate-password" type="button">Generate Password</button></div>',
+              '<div><label>Role Access</label><div class="role-grid">' + renderRoleOptions(roles) + '</div></div>',
+              '<div><label for="userAdminNotes">Notes</label><input id="userAdminNotes"></div>',
+            '</div>',
+            '<div class="actions"><button class="primary js-admin-save-user" type="button">Save User</button></div>',
+            '<div class="login-status" id="userAdminStatus"></div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Existing Users</label>',
+            users.length ? '<div class="mini-table">' + users.map(renderWorkflowUserRow).join('') + '</div>' : '<div class="empty">No workflow users yet.</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderRoleOptions(roles) {
+      return (roles || []).map(function (role) {
+        return [
+          '<label class="role-option">',
+            '<input class="user-role-option" type="checkbox" value="' + escapeAttrValue(role.value) + '">',
+            '<span><strong>' + escapeHtml(role.label || role.value) + '</strong><span class="meta">' + escapeHtml(role.description || '') + '</span></span>',
+          '</label>'
+        ].join('');
+      }).join('');
+    }
+
+    function renderWorkflowUserRow(user) {
+      return '<div class="mini-row three">' +
+        '<div><strong>' + escapeHtml(user.name || user.email) + '</strong><div class="meta">' + escapeHtml(user.email || '') + '</div></div>' +
+        '<div class="meta">' + escapeHtml(user.roles || '') + '</div>' +
+        '<div class="meta">' + escapeHtml(user.active || '') + (user.passwordSet ? ' · Password set' : ' · No password') + '</div>' +
+      '</div>';
+    }
+
+    function fillGeneratedUserPassword() {
+      var el = document.getElementById('userAdminPassword');
+      if (el) el.value = clientGeneratedPassword();
+    }
+
+    function saveWorkflowUser() {
+      var status = document.getElementById('userAdminStatus');
+      if (status) status.textContent = '';
+      var payload = {
+        email: valueOf('userAdminEmail'),
+        name: valueOf('userAdminName'),
+        password: valueOf('userAdminPassword'),
+        notes: valueOf('userAdminNotes'),
+        roles: [].slice.call(document.querySelectorAll('.user-role-option:checked')).map(function (el) { return el.value; })
+      };
+      serverCall('sw_adminUpsertWorkflowUser', [payload], function (res) {
+        var message = 'Saved ' + (res.email || payload.email) + '. Password: ' + (res.password || payload.password || 'unchanged');
+        if (status) status.textContent = message;
+        setStatus('Workflow user saved');
+        serverCall('sw_adminListWorkflowUsers', [], function (list) {
+          appState.userAdmin = list;
+          renderUserAdminPanel(list);
+          var nextStatus = document.getElementById('userAdminStatus');
+          if (nextStatus) nextStatus.textContent = message;
+        });
+      }, 'Saving user');
+    }
+
+    function clientGeneratedPassword() {
+      var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      var out = '';
+      for (var i = 0; i < 14; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+      return out;
     }
 
     function completionPayload() {

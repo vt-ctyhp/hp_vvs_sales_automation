@@ -131,5 +131,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 
 ## 14. Sales Workflow Web App Notes
 - The current Apps Script Sales Workflow dashboard uses an email/password login screen before showing the task queue.
-- Login users are stored in `_SalesWorkflowUsers`; task ownership and routing stay in `_SalesWorkflowConfig`.
+- Login users and role access are stored in `_SalesWorkflowUsers`.
+- Diamond Order Admin and Diamond Order Assistant access is role-based; `_SalesWorkflowConfig` name/email cells are not required for those queues.
+- Admins can add/update users from `Sales > Manage workflow users` in Sheets or `Manage Users` in the dashboard, with either auto-generated or admin-entered passwords.
 - Diamond Viewing workflow setup, ownership, templates, and review steps are documented in [`diamond_viewing_workflow_setup.md`](diamond_viewing_workflow_setup.md).

@@ -204,6 +204,8 @@ function swTaskStateMayNeedNameIdentity_(state) {
     var t = tasks[i];
     if (t.status !== SW_STATUSES.PENDING) continue;
     if (t.currentOwnerEmail) continue;
+    if (swNorm_(t.ownerRole) === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) ||
+        swNorm_(t.ownerRole) === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) continue;
     if (!swTrim_(t.currentOwner)) continue;
     if (swNorm_(t.currentOwner) === swNorm_('JOC Coverage')) continue;
     return true;
