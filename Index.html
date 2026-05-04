@@ -559,6 +559,18 @@
       document.getElementById('loginStatus').textContent = message || '';
     }
 
+    function setLoginBusy(isBusy) {
+      var button = document.getElementById('loginButton');
+      var email = document.getElementById('loginEmail');
+      var password = document.getElementById('loginPassword');
+      if (button) {
+        button.disabled = !!isBusy;
+        button.textContent = isBusy ? 'Signing In' : 'Sign In';
+      }
+      if (email) email.disabled = !!isBusy;
+      if (password) password.disabled = !!isBusy;
+    }
+
     function setBusy(isBusy, message) {
       appState.busy = isBusy;
       if (message) {
@@ -580,7 +592,10 @@
         .withFailureHandler(function (err) {
           setBusy(false, '');
           var message = (err && err.message) ? err.message : String(err);
-          if (fnName === 'sw_login') setLoginStatus(message);
+          if (fnName === 'sw_login') {
+            setLoginBusy(false);
+            setLoginStatus(message);
+          }
           else if (fnName === 'sw_getBootstrap' && !appState.user) {
             appState.token = '';
             sessionStorage.removeItem('salesWorkflowToken');
@@ -617,6 +632,7 @@
     function showLogin() {
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('appShell').style.display = 'none';
+      setLoginBusy(false);
       setLoginStatus('');
     }
 
@@ -626,10 +642,13 @@
     }
 
     function login() {
+      if (appState.busy) return;
       var email = document.getElementById('loginEmail').value;
       var password = document.getElementById('loginPassword').value;
-      setLoginStatus('');
+      setLoginBusy(true);
+      setLoginStatus('Signing in');
       serverCall('sw_login', [email, password], function (res) {
+        setLoginStatus('Opening dashboard');
         appState.token = res.token || '';
         sessionStorage.setItem('salesWorkflowToken', appState.token);
         bootstrap();
