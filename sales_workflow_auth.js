@@ -247,7 +247,7 @@ function swAuthRoleOptions_() {
   return [
     { value: 'SALES_REP', label: 'Sales Rep', description: 'Can see tasks assigned to their email/name.' },
     { value: 'JOC', label: 'JOC', description: 'Can see assigned JOC work and claim JOC coverage tasks.' },
-    { value: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN, label: 'Diamond Order Admin', description: 'Can complete diamond order and delivery tasks.' },
+    { value: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN, label: 'Diamond Order Admin', description: 'Can complete diamond order, delivery, and bulk return tasks.' },
     { value: SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT, label: 'Diamond Order Assistant', description: 'Can complete tracking and return tasks.' },
     { value: 'Admin', label: 'Admin', description: 'Can see all tasks and manage workflow users.' }
   ];

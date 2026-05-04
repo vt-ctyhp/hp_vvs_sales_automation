@@ -475,6 +475,62 @@
       grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) minmax(80px, 110px);
     }
 
+    .bulk-actions {
+      align-items: center;
+      background: var(--surface-inset);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding: 14px;
+    }
+
+    .bulk-action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .bulk-return-row {
+      align-items: flex-start;
+      border-top: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      letter-spacing: 0;
+      margin: 0;
+      padding: 16px 0;
+      text-transform: none;
+    }
+
+    .bulk-return-row.issue {
+      border-top: 2px solid var(--accent);
+    }
+
+    .bulk-return-row input {
+      margin-top: 4px;
+      width: auto;
+    }
+
+    .bulk-return-row .task-title,
+    .bulk-return-row .meta {
+      display: block;
+    }
+
+    .bulk-selected-list {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 0;
+      margin-top: 10px;
+    }
+
+    .bulk-selected-item {
+      border-bottom: 1px solid var(--rule);
+      padding: 10px 0;
+    }
+
     .stat-grid {
       display: grid;
       gap: 12px;
@@ -624,6 +680,7 @@
         <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
         <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">In-Stock Diamonds</button>
         <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
+        <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
@@ -670,6 +727,8 @@
       calendarAppointments: [],
       diamondTrackingRows: [],
       inStockDiamondsRows: [],
+      bulkReturnRows: [],
+      bulkReturnSource: null,
       mainRequestId: 0,
       detailRequestId: 0,
       busy: false
@@ -691,13 +750,14 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'coverage', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
           if (view === 'calendar') loadCalendar();
           else if (view === 'inStockDiamonds') loadInStockDiamonds();
           else if (view === 'diamondTracking') loadDiamondTracking();
+          else if (view === 'bulkReturns') loadBulkReturns();
           else loadTasks(view);
         });
       });
@@ -711,6 +771,11 @@
       var taskList = document.getElementById('taskList');
       if (taskList) {
         taskList.addEventListener('click', function (event) {
+          var bulkSelectButton = closestMatch_(event.target, '.js-bulk-return-select');
+          if (bulkSelectButton) {
+            selectBulkReturnRows(bulkSelectButton.getAttribute('data-select-mode') || '');
+            return;
+          }
           var calendarButton = closestMatch_(event.target, '.js-calendar-appt');
           if (calendarButton) {
             renderCalendarAppointmentDetail(calendarButton.getAttribute('data-appointment-id') || '');
@@ -730,6 +795,11 @@
           if (!button) return;
           openTask(button.getAttribute('data-task-id') || '');
         });
+        taskList.addEventListener('change', function (event) {
+          if (closestMatch_(event.target, '.js-bulk-return-checkbox')) {
+            updateBulkReturnActionPanel();
+          }
+        });
       }
 
       var detailPanel = document.getElementById('detailPanel');
@@ -741,6 +811,8 @@
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
           var copyStockButton = closestMatch_(event.target, '.js-copy-stock-diamond');
           if (copyStockButton) return copyStockDiamondDetails(copyStockButton.getAttribute('data-row-index') || '');
+          var bulkReturnButton = closestMatch_(event.target, '.js-submit-bulk-return');
+          if (bulkReturnButton) return submitBulkReturn(bulkReturnButton);
           var addProposalButton = closestMatch_(event.target, '.js-add-proposal-row');
           if (addProposalButton) return addProposalRow();
           var removeProposalButton = closestMatch_(event.target, '.js-remove-proposal-row');
@@ -898,6 +970,7 @@
         calendar: true,
         inStockDiamonds: true,
         diamondTracking: !!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant),
+        bulkReturns: !!(user.isAdmin || user.isDiamondOrderAdmin),
         coverage: !!(user.isJoc || user.isAdmin),
         admin: !!user.isAdmin
       };
@@ -923,6 +996,7 @@
       document.getElementById('userLine').innerHTML = parts.join('<br>');
       document.getElementById('tab-inStockDiamonds').style.display = res.views && res.views.inStockDiamonds !== false ? '' : 'none';
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
+      document.getElementById('tab-bulkReturns').style.display = res.views && res.views.bulkReturns ? '' : 'none';
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
@@ -941,6 +1015,10 @@
         loadDiamondTracking();
         return;
       }
+      if (view === 'bulkReturns') {
+        loadBulkReturns();
+        return;
+      }
       var viewName = view || 'mine';
       var requestId = beginMainRequest(viewName);
       setActiveTab(viewName);
@@ -953,7 +1031,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'coverage', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -977,6 +1055,10 @@
       if (view === 'diamondTracking') {
         title = 'Diamond shipment and return tracking';
         eyebrow = 'Diamond Tracking';
+      }
+      if (view === 'bulkReturns') {
+        title = 'Select diamonds for bulk return';
+        eyebrow = 'Bulk Returns';
       }
       if (view === 'admin') {
         title = 'Open tasks across the workflow';
@@ -1037,7 +1119,7 @@
           visible.map(function (appt) {
             return [
               '<button class="calendar-event js-calendar-appt" type="button" data-appointment-id="' + escapeAttrValue(appt.id) + '">',
-                '<span class="calendar-event-time">' + escapeHtml(appt.visitTime || '') + '</span>',
+                '<span class="calendar-event-time">' + escapeHtml(formatCalendarTime(appt.visitTime)) + '</span>',
                 '<span>' + escapeHtml(appt.customerName || 'No customer') + '</span>',
               '</button>'
             ].join('');
@@ -1066,6 +1148,7 @@
     function renderCalendarAppointmentDetail(appointmentId) {
       var appt = findCalendarAppointment(appointmentId);
       if (!appt) return;
+      var visitTime = formatCalendarTime(appt.visitTime);
       var links = [
         appt.clientFolder ? '<a href="' + escapeHref(appt.clientFolder) + '" target="_blank">Client Folder</a>' : '',
         appt.reportUrl ? '<a href="' + escapeHref(appt.reportUrl) + '" target="_blank">Status Report</a>' : '',
@@ -1080,7 +1163,7 @@
         '<div class="detail-body">',
           '<div class="detail-section">',
             '<label>Appointment</label>',
-            '<div class="meta">' + escapeHtml(appt.visitDate || '') + ' ' + escapeHtml(appt.visitTime || '') + '</div>',
+            '<div class="meta">' + escapeHtml(appt.visitDate || '') + ' ' + escapeHtml(visitTime) + '</div>',
             '<div class="meta">' + escapeHtml(appt.brand || '') + '</div>',
             appt.isDiamondViewing ? '<span class="badge">Diamond Viewing</span>' : '',
           '</div>',
@@ -1132,7 +1215,7 @@
       document.getElementById('taskList').innerHTML = [
         '<div class="stat-grid">',
           statCardHtml('In Stock', stats.total || 0),
-          statCardHtml('Clear', stats.available || 0),
+          statCardHtml('Available > ' + (stats.warningDays || 7) + 'd', stats.available || 0),
           statCardHtml('Return Soon', stats.returnSoon || 0),
           statCardHtml('Overdue', stats.returnOverdue || 0),
         '</div>',
@@ -1248,6 +1331,167 @@
       }, function () {
         setStatus('Copy failed. Select the detail text manually.', true);
       });
+    }
+
+    function loadBulkReturns() {
+      var requestId = beginMainRequest('bulkReturns');
+      appState.selectedTaskId = '';
+      setActiveTab('bulkReturns');
+      renderViewHeader('bulkReturns');
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING BULK RETURNS</div>';
+      document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Bulk Returns</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
+      serverCall('sw_getBulkReturnCandidates', [], function (res) {
+        if (!isCurrentMainRequest(requestId, 'bulkReturns')) return;
+        appState.bulkReturnRows = res.rows || [];
+        appState.bulkReturnSource = res || {};
+        renderBulkReturns(res);
+        updateBulkReturnActionPanel(res);
+      }, 'Loading bulk returns');
+    }
+
+    function renderBulkReturns(res) {
+      res = res || {};
+      if (!res.available) {
+        document.getElementById('taskList').innerHTML = '<div class="empty"><h3>Diamond tracker unavailable</h3><p>Connect the 200_ diamond tracking spreadsheet before using this view.</p></div>';
+        return;
+      }
+      var stats = res.stats || {};
+      var rows = res.rows || [];
+      var list = rows.length ? rows.map(renderBulkReturnRow).join('') : '<div class="empty"><h3>No return candidates</h3><p>Delivered/In Stock diamonds that are not purchased, sold, returned, or already in progress will appear here.</p></div>';
+      document.getElementById('taskList').innerHTML = [
+        '<div class="stat-grid">',
+          statCardHtml('Candidates', stats.total || 0),
+          statCardHtml('Overdue', stats.returnOverdue || 0),
+          statCardHtml('Return Soon', stats.returnSoon || 0),
+          statCardHtml('No Return Date', stats.noReturnDate || 0),
+        '</div>',
+        '<div class="bulk-actions">',
+          '<div class="meta">Select rows for one return shipment.</div>',
+          '<div class="bulk-action-buttons">',
+            '<button class="js-bulk-return-select" type="button" data-select-mode="overdue">Select Overdue</button>',
+            '<button class="js-bulk-return-select" type="button" data-select-mode="urgent">Select Due Soon</button>',
+            '<button class="js-bulk-return-select" type="button" data-select-mode="all">Select All</button>',
+            '<button class="js-bulk-return-select" type="button" data-select-mode="clear">Clear</button>',
+          '</div>',
+        '</div>',
+        '<div class="tracking-list">',
+          list,
+        '</div>'
+      ].join('');
+    }
+
+    function renderBulkReturnRow(row) {
+      var issue = row.issue ? '<span class="badge">' + escapeHtml(row.issue) + '</span>' : '<span class="badge">Available &gt; ' + escapeHtml((row.warningDays || 7)) + 'd</span>';
+      var availability = [
+        row.returnDueDate ? 'Return ' + row.returnDueDate : 'No return date',
+        row.daysUntilReturn !== '' ? row.daysUntilReturn + 'd left' : '',
+        row.company
+      ].filter(Boolean).join(' | ');
+      return [
+        '<label class="bulk-return-row ' + (row.issue ? 'issue' : '') + '" data-row-index="' + escapeAttrValue(row.rowIndex) + '">',
+          '<input class="js-bulk-return-checkbox" type="checkbox" value="' + escapeAttrValue(row.rowIndex) + '">',
+          '<span>',
+            '<span class="task-title">' + escapeHtml(row.diamond || ('Row ' + row.rowIndex)) + '</span>',
+            '<span class="meta">' + escapeHtml([row.vendor, row.lab, row.certNo ? 'Cert ' + row.certNo : ''].filter(Boolean).join(' | ')) + '</span>',
+            '<span class="meta">' + escapeHtml(availability) + '</span>',
+            '<span class="meta">' + escapeHtml([row.stoneStatus, row.orderStatus, row.customerName ? 'Held for ' + row.customerName : ''].filter(Boolean).join(' | ')) + '</span>',
+          '</span>',
+          '<span>' + issue + '</span>',
+        '</label>'
+      ].join('');
+    }
+
+    function updateBulkReturnActionPanel(res) {
+      res = res || appState.bulkReturnSource || {};
+      var selected = selectedBulkReturnRows();
+      var noteEl = document.getElementById('bulkReturnNote');
+      var existingNote = noteEl ? noteEl.value : '';
+      var url = res.spreadsheetUrl ? '<a href="' + escapeHref(res.spreadsheetUrl) + '" target="_blank">Open 200_ tracker</a>' : '';
+      var selectedList = selected.length
+        ? '<div class="bulk-selected-list">' + selected.slice(0, 12).map(function (row) {
+            return '<div class="bulk-selected-item"><strong>' + escapeHtml(row.diamond || ('Row ' + row.rowIndex)) + '</strong><div class="meta">' + escapeHtml([row.vendor, row.certNo ? 'Cert ' + row.certNo : '', row.returnDueDate ? 'Return ' + row.returnDueDate : 'No return date'].filter(Boolean).join(' | ')) + '</div></div>';
+          }).join('') + (selected.length > 12 ? '<div class="bulk-selected-item meta">+' + escapeHtml(selected.length - 12) + ' more selected</div>' : '') + '</div>'
+        : '<div class="empty">Select rows from the list to prepare a bulk return shipment.</div>';
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Bulk Returns</div>',
+          '<h2>' + escapeHtml(selected.length) + ' selected</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Shipment Notes</label>',
+            '<textarea id="bulkReturnNote" placeholder="Tracking number, vendor RMA, carrier, or shipment batch">' + escapeHtml(existingNote) + '</textarea>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Selected Diamonds</label>',
+            selectedList,
+          '</div>',
+          '<div class="actions">',
+            '<button class="primary js-submit-bulk-return" type="button"' + (selected.length ? '' : ' disabled') + '>Mark Return In Progress</button>',
+            url,
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function selectedBulkReturnRows() {
+      var selected = {};
+      [].slice.call(document.querySelectorAll('.js-bulk-return-checkbox:checked')).forEach(function (checkbox) {
+        selected[String(checkbox.value)] = true;
+      });
+      return (appState.bulkReturnRows || []).filter(function (row) {
+        return selected[String(row.rowIndex)];
+      });
+    }
+
+    function selectBulkReturnRows(mode) {
+      [].slice.call(document.querySelectorAll('.js-bulk-return-checkbox')).forEach(function (checkbox) {
+        var row = findBulkReturnRow(checkbox.value);
+        if (!row) return;
+        if (mode === 'clear') checkbox.checked = false;
+        if (mode === 'all') checkbox.checked = true;
+        if (mode === 'overdue') checkbox.checked = row.issue === 'Return overdue';
+        if (mode === 'urgent') checkbox.checked = row.issue === 'Return overdue' || row.issue === 'Return soon';
+      });
+      updateBulkReturnActionPanel();
+    }
+
+    function findBulkReturnRow(rowIndex) {
+      var rows = appState.bulkReturnRows || [];
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i].rowIndex) === String(rowIndex)) return rows[i];
+      }
+      return null;
+    }
+
+    function submitBulkReturn(button) {
+      if (appState.busy) return;
+      var selected = selectedBulkReturnRows();
+      if (!selected.length) {
+        setStatus('Select at least one diamond to return.', true);
+        return;
+      }
+      if (button.getAttribute('data-confirm') !== '1') {
+        button.setAttribute('data-confirm', '1');
+        button.textContent = 'Confirm Bulk Return';
+        window.setTimeout(function () {
+          if (button && button.getAttribute('data-confirm') === '1') {
+            button.removeAttribute('data-confirm');
+            button.textContent = 'Mark Return In Progress';
+          }
+        }, 4000);
+        return;
+      }
+      var noteEl = document.getElementById('bulkReturnNote');
+      var payload = {
+        rowIndexes: selected.map(function (row) { return row.rowIndex; }),
+        note: noteEl ? noteEl.value : ''
+      };
+      serverCall('sw_bulkMarkDiamondsReturnInProgress', [payload], function (res) {
+        var skipped = (res.skippedRows || []).length;
+        setStatus('Marked ' + (res.updatedCount || 0) + ' diamond(s) Return in Progress' + (skipped ? '; skipped ' + skipped + ' stale row(s)' : '') + '.');
+        loadBulkReturns();
+      }, 'Marking bulk returns');
     }
 
     function loadDiamondTracking() {
@@ -1428,6 +1672,31 @@
 
     function pad2(value) {
       return String(value).padStart(2, '0');
+    }
+
+    function formatCalendarTime(value) {
+      var s = String(value == null ? '' : value).trim();
+      if (!s) return '';
+      var m12 = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*(AM|PM)$/i.exec(s);
+      if (m12) {
+        var hour12 = Number(m12[1]);
+        if (!hour12) hour12 = 12;
+        hour12 = ((hour12 - 1) % 12) + 1;
+        return pad2(hour12) + ':' + m12[2] + ' ' + m12[3].toLowerCase();
+      }
+      var m24 = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(s);
+      if (m24) {
+        var hour24 = Number(m24[1]);
+        var minute = Number(m24[2]);
+        if (hour24 >= 0 && hour24 <= 23 && minute >= 0 && minute <= 59) {
+          return pad2((hour24 % 12) || 12) + ':' + pad2(minute) + ' ' + (hour24 < 12 ? 'am' : 'pm');
+        }
+      }
+      return s.replace(/:(\d{2})(\s*[AP]M)$/i, function (_match, _seconds, suffix) {
+        return ' ' + suffix.trim().toLowerCase();
+      }).replace(/\s*(AM|PM)$/i, function (_match, suffix) {
+        return ' ' + suffix.toLowerCase();
+      });
     }
 
     function renderTasks(tasks) {

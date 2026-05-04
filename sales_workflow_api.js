@@ -187,6 +187,7 @@ function sw_getBootstrap(authToken) {
         calendar: true,
         inStockDiamonds: true,
         diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
+        bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
         coverage: user.isJoc || user.isAdmin,
         admin: user.isAdmin
       },
@@ -452,6 +453,7 @@ function sw_getInStockDiamonds(authToken) {
       ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
       : [];
     var returnWindow = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WINDOW_DAYS', '30')) || 30;
+    var returnWarning = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WARNING_DAYS', '7')) || 7;
     var hm = swDiamond200HeaderMap_(sh);
     var C = {
       root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
@@ -480,14 +482,15 @@ function sw_getInStockDiamonds(authToken) {
     var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
     var today = new Date();
     var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    var warningMs = todayMs + 7 * 24 * 60 * 60 * 1000;
+    var warningMs = todayMs + returnWarning * 24 * 60 * 60 * 1000;
     var rows = [];
     var stats = {
       total: 0,
       available: 0,
       returnSoon: 0,
       returnOverdue: 0,
-      noReturnDate: 0
+      noReturnDate: 0,
+      warningDays: returnWarning
     };
 
     values.forEach(function (row, i) {
@@ -532,6 +535,7 @@ function sw_getInStockDiamonds(authToken) {
         memoDate: swDiamondCell_(row, C.memoDate),
         returnDueDate: returnDueDate,
         daysUntilReturn: daysUntilReturn,
+        warningDays: returnWarning,
         issue: issue,
         availabilityLabel: returnDueDate ? ('Available until ' + returnDueDate) : 'Return date missing'
       });
@@ -560,6 +564,279 @@ function sw_getInStockDiamonds(authToken) {
       rows: rows.slice(0, 300)
     };
   });
+}
+
+/**
+ * Read-only UI return picker: diamond order admins can select stones for one
+ * bulk return shipment before writing Return in Progress to 200_.
+ */
+function sw_getBulkReturnCandidates(authToken) {
+  return swTimed_('sw_getBulkReturnCandidates', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    var user = swAuthUserForApi_(ss, authToken);
+    swRequireDiamondBulkReturnUser_(user);
+
+    var target = swDiamond200Target_();
+    if (!target || !target.sheet) {
+      return { ok: true, available: false, rows: [], stats: {} };
+    }
+
+    var sh = target.sheet;
+    var lr = sh.getLastRow();
+    var lc = sh.getLastColumn();
+    if (lr < 3 || lc < 1) {
+      return { ok: true, available: true, spreadsheetUrl: target.ss.getUrl(), tab: target.tab, rows: [], stats: {} };
+    }
+
+    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
+      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
+      : [];
+    var returnWindow = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WINDOW_DAYS', '30')) || 30;
+    var returnWarning = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WARNING_DAYS', '7')) || 7;
+    var hm = swDiamond200HeaderMap_(sh);
+    var C = {
+      root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
+      customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
+      assignedRep: swDiamondFind200Column_(hm, ['Assigned Rep', 'Sales Rep']),
+      company: swDiamondFind200Column_(hm, ['Company', 'Brand']),
+      vendor: swDiamondFind200Column_(hm, ['Vendor']),
+      stoneType: swDiamondFind200Column_(hm, ['Stone Type', 'StoneType']),
+      shape: swDiamondFind200Column_(hm, ['Shape']),
+      carat: swDiamondFind200Column_(hm, ['Carat']),
+      color: swDiamondFind200Column_(hm, ['Color']),
+      clarity: swDiamondFind200Column_(hm, ['Clarity']),
+      lab: swDiamondFind200Column_(hm, ['LAB', 'Lab', 'Grading Lab']),
+      certNo: swDiamondFind200Column_(hm, ['Certificate No', 'Cert #', 'Cert No', 'Certificate #']),
+      measurement: swDiamondFind200Column_(hm, ['Measurements', 'Measurement', 'Meas.', 'Meas']),
+      ratio: swDiamondFind200Column_(hm, ['L/W Ratio', 'L-W Ratio', 'LW Ratio', 'Ratio']),
+      orderStatus: swDiamondFind200Column_(hm, ['Order Status', 'OrderStatus']),
+      stoneStatus: swDiamondFind200Column_(hm, ['Stone Status', 'StoneStatus']),
+      decision: swDiamondFind200Column_(hm, ['Stone Decision (PO, Return)', 'Stone Decision', 'StoneDecision']),
+      orderDate: swDiamondFind200Column_(hm, ['Purchased / Ordered Date', 'Purchased/Ordered Date', 'PurchasedOrderedDate']),
+      returnDueDate: swDiamondFind200Column_(hm, ['Return DUE DATE', 'Return Due Date', 'Return Due'])
+    };
+
+    var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+    var today = new Date();
+    var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    var warningMs = todayMs + returnWarning * 24 * 60 * 60 * 1000;
+    var rows = [];
+    var stats = {
+      total: 0,
+      available: 0,
+      returnSoon: 0,
+      returnOverdue: 0,
+      noReturnDate: 0,
+      warningDays: returnWarning
+    };
+
+    values.forEach(function (row, i) {
+      var orderStatus = swDiamondCell_(row, C.orderStatus);
+      var stoneStatus = swDiamondCell_(row, C.stoneStatus);
+      var decision = swDiamondCell_(row, C.decision);
+      var orderNorm = swNorm_(orderStatus);
+      var stoneNorm = swNorm_(stoneStatus);
+      var decisionNorm = swNorm_(decision);
+      var isInStock = stoneNorm.indexOf('in stock') >= 0 || orderNorm === 'delivered';
+      var unavailable = /return in progress|returned|sold|customer purchased/.test(stoneNorm) ||
+        decisionNorm === 'purchase' || decisionNorm === 'purchased';
+      if (!isInStock || unavailable) return;
+
+      var returnDueDate = swDiamondCell_(row, C.returnDueDate) ||
+        swDiamondReturnDueDate_(swDiamondCell_(row, C.orderDate), returnWindow);
+      var returnMs = swDiamondDateValue_(returnDueDate);
+      var issue = '';
+      if (!returnDueDate) issue = 'No return date';
+      else if (returnMs < todayMs) issue = 'Return overdue';
+      else if (returnMs <= warningMs) issue = 'Return soon';
+
+      rows.push({
+        rowIndex: i + 3,
+        root: swDiamondCell_(row, C.root),
+        customerName: swDiamondCell_(row, C.customerName),
+        assignedRep: swDiamondCell_(row, C.assignedRep),
+        company: swDiamondCell_(row, C.company),
+        vendor: swDiamondCell_(row, C.vendor),
+        stoneType: swDiamondCell_(row, C.stoneType),
+        certNo: swDiamondCell_(row, C.certNo),
+        diamond: [swDiamondCell_(row, C.shape), swDiamondCell_(row, C.carat), swDiamondCell_(row, C.color), swDiamondCell_(row, C.clarity)].filter(Boolean).join(' '),
+        measurement: swDiamondCell_(row, C.measurement),
+        ratio: swDiamondCell_(row, C.ratio),
+        lab: swDiamondCell_(row, C.lab),
+        orderStatus: orderStatus,
+        stoneStatus: stoneStatus,
+        decision: decision,
+        orderDate: swDiamondCell_(row, C.orderDate),
+        returnDueDate: returnDueDate,
+        daysUntilReturn: returnMs ? Math.ceil((returnMs - todayMs) / (24 * 60 * 60 * 1000)) : '',
+        warningDays: returnWarning,
+        issue: issue
+      });
+      stats.total++;
+      if (!issue) stats.available++;
+      if (issue === 'Return soon') stats.returnSoon++;
+      if (issue === 'Return overdue') stats.returnOverdue++;
+      if (issue === 'No return date') stats.noReturnDate++;
+    });
+
+    rows.sort(function (a, b) {
+      if (!!a.issue !== !!b.issue) return a.issue ? -1 : 1;
+      var av = swDiamondDateValue_(a.returnDueDate) || 9999999999999;
+      var bv = swDiamondDateValue_(b.returnDueDate) || 9999999999999;
+      return av - bv || String(a.diamond).localeCompare(String(b.diamond));
+    });
+
+    return {
+      ok: true,
+      available: true,
+      generatedAt: swIso_(new Date()),
+      spreadsheetUrl: target.ss.getUrl(),
+      spreadsheetName: target.ss.getName(),
+      tab: target.tab,
+      stats: stats,
+      rows: rows.slice(0, 500)
+    };
+  });
+}
+
+/**
+ * Mutating UI action: marks selected 200_ rows as Return in Progress for a
+ * single bulk shipment and records a shared shipment note.
+ */
+function sw_bulkMarkDiamondsReturnInProgress(authToken, payload) {
+  return swTimed_('sw_bulkMarkDiamondsReturnInProgress', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    var user = swAuthUserForApi_(ss, authToken);
+    swRequireDiamondBulkReturnUser_(user);
+
+    payload = payload || {};
+    var seen = {};
+    var rowIndexes = (payload.rowIndexes || []).map(function (rowIndex) {
+      return Number(rowIndex);
+    }).filter(function (rowIndex) {
+      if (!(rowIndex >= 3) || seen[rowIndex]) return false;
+      seen[rowIndex] = true;
+      return true;
+    });
+    if (!rowIndexes.length) throw new Error('Select at least one diamond to return.');
+    if (rowIndexes.length > 250) throw new Error('Select 250 or fewer diamonds per bulk return shipment.');
+
+    var lock = LockService.getDocumentLock() || LockService.getScriptLock();
+    lock.waitLock(28000);
+    try {
+      var target = swDiamond200Target_();
+      if (!target || !target.sheet) throw new Error('Diamond tracking sheet is unavailable.');
+      var sh = target.sheet;
+      var hm = swDiamond200HeaderMap_(sh);
+      var C = {
+        root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
+        certNo: swDiamondFind200Column_(hm, ['Certificate No', 'Cert #', 'Cert No', 'Certificate #']),
+        orderStatus: swDiamondFind200Column_(hm, ['Order Status', 'OrderStatus']),
+        stoneStatus: swDiamondFind200Column_(hm, ['Stone Status', 'StoneStatus']),
+        decision: swDiamondFind200Column_(hm, ['Stone Decision (PO, Return)', 'Stone Decision', 'StoneDecision'])
+      };
+      if (!C.stoneStatus) throw new Error('Stone Status column is missing in 200_.');
+      if (!C.decision) C.decision = swDiamondEnsure200Column_(sh, 'Stone Decision (PO, Return)');
+      var cNotes = swDiamondEnsure200Column_(sh, 'Return Notes');
+      var lastRow = sh.getLastRow();
+      var lastCol = sh.getLastColumn();
+      var now = swIso_(new Date());
+      var note = swTrim_(payload.note || '');
+      var line = 'Bulk return in progress @ ' + now + (user && user.email ? ' by ' + user.email : '') + (note ? ' | ' + note : '');
+      var updatedRows = [];
+      var skippedRows = [];
+      var touchedAppointments = {};
+      var updatesForJsonByAppt = {};
+
+      rowIndexes.forEach(function (rowIndex) {
+        if (rowIndex > lastRow) {
+          skippedRows.push({ rowIndex: rowIndex, reason: 'Row no longer exists' });
+          return;
+        }
+        var row = sh.getRange(rowIndex, 1, 1, lastCol).getDisplayValues()[0];
+        var orderStatus = swDiamondCell_(row, C.orderStatus);
+        var stoneStatus = swDiamondCell_(row, C.stoneStatus);
+        var decision = swDiamondCell_(row, C.decision);
+        var stoneNorm = swNorm_(stoneStatus);
+        var orderNorm = swNorm_(orderStatus);
+        var decisionNorm = swNorm_(decision);
+        var isInStock = stoneNorm.indexOf('in stock') >= 0 || orderNorm === 'delivered';
+        var unavailable = /return in progress|returned|sold|customer purchased/.test(stoneNorm) ||
+          decisionNorm === 'purchase' || decisionNorm === 'purchased';
+        if (!isInStock || unavailable) {
+          skippedRows.push({ rowIndex: rowIndex, reason: 'Row is no longer return-eligible' });
+          return;
+        }
+
+        var nextStatus = swDiamondMergeStatus_(stoneStatus, 'Return in Progress');
+        if (typeof cd_writeBypassValidation_ === 'function') {
+          cd_writeBypassValidation_(sh, rowIndex, C.stoneStatus, nextStatus);
+        } else {
+          sh.getRange(rowIndex, C.stoneStatus).setValue(nextStatus);
+        }
+        sh.getRange(rowIndex, C.decision).setValue('Return');
+        var existingNotes = swTrim_(sh.getRange(rowIndex, cNotes).getDisplayValue());
+        sh.getRange(rowIndex, cNotes).setValue(existingNotes ? existingNotes + '\n' + line : line);
+
+        var root = swDiamondCell_(row, C.root);
+        var certNo = swDiamondCell_(row, C.certNo);
+        if (root) {
+          touchedAppointments[root] = true;
+          if (!updatesForJsonByAppt[root]) updatesForJsonByAppt[root] = [];
+          updatesForJsonByAppt[root].push({ certNo: certNo, decision: 'Return', hold: null });
+        }
+        updatedRows.push(rowIndex);
+      });
+
+      Object.keys(touchedAppointments).forEach(function (root) {
+        try {
+          if (typeof dp_update100JsonLinesWithDecisions_ === 'function') {
+            dp_update100JsonLinesWithDecisions_(root, updatesForJsonByAppt[root] || []);
+          }
+        } catch (_) {}
+        try {
+          if (typeof dp_computeCountsForAppointment_ === 'function' && typeof dp_refresh100QuickRef_ === 'function') {
+            var counts = dp_computeCountsForAppointment_(sh, hm, root);
+            dp_refresh100QuickRef_(root, counts, sh, hm);
+          }
+        } catch (_) {}
+      });
+
+      try {
+        swAppendTaskLog_(ss, 'BULK_DIAMOND_RETURN', {
+          taskId: '',
+          root: '',
+          appt: '',
+          taskType: 'BULK_RETURN_DIAMONDS',
+          status: SW_STATUSES.COMPLETED
+        }, user, '', '', {
+          updatedRows: updatedRows,
+          skippedRows: skippedRows,
+          note: note
+        });
+      } catch (_) {}
+
+      return {
+        ok: true,
+        status: 'Return in Progress',
+        updatedRows: updatedRows,
+        skippedRows: skippedRows,
+        updatedCount: updatedRows.length,
+        spreadsheetUrl: target.ss.getUrl(),
+        tab: target.tab
+      };
+    } finally {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  });
+}
+
+function swRequireDiamondBulkReturnUser_(user) {
+  if (!(user && (user.isAdmin || user.isDiamondOrderAdmin))) {
+    throw new Error('Diamond order admin access required.');
+  }
 }
 
 function swCalendarMonthRange_(monthKey) {

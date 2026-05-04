@@ -135,7 +135,8 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - Diamond Order Admin and Diamond Order Assistant access is role-based; `_SalesWorkflowConfig` name/email cells are not required for those queues.
 - Role-only users do not receive normal rep-owned tasks from `Dropdown` email matches unless they also have `SALES_REP`.
 - The dashboard has a shared `Calendar` tab for all users. It shows active upcoming appointments by month from `00_Master Appointments`, with appointment links and rep/JOC details in the side panel.
-- The dashboard has a shared `In-Stock Diamonds` tab for all users. It reads 200_ and shows currently delivered/in-stock diamonds with return due dates for proposal planning.
+- The dashboard has a shared `In-Stock Diamonds` tab for all users. It reads 200_ and shows currently delivered/in-stock diamonds with return due dates for proposal planning. Its healthy return-date bucket is labeled `Available > 7d`.
 - Diamond order admin/assistant/admin users also see a `Diamond Tracking` tab. It reads 200_ tracking ETA/status, highlights missing or concerning ETAs, and surfaces return-deadline issues.
+- Diamond order admin/admin users also see a `Bulk Returns` tab. It reads eligible delivered/in-stock 200_ rows, supports selecting multiple stones for one return shipment, then marks selected rows `Return in Progress`, writes `Return`, and appends shared return notes.
 - Admins can add/update users from `Sales > Manage workflow users` in Sheets or `Manage Users` in the dashboard, with either auto-generated or admin-entered passwords.
 - Diamond Viewing workflow setup, ownership, templates, and review steps are documented in [`diamond_viewing_workflow_setup.md`](diamond_viewing_workflow_setup.md).

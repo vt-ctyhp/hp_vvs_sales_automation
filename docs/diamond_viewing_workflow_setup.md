@@ -71,6 +71,7 @@ Both surfaces write to `_SalesWorkflowUsers`, support role checkboxes, and eithe
 - `Calendar`: monthly appointment view for all users.
 - `In-Stock Diamonds`: read-only store inventory view for all users. It shows diamonds currently marked delivered/in stock in 200_, excludes already purchased/returned stones, and surfaces the return due date so reps can decide whether a store stone will still be available around a Diamond Viewing appointment.
 - `Diamond Tracking`: diamond order admin/assistant/admin view showing on-the-way diamonds, delivered diamonds, return items, missing ETAs, delayed/cancelled/unavailable tracking, and returns due soon. It reads from 200_ and highlights issues first.
+- `Bulk Returns`: diamond order admin/admin view for selecting multiple eligible delivered/in-stock stones from 200_ and marking them `Return in Progress` for one bulk shipment. The action also writes the stone decision as `Return` and appends shared return notes.
 
 ## Return Deadline Rule
 Return due date is now based on:
@@ -100,5 +101,6 @@ It returns and logs:
 - The Order Diamonds task does not ask users to manually update 200_; submitting the dashboard task performs the 200_ writeback through the existing diamond order approval function.
 - The Propose Diamonds task does not duplicate a separate workflow; it uses the same validation and writeback path as the current Sheet 100 Propose Diamonds dialog.
 - Before proposing diamonds, reps can open `In-Stock Diamonds`, compare the Diamond Viewing date against each stone's return due date, copy the stock details, then enter the chosen stone into the Propose Diamonds task with vendor `From In Stock`.
+- Diamond order admins can use `Bulk Returns` when multiple stones are being shipped back together, instead of completing one return task at a time.
 - If new 200_ diamond data or 3D tracker data arrives after the task was generated, use the quotation task buttons to refresh diamonds, 3D settings, or both.
 - Legacy `04_Reminders_Queue` Diamond Viewing reminders can remain as fallback while the Sales Workflow tasks are verified.
