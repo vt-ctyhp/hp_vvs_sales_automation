@@ -1753,8 +1753,10 @@
     function taskBrandCode(brand) {
       var b = String(brand || '').trim().toUpperCase();
       if (!b) return '';
-      if (b.indexOf('VVS') >= 0) return 'VVS';
-      if (b.indexOf('HP') >= 0 || b.indexOf('HUNG PHAT') >= 0) return 'HP';
+      if (b.normalize) b = b.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      b = b.replace(/[^A-Z0-9]+/g, ' ');
+      if (/\bVVS\b/.test(b) || b.indexOf('VVS JEWELRY') >= 0) return 'VVS';
+      if (/\bHP\b/.test(b) || b.indexOf('HPUSA') >= 0 || b.indexOf('HUNG PHAT') >= 0) return 'HP';
       return '';
     }
 
