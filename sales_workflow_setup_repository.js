@@ -13,6 +13,8 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'LOCATION_MSG_HUNG_PHAT', '', '', '', '', 'Y', '', 'Store/location message for Hung Phat / HPUSA map/instructions templates.'],
     ['SYSTEM', 'WELCOME_MSG_VVS', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey text message for VVS appointments.'],
     ['SYSTEM', 'WELCOME_MSG_HUNG_PHAT', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey text message for Hung Phat / HPUSA appointments.'],
+    ['SYSTEM', 'HYBRID_MSG_VVS', '{{welcomeMessage}}\n\n{{locationMsg}}\n\n{{welcomeImageUrl}}', '', '', '', 'Y', '', 'Hybrid welcome + instructions message for VVS appointments. Supports {{welcomeImageUrl}}, {{mapLink}}, {{welcomeMessage}}, and {{locationMsg}}.'],
+    ['SYSTEM', 'HYBRID_MSG_HUNG_PHAT', '{{welcomeMessage}}\n\n{{locationMsg}}\n\n{{welcomeImageUrl}}', '', '', '', 'Y', '', 'Hybrid welcome + instructions message for Hung Phat / HPUSA appointments. Supports {{welcomeImageUrl}}, {{mapLink}}, {{welcomeMessage}}, and {{locationMsg}}.'],
     ['SYSTEM', 'WELCOME_IMAGE_VVS', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey image URL for VVS appointments.'],
     ['SYSTEM', 'WELCOME_IMAGE_HUNG_PHAT', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey image URL for Hung Phat / HPUSA appointments.'],
     ['SYSTEM', 'WORKFLOW_LOOKBACK_DAYS', '14', '', '', '', 'Y', '', 'Do not generate new tasks for appointments older than this.'],
@@ -137,7 +139,7 @@ function swMigrateTemplateRows_(sh) {
     }
     if (taskType === SW_TASKS.HYBRID) {
       if (swShouldUseDefaultHybridTemplate_(String(row[3] || ''))) {
-        sh.getRange(rowIndex, 4).setValue('{{welcomeMessage}}\n\n{{locationMsg}}');
+        sh.getRange(rowIndex, 4).setValue('{{hybridMessage}}');
       }
       if (String(row[5] || '').indexOf('mapLink') < 0) {
         sh.getRange(rowIndex, 5).setValue('Map / Instructions');
@@ -187,7 +189,7 @@ function swDefaultTemplates_() {
   return [
     [SW_TASKS.ASSIGN, 'Assign Appointment', 'System-owned assignment record. No manual action needed.', '', '', '', '', 'Assigned'],
     [SW_TASKS.WELCOME, 'Send Welcome to Your Ring Journey Text', 'Send the brand-specific welcome message and welcome image, then mark it sent.', '{{welcomeMessage}}', 'Welcome Journey Image', '{{welcomeImageUrl}}', '', 'Mark Sent'],
-    [SW_TASKS.HYBRID, 'Send Hybrid Welcome + Instructions', 'Appointment is within 24 hours. Send the combined welcome and instructions.', '{{welcomeMessage}}\n\n{{locationMsg}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
+    [SW_TASKS.HYBRID, 'Send Hybrid Welcome + Instructions', 'Appointment is within 24 hours. Send the brand-specific hybrid welcome and instructions message.', '{{hybridMessage}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
     [SW_TASKS.MAP, 'Send Map & Instructions', 'Send the map and appointment instructions.', '{{locationMsg}}', 'Map / Instructions', '{{mapLink}}', '', 'Mark Sent'],
     [SW_TASKS.REVIEW, 'Review Appointment Folder', 'Review the intake form, inspiration images, and customer folder before the appointment.', '', 'Client Folder', '{{clientFolder}}', '', 'Acknowledged & Reviewed'],
     [SW_TASKS.CHECKLIST, 'Appointment Day Checklist', 'Complete each appointment-day item before marking complete. The last two items are the required handoff that lets JOC pick up post-consult operations without scanning the master sheet.', '', '', '', '[{"id":"printed_intake","label":"Printed intake form","required":true},{"id":"recorded_appointment","label":"Recorded appointment","required":true},{"id":"uploaded_recap","label":"Uploaded recap","required":true},{"id":"uploaded_photos","label":"Uploaded intake photos","required":true},{"id":"goody_bag","label":"Gave goody bag","required":true},{"id":"consult_outcome","label":"Recorded consult outcome and next client step for JOC handoff","required":true},{"id":"custom_order_handoff","label":"Added 3D/wax/design notes when a custom order may be needed","required":true}]', 'Complete Checklist'],

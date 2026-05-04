@@ -319,6 +319,11 @@ function swWelcomeMessageForBrand_(configRows, brand) {
   return key ? swConfigValue_(configRows, 'SYSTEM', 'WELCOME_MSG_' + key, '') : '';
 }
 
+function swHybridMessageForBrand_(configRows, brand) {
+  var key = swBrandConfigKey_(brand);
+  return key ? swConfigValue_(configRows, 'SYSTEM', 'HYBRID_MSG_' + key, '{{welcomeMessage}}\n\n{{locationMsg}}\n\n{{welcomeImageUrl}}') : '';
+}
+
 function swWelcomeImageForBrand_(configRows, brand) {
   var key = swBrandConfigKey_(brand);
   return key ? swConfigValue_(configRows, 'SYSTEM', 'WELCOME_IMAGE_' + key, '') : '';

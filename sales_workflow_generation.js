@@ -110,6 +110,9 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
     payload.extra.welcomeMessage = payload.extra.welcomeMessage || swWelcomeMessageForBrand_(ctx.config, rec.brand);
     payload.extra.welcomeImageUrl = payload.extra.welcomeImageUrl || swWelcomeImageForBrand_(ctx.config, rec.brand);
   }
+  if (taskType === SW_TASKS.HYBRID) {
+    payload.extra.hybridMessage = payload.extra.hybridMessage || swHybridMessageForBrand_(ctx.config, rec.brand);
+  }
 
   return {
     taskId: swTaskId_(rec, taskType),

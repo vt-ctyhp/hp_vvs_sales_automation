@@ -64,6 +64,9 @@ function swRenderDataForTask_(task, payload) {
   var completion = payload.completion || {};
   var rawBrand = task.brand || appt.brand || '';
   var visitTime = swFormatAppointmentTime_(task.visitTime || appt.visitTime || '');
+  var hybridMessage = extra.hybridMessage || [extra.welcomeMessage, extra.locationMsg, extra.welcomeImageUrl].filter(function (value) {
+    return swTrim_(value);
+  }).join('\n\n');
   return {
     customerName: task.customerName || appt.customerName || '',
     brand: swTemplateBrandName_(rawBrand),
@@ -104,6 +107,7 @@ function swRenderDataForTask_(task, payload) {
     mapLink: extra.mapLink || '',
     locationMsg: extra.locationMsg || '',
     welcomeMessage: extra.welcomeMessage || '',
+    hybridMessage: hybridMessage,
     welcomeImageUrl: extra.welcomeImageUrl || '',
     recapDraft: extra.recapDraft || completion.recapText || '',
     approvedText: extra.approvedText || completion.approvedText || extra.recapDraft || ''
@@ -136,7 +140,7 @@ function swEffectiveTemplateForTaskType_(taskType, template) {
     }
   }
   if (taskType === SW_TASKS.HYBRID) {
-    if (swShouldUseDefaultHybridTemplate_(out.template)) out.template = '{{welcomeMessage}}\n\n{{locationMsg}}';
+    if (swShouldUseDefaultHybridTemplate_(out.template)) out.template = '{{hybridMessage}}';
     if (String(out.attachmentUrl || '').indexOf('mapLink') < 0) {
       out.attachmentLabel = 'Map / Instructions';
       out.attachmentUrl = '{{mapLink}}';
@@ -164,11 +168,16 @@ function swShouldUseDefaultMapTemplate_(template) {
 function swShouldUseDefaultHybridTemplate_(template) {
   var text = String(template || '');
   if (!swTrim_(text)) return true;
-  if (text.indexOf('welcomeMessage') < 0) return true;
-  if (text.indexOf('locationMsg') < 0) return true;
+  if (text.indexOf('hybridMessage') >= 0) return false;
+  if (swIsLegacyDefaultHybridTemplate_(text)) return true;
   if (text.indexOf('mapLink') >= 0) return true;
   if (/we are looking forward to seeing you/i.test(text)) return true;
   return swContainsGoogleDriveLink_(text);
+}
+
+function swIsLegacyDefaultHybridTemplate_(template) {
+  var compact = String(template || '').replace(/\s+/g, '');
+  return compact === '{{welcomeMessage}}{{locationMsg}}';
 }
 
 function swContainsGoogleDriveLink_(text) {
@@ -177,7 +186,9 @@ function swContainsGoogleDriveLink_(text) {
 
 function swRenderedCopyableTemplateForTask_(task, template, data) {
   var rendered = template && template.template ? swRenderTemplate_(template.template, data) : '';
-  return swIsClientMessageTaskType_(task && task.taskType) ? swStripGoogleDriveLinks_(rendered) : rendered;
+  if (!swIsClientMessageTaskType_(task && task.taskType)) return rendered;
+  if (task && task.taskType === SW_TASKS.HYBRID) return rendered;
+  return swStripGoogleDriveLinks_(rendered);
 }
 
 function swIsClientMessageTaskType_(taskType) {
@@ -327,7 +338,7 @@ function swMissingFieldsForTask_(task, template, data) {
     text += '\n{{welcomeMessage}}\n{{welcomeImageUrl}}';
   }
   if (task.taskType === SW_TASKS.HYBRID) {
-    text += '\n{{mapLink}}\n{{locationMsg}}\n{{welcomeImageUrl}}';
+    text += '\n{{mapLink}}\n{{hybridMessage}}\n{{welcomeImageUrl}}';
   }
   return swMissingTemplateFields_(text, data);
 }
