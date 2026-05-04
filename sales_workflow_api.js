@@ -184,6 +184,7 @@ function sw_getBootstrap(authToken) {
       },
       views: {
         mine: true,
+        calendar: true,
         coverage: user.isJoc || user.isAdmin,
         admin: user.isAdmin
       },
@@ -221,6 +222,85 @@ function sw_getMyTasks(authToken, view) {
       tasks: tasks
     };
   });
+}
+
+/**
+ * Read-only UI calendar: returns active upcoming appointments for one calendar month.
+ */
+function sw_getCalendarAppointments(authToken, monthKey) {
+  return swTimed_('sw_getCalendarAppointments', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    swAuthUserForApi_(ss, authToken);
+
+    var tz = swTimezone_();
+    var month = swCalendarMonthRange_(monthKey);
+    var today = new Date();
+    var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    var appointments = swReadAppointments_(ss).filter(function (rec) {
+      if (!swIsAppointmentActive_(rec)) return false;
+      var visitAt = swVisitDateTime_(rec, tz);
+      if (!visitAt) return false;
+      if (visitAt.getTime() < todayStart.getTime()) return false;
+      return visitAt.getTime() >= month.start.getTime() && visitAt.getTime() < month.end.getTime();
+    }).sort(function (a, b) {
+      var av = swVisitDateTime_(a, tz);
+      var bv = swVisitDateTime_(b, tz);
+      return av.getTime() - bv.getTime() || String(a.name).localeCompare(String(b.name));
+    }).map(function (rec) {
+      var visitAt = swVisitDateTime_(rec, tz);
+      return {
+        id: ['CAL', rec.row, rec.root || rec.appt || ''].join('|'),
+        row: rec.row,
+        root: rec.root,
+        appt: rec.appt,
+        customerName: rec.name,
+        brand: rec.brand,
+        visitDate: rec.visitDate,
+        visitTime: rec.visitTime,
+        visitType: rec.visitType,
+        dateKey: swDateKey_(visitAt),
+        sortAt: swIso_(visitAt),
+        assignedRep: rec.assignedRep,
+        assistedRep: rec.assistedRep,
+        status: rec.status,
+        clientFolder: rec.clientFolder,
+        reportUrl: rec.reportUrl,
+        quotationUrl: rec.quotationUrl,
+        tracker3dUrl: rec.tracker3dUrl,
+        isDiamondViewing: swDiamondIsViewingAppointment_(rec)
+      };
+    });
+
+    return {
+      ok: true,
+      monthKey: month.key,
+      monthLabel: Utilities.formatDate(month.start, tz, 'MMMM yyyy'),
+      prevMonthKey: swCalendarMonthKey_(new Date(month.start.getFullYear(), month.start.getMonth() - 1, 1)),
+      nextMonthKey: swCalendarMonthKey_(new Date(month.start.getFullYear(), month.start.getMonth() + 1, 1)),
+      todayKey: swDateKey_(todayStart),
+      appointmentCount: appointments.length,
+      appointments: appointments
+    };
+  });
+}
+
+function swCalendarMonthRange_(monthKey) {
+  var now = new Date();
+  var match = /^(\d{4})-(\d{2})$/.exec(swTrim_(monthKey));
+  var year = match ? Number(match[1]) : now.getFullYear();
+  var month = match ? Number(match[2]) - 1 : now.getMonth();
+  var start = new Date(year, month, 1, 0, 0, 0, 0);
+  var end = new Date(year, month + 1, 1, 0, 0, 0, 0);
+  return {
+    key: swCalendarMonthKey_(start),
+    start: start,
+    end: end
+  };
+}
+
+function swCalendarMonthKey_(date) {
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
 }
 
 /**

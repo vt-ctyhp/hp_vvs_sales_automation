@@ -134,5 +134,6 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - Login users and role access are stored in `_SalesWorkflowUsers`.
 - Diamond Order Admin and Diamond Order Assistant access is role-based; `_SalesWorkflowConfig` name/email cells are not required for those queues.
 - Role-only users do not receive normal rep-owned tasks from `Dropdown` email matches unless they also have `SALES_REP`.
+- The dashboard has a shared `Calendar` tab for all users. It shows active upcoming appointments by month from `00_Master Appointments`, with appointment links and rep/JOC details in the side panel.
 - Admins can add/update users from `Sales > Manage workflow users` in Sheets or `Manage Users` in the dashboard, with either auto-generated or admin-entered passwords.
 - Diamond Viewing workflow setup, ownership, templates, and review steps are documented in [`diamond_viewing_workflow_setup.md`](diamond_viewing_workflow_setup.md).

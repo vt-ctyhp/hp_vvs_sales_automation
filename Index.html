@@ -194,6 +194,97 @@
       border-top: 2px solid var(--accent);
     }
 
+    .calendar-nav {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .calendar-month {
+      color: var(--ink-primary);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .calendar-grid {
+      border-left: 1px solid var(--rule);
+      border-top: 1px solid var(--rule);
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    .calendar-weekday {
+      background: var(--surface-inset);
+      border-bottom: 1px solid var(--rule);
+      border-right: 1px solid var(--rule);
+      color: var(--ink-muted);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      padding: 9px 8px;
+      text-transform: uppercase;
+    }
+
+    .calendar-day {
+      background: var(--surface-card);
+      border-bottom: 1px solid var(--rule);
+      border-right: 1px solid var(--rule);
+      min-height: 132px;
+      padding: 8px;
+    }
+
+    .calendar-day.outside {
+      background: var(--bg-foundation);
+      color: var(--ink-muted);
+    }
+
+    .calendar-day.today {
+      background: var(--surface-inset);
+    }
+
+    .calendar-day-number {
+      color: var(--ink-muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+      text-align: right;
+    }
+
+    button.calendar-event {
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: 0;
+      line-height: 1.35;
+      padding: 7px 0;
+      text-align: left;
+      text-transform: none;
+      width: 100%;
+    }
+
+    button.calendar-event:hover:not(:disabled) {
+      background: transparent;
+      color: var(--ink-primary);
+    }
+
+    .calendar-event-time {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+
+    .calendar-more {
+      color: var(--ink-muted);
+      font-size: 11px;
+      padding-top: 7px;
+    }
+
     .task-top {
       display: flex;
       gap: 16px;
@@ -398,6 +489,22 @@
         grid-template-columns: 1fr;
       }
 
+      .calendar-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .calendar-weekday {
+        display: none;
+      }
+
+      .calendar-day.outside {
+        display: none;
+      }
+
+      .calendar-day {
+        min-height: 96px;
+      }
+
       .masthead, .toolbar {
         align-items: flex-start;
         flex-direction: column;
@@ -443,6 +550,7 @@
     <section class="toolbar">
       <div class="tabs">
         <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
+        <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
@@ -485,6 +593,8 @@
       selectedTaskId: '',
       detail: null,
       userAdmin: null,
+      calendarMonth: '',
+      calendarAppointments: [],
       busy: false
     };
 
@@ -504,11 +614,12 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'coverage', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'coverage', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
-          loadTasks(view);
+          if (view === 'calendar') loadCalendar();
+          else loadTasks(view);
         });
       });
 
@@ -521,6 +632,11 @@
       var taskList = document.getElementById('taskList');
       if (taskList) {
         taskList.addEventListener('click', function (event) {
+          var calendarButton = closestMatch_(event.target, '.js-calendar-appt');
+          if (calendarButton) {
+            renderCalendarAppointmentDetail(calendarButton.getAttribute('data-appointment-id') || '');
+            return;
+          }
           var button = closestMatch_(event.target, '.js-open-task');
           if (!button) return;
           openTask(button.getAttribute('data-task-id') || '');
@@ -666,6 +782,7 @@
       user = user || {};
       return {
         mine: true,
+        calendar: true,
         coverage: !!(user.isJoc || user.isAdmin),
         admin: !!user.isAdmin
       };
@@ -695,6 +812,10 @@
     }
 
     function loadTasks(view) {
+      if (view === 'calendar') {
+        loadCalendar(appState.calendarMonth);
+        return;
+      }
       appState.view = view || 'mine';
       setActiveTab(appState.view);
       renderViewHeader(appState.view);
@@ -705,7 +826,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'coverage', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'coverage', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -718,12 +839,181 @@
         title = 'JOC tasks needing coverage';
         eyebrow = 'JOC Coverage';
       }
+      if (view === 'calendar') {
+        title = 'Upcoming appointments by month';
+        eyebrow = 'Calendar';
+      }
       if (view === 'admin') {
         title = 'Open tasks across the workflow';
         eyebrow = 'Admin Review';
       }
       document.getElementById('viewTitle').textContent = title;
       document.getElementById('viewEyebrow').textContent = eyebrow;
+    }
+
+    function loadCalendar(monthKey) {
+      appState.view = 'calendar';
+      appState.calendarMonth = monthKey || appState.calendarMonth || currentMonthKey();
+      appState.selectedTaskId = '';
+      setActiveTab(appState.view);
+      renderViewHeader(appState.view);
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING CALENDAR</div>';
+      document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Calendar</div><h2>Loading Month</h2></div><div class="loading">LOADING</div>';
+      serverCall('sw_getCalendarAppointments', [appState.calendarMonth], function (res) {
+        appState.calendarMonth = res.monthKey || appState.calendarMonth;
+        appState.calendarAppointments = res.appointments || [];
+        renderCalendar(res);
+        renderCalendarSummary(res);
+      }, 'Loading calendar');
+    }
+
+    function renderCalendar(res) {
+      res = res || {};
+      var days = calendarDays(res.monthKey || currentMonthKey(), res.appointments || [], res.todayKey || currentDateKey());
+      var weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      document.getElementById('taskList').innerHTML = [
+        '<div class="calendar-nav">',
+          '<button type="button" class="js-calendar-prev">Previous</button>',
+          '<div class="calendar-month">' + escapeHtml(res.monthLabel || '') + '</div>',
+          '<button type="button" class="js-calendar-next">Next</button>',
+        '</div>',
+        '<div class="calendar-grid">',
+          weekdayLabels.map(function (label) { return '<div class="calendar-weekday">' + escapeHtml(label) + '</div>'; }).join(''),
+          days.map(renderCalendarDay).join(''),
+        '</div>'
+      ].join('');
+
+      var prev = document.querySelector('.js-calendar-prev');
+      var next = document.querySelector('.js-calendar-next');
+      if (prev) prev.addEventListener('click', function () { loadCalendar(res.prevMonthKey); });
+      if (next) next.addEventListener('click', function () { loadCalendar(res.nextMonthKey); });
+    }
+
+    function renderCalendarDay(day) {
+      var classes = ['calendar-day'];
+      if (!day.inMonth) classes.push('outside');
+      if (day.isToday) classes.push('today');
+      var appointments = day.appointments || [];
+      var visible = appointments.slice(0, 4);
+      return [
+        '<div class="' + classes.join(' ') + '">',
+          '<div class="calendar-day-number">' + escapeHtml(day.dayNumber) + '</div>',
+          visible.map(function (appt) {
+            return [
+              '<button class="calendar-event js-calendar-appt" type="button" data-appointment-id="' + escapeAttrValue(appt.id) + '">',
+                '<span class="calendar-event-time">' + escapeHtml(appt.visitTime || '') + '</span>',
+                '<span>' + escapeHtml(appt.customerName || 'No customer') + '</span>',
+              '</button>'
+            ].join('');
+          }).join(''),
+          appointments.length > visible.length ? '<div class="calendar-more">+' + escapeHtml(appointments.length - visible.length) + ' more</div>' : '',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCalendarSummary(res) {
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Calendar</div>',
+          '<h2>' + escapeHtml(res.monthLabel || 'Monthly View') + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Upcoming Appointments</label>',
+            '<div class="template-box">' + escapeHtml(res.appointmentCount || 0) + ' active appointment(s) in this month.</div>',
+          '</div>',
+          '<div class="empty">Select an appointment on the calendar to see reps, links, and appointment details.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCalendarAppointmentDetail(appointmentId) {
+      var appt = findCalendarAppointment(appointmentId);
+      if (!appt) return;
+      var links = [
+        appt.clientFolder ? '<a href="' + escapeHref(appt.clientFolder) + '" target="_blank">Client Folder</a>' : '',
+        appt.reportUrl ? '<a href="' + escapeHref(appt.reportUrl) + '" target="_blank">Status Report</a>' : '',
+        appt.quotationUrl ? '<a href="' + escapeHref(appt.quotationUrl) + '" target="_blank">Quotation</a>' : '',
+        appt.tracker3dUrl ? '<a href="' + escapeHref(appt.tracker3dUrl) + '" target="_blank">3D Tracker</a>' : ''
+      ].filter(Boolean);
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(appt.visitType || 'Appointment') + '</div>',
+          '<h2>' + escapeHtml(appt.customerName || 'No customer') + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Appointment</label>',
+            '<div class="meta">' + escapeHtml(appt.visitDate || '') + ' ' + escapeHtml(appt.visitTime || '') + '</div>',
+            '<div class="meta">' + escapeHtml(appt.brand || '') + '</div>',
+            appt.isDiamondViewing ? '<span class="badge">Diamond Viewing</span>' : '',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Owners</label>',
+            '<div class="meta">Assigned Rep: ' + escapeHtml(appt.assignedRep || 'Unassigned') + '</div>',
+            '<div class="meta">JOC: ' + escapeHtml(appt.assistedRep || 'Unassigned') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>References</label>',
+            links.length ? '<div class="attachment-list">' + links.map(function (link) { return '<div class="attachment-row">' + link + '</div>'; }).join('') + '</div>' : '<div class="empty">No links available for this appointment.</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function findCalendarAppointment(appointmentId) {
+      var appointments = appState.calendarAppointments || [];
+      for (var i = 0; i < appointments.length; i++) {
+        if (String(appointments[i].id) === String(appointmentId)) return appointments[i];
+      }
+      return null;
+    }
+
+    function calendarDays(monthKey, appointments, todayKey) {
+      var first = monthDate(monthKey);
+      var start = new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
+      var byDate = {};
+      (appointments || []).forEach(function (appt) {
+        if (!byDate[appt.dateKey]) byDate[appt.dateKey] = [];
+        byDate[appt.dateKey].push(appt);
+      });
+      var days = [];
+      for (var i = 0; i < 42; i++) {
+        var date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        var key = dateKey(date);
+        days.push({
+          dateKey: key,
+          dayNumber: date.getDate(),
+          inMonth: date.getMonth() === first.getMonth(),
+          isToday: key === todayKey,
+          appointments: byDate[key] || []
+        });
+      }
+      return days;
+    }
+
+    function currentMonthKey() {
+      var now = new Date();
+      return now.getFullYear() + '-' + pad2(now.getMonth() + 1);
+    }
+
+    function currentDateKey() {
+      return dateKey(new Date());
+    }
+
+    function monthDate(monthKey) {
+      var parts = String(monthKey || currentMonthKey()).split('-');
+      var year = Number(parts[0]) || new Date().getFullYear();
+      var month = (Number(parts[1]) || (new Date().getMonth() + 1)) - 1;
+      return new Date(year, month, 1);
+    }
+
+    function dateKey(date) {
+      return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate());
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, '0');
     }
 
     function renderTasks(tasks) {
