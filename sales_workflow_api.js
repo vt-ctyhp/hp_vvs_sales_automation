@@ -931,6 +931,7 @@ function sw_getTaskDetail(authToken, taskId) {
       },
       attachments: attachments,
       formOptions: typeof swTaskFormOptions_ === 'function' ? swTaskFormOptions_(ss, task) : {},
+      assignmentOptions: user.isAdmin ? swReadAssignmentOptions_(ss) : {},
       missingFields: missingFields,
       checklist: checklist,
       canComplete: swCanActOnTask_(task, user),
@@ -1156,6 +1157,155 @@ function sw_adminReassignTask(authToken, taskId, ownerName, ownerEmail, reason) 
     reason: reason || ''
   });
   return { ok: true, task: swGetTaskById_(ss, taskId) };
+}
+
+/**
+ * Mutating admin action: assigns appointment-level Sales Rep and JOC owner
+ * on the Master appointment row, then refreshes workflow task owners.
+ */
+function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
+  if (/^SW\|/.test(String(authToken || ''))) {
+    data = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
+  data = data || {};
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  var user = swAuthUserForApi_(ss, authToken);
+  if (!user.isAdmin) throw new Error('Admin access required.');
+
+  var task = swGetTaskById_(ss, taskId);
+  if (!task) throw new Error('Task not found: ' + taskId);
+  var row = (typeof swMasterRowForTask_ === 'function') ? swMasterRowForTask_(ss, task) : 0;
+  if (!row) throw new Error('Could not resolve Master row for this task.');
+
+  var master = ss.getSheetByName(SW_SHEETS.MASTER);
+  var headers = swEnsureMasterOwnerHeaders_(master);
+  var values = master.getRange(row, 1, 1, master.getLastColumn()).getDisplayValues()[0];
+  var root = headers.root ? swTrim_(values[headers.root - 1]) : '';
+
+  var assignedName = swTrim_(data.assignedRep);
+  var assistedName = swTrim_(data.assistedRep);
+  var options = swReadAssignmentOptions_(ss);
+  var assignedEmail = swTrim_(data.assignedRepEmail) || swAssignmentEmailForName_(assignedName, options.salesReps);
+  var assistedEmail = swTrim_(data.assistedRepEmail) || swAssignmentEmailForName_(assistedName, options.jocReps);
+
+  var targetRows = [row];
+  if (root && headers.root) {
+    var roots = master.getRange(2, headers.root, Math.max(0, master.getLastRow() - 1), 1).getDisplayValues();
+    targetRows = [];
+    roots.forEach(function (r, i) {
+      if (swTrim_(r[0]) === root) targetRows.push(i + 2);
+    });
+    if (!targetRows.length) targetRows = [row];
+  }
+
+  targetRows.forEach(function (r) {
+    master.getRange(r, headers.assignedRep).setValue(assignedName);
+    master.getRange(r, headers.assignedRepEmail).setValue(assignedEmail);
+    master.getRange(r, headers.assistedRep).setValue(assistedName);
+    master.getRange(r, headers.assistedRepEmail).setValue(assistedEmail);
+  });
+
+  swAppendTaskLog_(ss, 'APPOINTMENT_OWNER_ASSIGN', task, user, task.currentOwner, task.currentOwner, {
+    assignedRep: assignedName,
+    assignedRepEmail: assignedEmail,
+    assistedRep: assistedName,
+    assistedRepEmail: assistedEmail,
+    rootApptId: root,
+    rowsUpdated: targetRows
+  });
+
+  var generation = sw_refreshTaskOwners();
+  return {
+    ok: true,
+    rowsUpdated: targetRows.length,
+    assignedRep: assignedName,
+    assignedRepEmail: assignedEmail,
+    assistedRep: assistedName,
+    assistedRepEmail: assistedEmail,
+    generation: generation
+  };
+}
+
+function swEnsureMasterOwnerHeaders_(master) {
+  if (!master) throw new Error('Missing sheet: ' + SW_SHEETS.MASTER);
+  var required = ['Assigned Rep', 'Assigned Rep Email', 'Assisted Rep', 'Assisted Rep Email'];
+  var headers = master.getRange(1, 1, 1, Math.max(1, master.getLastColumn())).getDisplayValues()[0].map(function (h) {
+    return swTrim_(h);
+  });
+  var H = swHeaderMapFromArray_(headers);
+  required.forEach(function (name) {
+    if (swPickIndex_(H, [name]) >= 0) return;
+    master.getRange(1, master.getLastColumn() + 1).setValue(name);
+    headers.push(name);
+    H = swHeaderMapFromArray_(headers);
+  });
+  return {
+    root: swPickIndex_(H, ['RootApptID', 'APPT_ID']) + 1,
+    assignedRep: swPickIndex_(H, ['Assigned Rep', 'Rep', 'Owner']) + 1,
+    assignedRepEmail: swPickIndex_(H, ['Assigned Rep Email', 'Rep Email', 'Owner Email']) + 1,
+    assistedRep: swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']) + 1,
+    assistedRepEmail: swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']) + 1
+  };
+}
+
+function swReadAssignmentOptions_(ss) {
+  var out = { salesReps: [], jocReps: [] };
+  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
+  if (sh && sh.getLastRow() >= 2 && sh.getLastColumn() >= 1) {
+    var values = sh.getDataRange().getDisplayValues();
+    var H = swHeaderMapFromArray_(values[0].map(function (h) { return swTrim_(h); }));
+    swPushAssignmentOptionsFromColumns_(out.salesReps, values, swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email']));
+    swPushAssignmentOptionsFromColumns_(out.jocReps, values, swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']), swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']));
+  }
+
+  try {
+    swAuthReadUserRows_(ss, false).forEach(function (row) {
+      var roles = swAuthRoles_(row['Roles']);
+      var item = { name: swTrim_(row['Name']) || swNormEmail_(row['Email']), email: swNormEmail_(row['Email']) };
+      if (swAuthHasRole_(roles, SW_OWNER_ROLES.SALES_REP)) swPushAssignmentOption_(out.salesReps, item);
+      if (swAuthHasRole_(roles, 'JOC')) swPushAssignmentOption_(out.jocReps, item);
+    });
+  } catch (_) {}
+
+  out.salesReps.sort(swAssignmentOptionSort_);
+  out.jocReps.sort(swAssignmentOptionSort_);
+  return out;
+}
+
+function swPushAssignmentOptionsFromColumns_(target, values, nameCol, emailCol) {
+  if (nameCol < 0) return;
+  for (var i = 1; i < values.length; i++) {
+    swPushAssignmentOption_(target, {
+      name: swTrim_(values[i][nameCol]),
+      email: emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : ''
+    });
+  }
+}
+
+function swPushAssignmentOption_(target, item) {
+  if (!item || !item.name) return;
+  for (var i = 0; i < target.length; i++) {
+    if (swNorm_(target[i].name) === swNorm_(item.name) || (item.email && swNormEmail_(target[i].email) === swNormEmail_(item.email))) {
+      if (!target[i].email && item.email) target[i].email = item.email;
+      return;
+    }
+  }
+  target.push({ name: item.name, email: item.email || '' });
+}
+
+function swAssignmentEmailForName_(name, options) {
+  name = swNorm_(name);
+  for (var i = 0; i < (options || []).length; i++) {
+    if (swNorm_(options[i].name) === name) return options[i].email || '';
+  }
+  return '';
+}
+
+function swAssignmentOptionSort_(a, b) {
+  return String(a.name || '').localeCompare(String(b.name || ''));
 }
 
 /**

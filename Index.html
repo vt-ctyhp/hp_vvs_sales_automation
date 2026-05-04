@@ -898,6 +898,7 @@
           if (closestMatch_(event.target, '.js-claim-task')) return claimTask();
           if (closestMatch_(event.target, '.js-complete-task')) return completeTask();
           if (closestMatch_(event.target, '.js-admin-reassign')) return adminReassign();
+          if (closestMatch_(event.target, '.js-admin-assign-appointment')) return adminAssignAppointment();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
           if (closestMatch_(event.target, '.js-admin-generate-password')) return fillGeneratedUserPassword();
@@ -1876,7 +1877,7 @@
       var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
       var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete') + '</button>' : '';
       var snooze = res.canComplete ? renderSnoozeControls(task) : '';
-      var admin = res.canAdmin ? renderAdminForm(task) : '';
+      var admin = res.canAdmin ? renderAdminForm(task, res) : '';
 
       document.getElementById('detailPanel').innerHTML = [
         '<div class="panel-header">',
@@ -2404,7 +2405,11 @@
       return '';
     }
 
-    function renderAdminForm(task) {
+    function renderAdminForm(task, res) {
+      res = res || {};
+      var options = res.assignmentOptions || {};
+      var payload = res.payload || {};
+      var appt = payload.appointment || {};
       return [
         '<div class="detail-section">',
           '<label>Admin Reassign</label>',
@@ -2415,6 +2420,13 @@
             '<button class="js-admin-reassign" type="button">Reassign</button>',
             '<button class="js-admin-block" type="button">Block</button>',
             '<button class="js-admin-unblock" type="button">Unblock</button>',
+          '</div>',
+          '<div class="admin-form" style="margin-top:18px">',
+            '<label>Appointment Assignment</label>',
+            '<select id="adminAssignedRep">' + optionTags((options.salesReps || []).map(function (item) { return item.name; }), appt.assignedRep || task.intendedOwner || '') + '</select>',
+            '<select id="adminAssistedRep">' + optionTags((options.jocReps || []).map(function (item) { return item.name; }), appt.assistedRep || '') + '</select>',
+            '<div class="meta">This updates Assigned Rep and Assisted Rep/JOC on the Master appointment rows for this RootApptID, then refreshes task owners.</div>',
+            '<button class="js-admin-assign-appointment" type="button">Assign Appointment</button>',
           '</div>',
         '</div>'
       ].join('');
@@ -2740,6 +2752,19 @@
         openTask(appState.selectedTaskId);
         loadTasks(appState.view);
       });
+    }
+
+    function adminAssignAppointment() {
+      if (!appState.selectedTaskId) return;
+      var payload = {
+        assignedRep: valueOf('adminAssignedRep'),
+        assistedRep: valueOf('adminAssistedRep')
+      };
+      serverCall('sw_adminAssignAppointmentOwners', [appState.selectedTaskId, payload], function (res) {
+        setStatus('Appointment assigned: ' + (res.rowsUpdated || 0) + ' row(s) updated');
+        openTask(appState.selectedTaskId);
+        loadTasks(appState.view);
+      }, 'Assigning appointment');
     }
 
     function adminBlock() {
