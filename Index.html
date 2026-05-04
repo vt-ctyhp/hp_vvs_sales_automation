@@ -650,9 +650,25 @@
       serverCall('sw_login', [email, password], function (res) {
         setLoginStatus('Opening dashboard');
         appState.token = res.token || '';
+        appState.user = res.user || null;
         sessionStorage.setItem('salesWorkflowToken', appState.token);
+        showApp();
+        renderUser({
+          user: appState.user || {},
+          views: clientViewsForUser(appState.user || {})
+        });
+        document.getElementById('taskList').innerHTML = '<div class="loading">LOADING TASKS</div>';
         bootstrap();
       }, 'Signing in');
+    }
+
+    function clientViewsForUser(user) {
+      user = user || {};
+      return {
+        mine: true,
+        coverage: !!(user.isJoc || user.isAdmin),
+        admin: !!user.isAdmin
+      };
     }
 
     function logout() {

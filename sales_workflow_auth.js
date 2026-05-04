@@ -9,7 +9,6 @@ var SW_AUTH_SESSION_SECONDS = 6 * 60 * 60;
 
 function sw_login(email, password) {
   var ss = swSpreadsheet_();
-  sw_setupSalesWorkflow();
   email = swNormEmail_(email);
   password = String(password || '');
   if (!email || !password) throw new Error('Email and password are required.');
@@ -28,7 +27,6 @@ function sw_login(email, password) {
     roles: user.roles,
     issuedAt: swIso_(new Date())
   }), SW_AUTH_SESSION_SECONDS);
-  swAuthWriteLastLogin_(ss, email);
   return {
     ok: true,
     token: token,
@@ -44,7 +42,7 @@ function sw_logout(token) {
 }
 
 function sw_openWorkflowUserDialog() {
-  sw_setupSalesWorkflow();
+  swEnsureSheet_(swSpreadsheet_(), SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var html = HtmlService.createHtmlOutputFromFile('dlg_sales_workflow_users')
     .setWidth(560)
     .setHeight(640);
@@ -72,7 +70,7 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
 
 function sw_adminListWorkflowUsers(authToken) {
   var ss = swSpreadsheet_();
-  sw_setupSalesWorkflow();
+  swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var user = swAuthUserForApi_(ss, authToken);
   if (!user.isAdmin) throw new Error('Admin access required.');
   var rows = swAuthReadUserRows_(ss, false).map(function (row) {
@@ -93,7 +91,7 @@ function sw_adminUpsertWorkflowUser(authToken, data) {
   }
   data = data || {};
   var ss = swSpreadsheet_();
-  sw_setupSalesWorkflow();
+  swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var user = swAuthUserForApi_(ss, authToken);
   if (!user.isAdmin) throw new Error('Admin access required.');
 
