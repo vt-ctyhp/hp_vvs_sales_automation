@@ -670,6 +670,8 @@
       calendarAppointments: [],
       diamondTrackingRows: [],
       inStockDiamondsRows: [],
+      mainRequestId: 0,
+      detailRequestId: 0,
       busy: false
     };
 
@@ -822,6 +824,16 @@
       runner[fnName].apply(runner, callArgs);
     }
 
+    function beginMainRequest(view) {
+      appState.mainRequestId += 1;
+      appState.view = view;
+      return appState.mainRequestId;
+    }
+
+    function isCurrentMainRequest(requestId, view) {
+      return requestId === appState.mainRequestId && appState.view === view;
+    }
+
     function init() {
       appState.token = sessionStorage.getItem('salesWorkflowToken') || '';
       if (!appState.token) {
@@ -832,10 +844,12 @@
     }
 
     function bootstrap() {
+      var requestId = beginMainRequest('mine');
       serverCall('sw_getBootstrap', [], function (res) {
         showApp();
         appState.user = res.user;
         renderUser(res);
+        if (!isCurrentMainRequest(requestId, 'mine')) return;
         appState.view = 'mine';
         setActiveTab(appState.view);
         renderViewHeader(appState.view);
@@ -927,11 +941,13 @@
         loadDiamondTracking();
         return;
       }
-      appState.view = view || 'mine';
-      setActiveTab(appState.view);
-      renderViewHeader(appState.view);
+      var viewName = view || 'mine';
+      var requestId = beginMainRequest(viewName);
+      setActiveTab(viewName);
+      renderViewHeader(viewName);
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING</div>';
-      serverCall('sw_getMyTasks', [appState.view], function (res) {
+      serverCall('sw_getMyTasks', [viewName], function (res) {
+        if (!isCurrentMainRequest(requestId, viewName)) return;
         renderTasks(res.tasks || []);
       });
     }
@@ -971,14 +987,15 @@
     }
 
     function loadCalendar(monthKey) {
-      appState.view = 'calendar';
+      var requestId = beginMainRequest('calendar');
       appState.calendarMonth = monthKey || appState.calendarMonth || currentMonthKey();
       appState.selectedTaskId = '';
-      setActiveTab(appState.view);
-      renderViewHeader(appState.view);
+      setActiveTab('calendar');
+      renderViewHeader('calendar');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING CALENDAR</div>';
       document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Calendar</div><h2>Loading Month</h2></div><div class="loading">LOADING</div>';
       serverCall('sw_getCalendarAppointments', [appState.calendarMonth], function (res) {
+        if (!isCurrentMainRequest(requestId, 'calendar')) return;
         appState.calendarMonth = res.monthKey || appState.calendarMonth;
         appState.calendarAppointments = res.appointments || [];
         renderCalendar(res);
@@ -1089,13 +1106,14 @@
     }
 
     function loadInStockDiamonds() {
-      appState.view = 'inStockDiamonds';
+      var requestId = beginMainRequest('inStockDiamonds');
       appState.selectedTaskId = '';
-      setActiveTab(appState.view);
-      renderViewHeader(appState.view);
+      setActiveTab('inStockDiamonds');
+      renderViewHeader('inStockDiamonds');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING IN-STOCK DIAMONDS</div>';
       document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Store Stock</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
       serverCall('sw_getInStockDiamonds', [], function (res) {
+        if (!isCurrentMainRequest(requestId, 'inStockDiamonds')) return;
         appState.inStockDiamondsRows = res.rows || [];
         renderInStockDiamonds(res);
         renderInStockDiamondsSummary(res);
@@ -1233,13 +1251,14 @@
     }
 
     function loadDiamondTracking() {
-      appState.view = 'diamondTracking';
+      var requestId = beginMainRequest('diamondTracking');
       appState.selectedTaskId = '';
-      setActiveTab(appState.view);
-      renderViewHeader(appState.view);
+      setActiveTab('diamondTracking');
+      renderViewHeader('diamondTracking');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING DIAMOND TRACKING</div>';
       document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Diamond Tracking</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
       serverCall('sw_getDiamondTrackingDashboard', [], function (res) {
+        if (!isCurrentMainRequest(requestId, 'diamondTracking')) return;
         appState.diamondTrackingRows = res.rows || [];
         renderDiamondTrackingDashboard(res);
         renderDiamondTrackingSummary(res);
@@ -1456,8 +1475,14 @@
 
     function openTask(taskId) {
       appState.selectedTaskId = taskId;
+      appState.detailRequestId += 1;
+      var detailRequestId = appState.detailRequestId;
+      var mainRequestId = appState.mainRequestId;
       document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING</div>';
       serverCall('sw_getTaskDetail', [taskId], function (res) {
+        if (detailRequestId !== appState.detailRequestId ||
+            mainRequestId !== appState.mainRequestId ||
+            appState.selectedTaskId !== taskId) return;
         appState.detail = res;
         renderDetail(res);
       });
