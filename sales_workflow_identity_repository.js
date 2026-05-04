@@ -78,19 +78,35 @@ function swSystemUser_() {
 }
 
 function swTaskOwnedByUser_(task, user) {
+  if (swTaskRoleOwnedByUser_(task, user)) return true;
+  if (!swTaskNamedOwnerApplies_(task, user)) return false;
   var email = swNormEmail_(user.email);
   if (email && swNormEmail_(task.currentOwnerEmail) === email) return true;
   if (swNorm_(user.name) && swNorm_(task.currentOwner) === swNorm_(user.name)) return true;
-  if (swTaskRoleOwnedByUser_(task, user)) return true;
   return false;
 }
 
 function swTaskRoleOwnedByUser_(task, user) {
   if (!task || !user) return false;
   var role = swNorm_(task.ownerRole);
+  if (role === swNorm_(SW_OWNER_ROLES.JOC)) return !!user.isJoc;
   if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN)) return !!user.isDiamondOrderAdmin;
-  if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) return !!user.isDiamondOrderAssistant;
+  if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) {
+    return !!user.isDiamondOrderAssistant || (!!user.isDiamondOrderAdmin && task.taskType === SW_TASKS.DIAMOND_RETURN);
+  }
   return false;
+}
+
+function swTaskNamedOwnerApplies_(task, user) {
+  if (!task || !user) return false;
+  var role = swNorm_(task.ownerRole);
+  if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) ||
+      role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) {
+    return false;
+  }
+  if (role === swNorm_(SW_OWNER_ROLES.JOC)) return !!user.isJoc || !!user.isAdmin;
+  if (role === swNorm_(SW_OWNER_ROLES.SALES_REP)) return !!user.isRep || !!user.isAdmin;
+  return !!user.isRep || !!user.isJoc || !!user.isAdmin;
 }
 
 function swCanViewTask_(task, user) {

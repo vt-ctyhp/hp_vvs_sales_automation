@@ -182,7 +182,7 @@ function swAuthUserFromRow_(row) {
     roles: roles,
     isAdmin: swAuthHasRole_(roles, 'Admin'),
     isJoc: swAuthHasRole_(roles, 'JOC'),
-    isRep: true,
+    isRep: swAuthHasRole_(roles, SW_OWNER_ROLES.SALES_REP),
     isDiamondOrderAdmin: swAuthHasRole_(roles, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
     isDiamondOrderAssistant: swAuthHasRole_(roles, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
@@ -256,11 +256,11 @@ function swAuthRoleOptions_() {
 function swAuthRolesForWrite_(roles) {
   var allowed = {};
   swAuthRoleOptions_().forEach(function (role) {
-    allowed[swNorm_(role.value)] = role.value;
+    allowed[swAuthRoleKey_(role.value)] = role.value;
   });
   var out = [];
   swAuthRoles_(Array.isArray(roles) ? roles.join(',') : roles).forEach(function (role) {
-    var canonical = allowed[swNorm_(role)];
+    var canonical = allowed[swAuthRoleKey_(swAuthCanonicalRole_(role))];
     if (canonical && out.indexOf(canonical) < 0) out.push(canonical);
   });
   if (!out.length) out.push('SALES_REP');
@@ -270,15 +270,47 @@ function swAuthRolesForWrite_(roles) {
 function swAuthRoles_(value) {
   var out = [];
   String(value || '').split(/[,\n;]/).forEach(function (role) {
-    role = swTrim_(role);
+    role = swAuthCanonicalRole_(role);
     if (role) out.push(role);
   });
   return out;
 }
 
 function swAuthHasRole_(roles, role) {
-  var target = swNorm_(role);
-  return (roles || []).some(function (r) { return swNorm_(r) === target; });
+  var target = swAuthRoleKey_(swAuthCanonicalRole_(role));
+  return (roles || []).some(function (r) {
+    return swAuthRoleKey_(swAuthCanonicalRole_(r)) === target;
+  });
+}
+
+function swAuthCanonicalRole_(role) {
+  role = swTrim_(role);
+  if (!role) return '';
+  var key = swAuthRoleKey_(role);
+  var aliases = {
+    sales: 'SALES_REP',
+    salesrep: 'SALES_REP',
+    rep: 'SALES_REP',
+    joc: 'JOC',
+    admin: 'Admin',
+    administrator: 'Admin',
+    diamondadmin: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN,
+    diamondorderadmin: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN,
+    diamondordersadmin: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN,
+    diamondassistant: SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT,
+    diamondorderassistant: SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT,
+    diamondordersassistant: SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT
+  };
+  if (aliases[key]) return aliases[key];
+  for (var i = 0; i < swAuthRoleOptions_().length; i++) {
+    var option = swAuthRoleOptions_()[i];
+    if (swAuthRoleKey_(option.value) === key || swAuthRoleKey_(option.label) === key) return option.value;
+  }
+  return role;
+}
+
+function swAuthRoleKey_(role) {
+  return swNorm_(role).replace(/[^a-z0-9]+/g, '');
 }
 
 function swAuthFindUserRow_(ss, email) {

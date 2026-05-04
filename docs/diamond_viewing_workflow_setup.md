@@ -44,6 +44,8 @@ sw_adminSetWorkflowPassword(
 
 Use only the roles that person needs. A diamond order admin usually needs `DIAMOND_ORDER_ADMIN`; a diamond order assistant usually needs `DIAMOND_ORDER_ASSISTANT`.
 
+Role-only users do not inherit sales rep queues just because their login email appears in the `Dropdown` tab. Add `SALES_REP` only when that login should also receive assigned-rep tasks.
+
 The `Temporary Password?` column is informational only. The dashboard does not force a password change on first login; users can continue using the password assigned to them until an admin resets it.
 
 Admins can also manage users from:
@@ -55,11 +57,11 @@ Both surfaces write to `_SalesWorkflowUsers`, support role checkboxes, and eithe
 ## Generated Diamond Tasks
 - `PROPOSE_DIAMONDS`: assigned rep proposes stones immediately when a Diamond Viewing appointment is in workflow.
 - `PREPARE_DV_QUOTATION`: JOC fills quotation, performs price research, and can refresh quotation data from 200_ and latest 3D tracker.
-- `ORDER_DIAMONDS`: diamond order admin marks proposed stones as `On the Way` or `Not Approved`.
-- `TRACK_DIAMONDS`: diamond order assistant writes tracking ETA/status to 200_.
-- `CONFIRM_DIAMOND_DELIVERY`: diamond order admin confirms receipt.
-- `RECORD_DIAMOND_DECISIONS`: JOC marks Purchase/Return, confirms dimensions against 3D tracker, and copies the manufacturing message.
-- `RETURN_DIAMONDS`: diamond order assistant/admin reviews diamonds due to return.
+- `ORDER_DIAMONDS`: diamond order admin marks proposed stones as `On the Way` or `Not Approved`. This appears only when 200_ has at least one matching `Proposing` stone.
+- `TRACK_DIAMONDS`: diamond order assistant writes tracking ETA/status to 200_. This appears only when 200_ has at least one matching `On the Way` stone.
+- `CONFIRM_DIAMOND_DELIVERY`: diamond order admin confirms receipt. This appears only when 200_ has at least one matching `On the Way` stone.
+- `RECORD_DIAMOND_DECISIONS`: JOC marks Purchase/Return, confirms dimensions against 3D tracker, and copies the manufacturing message. This appears after a matching stone is delivered or in stock.
+- `RETURN_DIAMONDS`: diamond order assistant/admin reviews diamonds due to return. This appears when return-decision stones are due soon or overdue.
 - ETA risk tasks go to assigned rep and JOC only when tracking is late or concerning.
 
 ## Return Deadline Rule

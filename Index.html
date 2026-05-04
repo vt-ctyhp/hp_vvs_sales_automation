@@ -729,7 +729,7 @@
     function renderTasks(tasks) {
       var list = document.getElementById('taskList');
       if (!tasks.length) {
-        list.innerHTML = '<div class="empty"><h3>No tasks here</h3><p>Your queue is clear for this view.</p></div>';
+        list.innerHTML = emptyTaskHtml();
         return;
       }
       list.innerHTML = tasks.map(function (task) {
@@ -753,6 +753,20 @@
           '</article>'
         ].join('');
       }).join('');
+    }
+
+    function emptyTaskHtml() {
+      var user = appState.user || {};
+      var title = 'No tasks here';
+      var message = 'Your queue is clear for this view.';
+      if (appState.view === 'mine' && user.isDiamondOrderAdmin) {
+        title = 'No diamond admin tasks';
+        message = 'Order, delivery, and return tasks appear when the 200_ diamond tracker has Proposing, On the Way, or due-return diamonds for Diamond Viewing appointments. Run Generate Tasks after tracker updates.';
+      } else if (appState.view === 'mine' && user.isDiamondOrderAssistant) {
+        title = 'No diamond assistant tasks';
+        message = 'Tracking and return tasks appear when diamonds are On the Way or have return decisions due soon. Run Generate Tasks after tracker updates.';
+      }
+      return '<div class="empty"><h3>' + escapeHtml(title) + '</h3><p>' + escapeHtml(message) + '</p></div>';
     }
 
     function openTask(taskId) {
