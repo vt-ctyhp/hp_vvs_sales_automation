@@ -722,6 +722,11 @@
       width: auto;
     }
 
+    .admin-filter-actions {
+      justify-content: flex-end;
+      margin-top: 0;
+    }
+
     .admin-kpi-grid {
       display: grid;
       gap: 12px;
@@ -1488,7 +1493,7 @@
           '</div>',
           '<div class="task-top">',
             '<label class="admin-closed-toggle"><input id="adminDashIncludeClosed" type="checkbox"' + (filters.includeClosed ? ' checked' : '') + '>Include won and lost customers</label>',
-            '<div class="actions" style="margin-top:0">',
+            '<div class="actions admin-filter-actions">',
               '<button class="js-admin-dashboard-clear" type="button">Reset</button>',
               '<button class="primary js-admin-dashboard-apply" type="button">Apply Filters</button>',
             '</div>',
@@ -1605,7 +1610,7 @@
             '<label>At a Glance</label>',
             '<div class="template-box">' + escapeHtml((metrics.bookingsCreated || 0) + ' booking(s), ' + (metrics.paymentsCount || 0) + ' payment receipt(s), ' + (metrics.adminOpenTasks || 0) + ' open admin task(s).') + '</div>',
           '</div>',
-          '<div class="empty">Select a customer card to see owner, status, payment, and source links.</div>',
+          '<div class="empty">No customer selected.</div>',
         '</div>'
       ].join('');
     }
