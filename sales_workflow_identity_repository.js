@@ -20,7 +20,9 @@ function swCurrentUser_(ss, ctx) {
     name: name,
     isAdmin: isAdmin,
     isJoc: isJoc,
-    isRep: !!name
+    isRep: !!name,
+    isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
+    isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
 }
 
@@ -44,7 +46,9 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
     name: name,
     isAdmin: isAdmin,
     isJoc: isJoc,
-    isRep: !!name
+    isRep: !!name,
+    isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
+    isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
 }
 

@@ -39,6 +39,8 @@ function onOpen(e) {
   // 💎 Sales — primary workflow
   ui.createMenu('💎 Sales')
     .addItem('Authorize Drive', 'authorizeDriveOnce')
+    .addItem('Open dashboard', 'openSalesDashboard')
+    .addSeparator()
     .addItem('Start 3D design', 'openStart3D')
     .addItem('Assign SO', 'assignSO')
     .addItem('3D revision request', 'open3DRevision')
@@ -120,6 +122,58 @@ function authorizeDriveOnce() {
   // Touch Drive to request the Drive scope for this user
   DriveApp.getRootFolder().getName();
   SpreadsheetApp.getActive().toast('Drive access authorized. You can close this.');
+}
+
+function openSalesDashboard() {
+  const ui = SpreadsheetApp.getUi();
+  let url = '';
+
+  try {
+    url = WEBAPP_EXEC_URL_();
+  } catch (e) {
+    try {
+      url = (ScriptApp.getService().getUrl && ScriptApp.getService().getUrl()) || '';
+      if (url) url = url.replace(/\/dev(\b|$)/, '/exec');
+    } catch (_) {
+      url = '';
+    }
+  }
+
+  if (!url) {
+    ui.alert('Dashboard link is unavailable. Deploy the script as a web app or set WEBAPP_EXEC_URL in Script Properties.');
+    return;
+  }
+
+  const html = HtmlService.createHtmlOutput(
+    '<!doctype html><html><head><base target="_top">' +
+    '<style>' +
+    ':root{--bg-foundation:#F7F1EB;--surface-card:#FBF7F1;--ink-primary:#2A2725;--ink-body:#4A4540;--ink-muted:#8A8178;--rule:#D4CFC4;}' +
+    'body{margin:0;background:var(--bg-foundation);color:var(--ink-body);font-family:Inter,system-ui,-apple-system,sans-serif;font-size:13px;}' +
+    '.wrap{padding:24px;border-top:1px solid var(--rule);}' +
+    '.eyebrow{color:var(--ink-muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px;}' +
+    'h1{color:var(--ink-primary);font-family:Georgia,serif;font-size:24px;font-weight:400;margin:0 0 12px;}' +
+    'a{display:inline-block;border:1px solid var(--ink-primary);color:var(--ink-primary);padding:10px 14px;text-decoration:none;text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:500;}' +
+    '</style></head><body>' +
+    '<div class="wrap">' +
+    '<div class="eyebrow">Dashboard</div>' +
+    '<h1>Opening dashboard</h1>' +
+    '<p>If the dashboard does not open automatically, use the link below.</p>' +
+    '<a id="dashboardLink" target="_blank" rel="noopener">Open dashboard</a>' +
+    '</div>' +
+    '<script>' +
+    '(function(){' +
+    'var url=' + JSON.stringify(url) + ';' +
+    'var link=document.getElementById("dashboardLink");' +
+    'link.href=url;' +
+    'try{' +
+    'var opened=window.open(url,"_blank");' +
+    'if(opened){try{opened.opener=null;}catch(_){} setTimeout(function(){google.script.host.close();},350);}' +
+    '}catch(_){}' +
+    '})();' +
+    '</script></body></html>'
+  ).setWidth(360).setHeight(190);
+
+  ui.showModelessDialog(html, 'Dashboard');
 }
 
 

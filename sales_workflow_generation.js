@@ -30,6 +30,8 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
     swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.CHECKLIST, 'SALES_REP', swDayOfDue_(visitAt), '', now, {}), summary);
   }
 
+  swGenerateDiamondWorkflowTasks_(ss, state, ctx, rec, now, summary, visitAt);
+
   var checklistId = swTaskId_(rec, SW_TASKS.CHECKLIST);
   var processId = swTaskId_(rec, SW_TASKS.PROCESS);
   var approveId = swTaskId_(rec, SW_TASKS.APPROVE);
@@ -76,7 +78,13 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
       assistedRep: rec.assistedRep,
       assistedRepEmail: rec.assistedRepEmail,
       clientFolder: rec.clientFolder,
-      reportUrl: rec.reportUrl
+      reportUrl: rec.reportUrl,
+      quotationUrl: rec.quotationUrl,
+      tracker3dUrl: rec.tracker3dUrl,
+      centerStoneStatus: rec.centerStoneStatus,
+      dvStonesSummary: rec.dvStonesSummary,
+      so: rec.so,
+      orderFolder: rec.orderFolder
     },
     extra: extraPayload || {}
   };
@@ -195,7 +203,7 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
     };
   }
 
-  if (ownerRole === 'System') {
+  if (ownerRole === SW_OWNER_ROLES.SYSTEM || ownerRole === 'System') {
     return {
       intendedOwner: 'System',
       intendedOwnerEmail: '',
@@ -205,7 +213,7 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
     };
   }
 
-  if (ownerRole === 'SALES_REP') {
+  if (ownerRole === SW_OWNER_ROLES.SALES_REP || ownerRole === 'SALES_REP') {
     var repName = rec.assignedRep || '';
     var repEmail = rec.assignedRepEmail || swLookupEmailByName_(ss, repName, ctx) || '';
     return {
@@ -217,8 +225,12 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
     };
   }
 
-  if (ownerRole === 'JOC') {
+  if (ownerRole === SW_OWNER_ROLES.JOC || ownerRole === 'JOC') {
     return swResolveJocOwner_(ss, ctx, rec, dueAt, existing);
+  }
+
+  if (ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN || ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) {
+    return swResolveConfigRoleOwner_(ctx, ownerRole);
   }
 
   return {
@@ -227,6 +239,38 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
     currentOwner: '',
     currentOwnerEmail: '',
     coverageReason: 'UNASSIGNED_OWNER_ROLE'
+  };
+}
+
+function swResolveConfigRoleOwner_(ctx, ownerRole) {
+  ctx = ctx || {};
+  var config = ctx.config || [];
+  var candidates = config.filter(function (row) {
+    return swNorm_(row['Role']) === swNorm_(ownerRole) && swTruthy_(row['Active?'] || 'Y') && swNormEmail_(row['Email']);
+  }).sort(function (a, b) {
+    return (Number(a['Priority']) || 999) - (Number(b['Priority']) || 999);
+  });
+  if (candidates.length) {
+    return {
+      intendedOwner: swTrim_(candidates[0]['Name'] || candidates[0]['Key']),
+      intendedOwnerEmail: swNormEmail_(candidates[0]['Email']),
+      currentOwner: swTrim_(candidates[0]['Name'] || candidates[0]['Key']) || swNormEmail_(candidates[0]['Email']),
+      currentOwnerEmail: swNormEmail_(candidates[0]['Email']),
+      coverageReason: ''
+    };
+  }
+
+  var sharedKey = ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN
+    ? 'SHARED_DIAMOND_ORDER_ADMIN_QUEUE'
+    : 'SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE';
+  var shared = swConfigValue_(config, 'SYSTEM', sharedKey,
+    ownerRole === SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN ? 'Diamond Order Admin Coverage' : 'Diamond Order Assistant Coverage');
+  return {
+    intendedOwner: '',
+    intendedOwnerEmail: '',
+    currentOwner: shared,
+    currentOwnerEmail: '',
+    coverageReason: 'UNASSIGNED_' + ownerRole
   };
 }
 
@@ -346,5 +390,14 @@ function swLifecycleForTask_(taskType) {
   map[SW_TASKS.PROCESS] = 'Post-Appointment';
   map[SW_TASKS.APPROVE] = 'Post-Appointment';
   map[SW_TASKS.FINAL] = 'Final Follow-Up';
+  map[SW_TASKS.DIAMOND_PROPOSE] = 'Diamond Viewing';
+  map[SW_TASKS.DIAMOND_QUOTE] = 'Diamond Viewing';
+  map[SW_TASKS.DIAMOND_ORDER] = 'Diamond Order';
+  map[SW_TASKS.DIAMOND_TRACK] = 'Diamond Tracking';
+  map[SW_TASKS.DIAMOND_DELIVERY] = 'Diamond Delivery';
+  map[SW_TASKS.DIAMOND_DECISIONS] = 'Diamond Decisions';
+  map[SW_TASKS.DIAMOND_RETURN] = 'Diamond Return';
+  map[SW_TASKS.DIAMOND_ETA_REP] = 'Diamond ETA Risk';
+  map[SW_TASKS.DIAMOND_ETA_JOC] = 'Diamond ETA Risk';
   return map[taskType] || '';
 }

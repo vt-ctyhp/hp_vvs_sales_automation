@@ -133,7 +133,14 @@ function swReadAppointments_(ss) {
     assistedRep: swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']),
     assistedRepEmail: swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']),
     clientFolder: swPickIndex_(H, ['Client Folder', 'ClientFolderURL', 'Client Folder URL']),
-    reportUrl: swPickIndex_(H, ['Client Status Report URL', 'Report URL'])
+    reportUrl: swPickIndex_(H, ['Client Status Report URL', 'Report URL']),
+    quotationUrl: swPickIndex_(H, ['Quotation URL', 'QuotationURL', 'Quote URL']),
+    tracker3d: swPickIndex_(H, ['3D Tracker', '3D Log', '3D Tracker URL']),
+    centerStoneStatus: swPickIndex_(H, ['Center Stone Order Status', 'Center Stone Status', 'CSOS', 'Diamond Memo Status', 'DV Status']),
+    dvStonesJson: swPickIndex_(H, ['DV Stones (JSON Lines)', 'DV Stones JSON Lines', 'DV Stones-JSON Lines']),
+    dvStonesSummary: swPickIndex_(H, ['DV Stones Summary', 'DV Stones- Summary']),
+    so: swPickIndex_(H, ['SO#', 'SO #', 'SO']),
+    orderFolder: swPickIndex_(H, ['Order Folder', '05-3D Folder'])
   };
 
   var out = [];
@@ -161,7 +168,14 @@ function swReadAppointments_(ss) {
       assistedRep: swTrim_(swCell_(drow, idx.assistedRep)),
       assistedRepEmail: swNormEmail_(swCell_(drow, idx.assistedRepEmail)),
       clientFolder: swTrim_(swCell_(drow, idx.clientFolder)),
-      reportUrl: swTrim_(swCell_(drow, idx.reportUrl))
+      reportUrl: swTrim_(swCell_(drow, idx.reportUrl)),
+      quotationUrl: swTrim_(swCell_(drow, idx.quotationUrl)),
+      tracker3dUrl: swTrim_(swCell_(drow, idx.tracker3d)),
+      centerStoneStatus: swTrim_(swCell_(drow, idx.centerStoneStatus)),
+      dvStonesJson: swTrim_(swCell_(drow, idx.dvStonesJson)),
+      dvStonesSummary: swTrim_(swCell_(drow, idx.dvStonesSummary)),
+      so: swTrim_(swCell_(drow, idx.so)),
+      orderFolder: swTrim_(swCell_(drow, idx.orderFolder))
     };
     rec.root = rec.root || rec.appt;
     rec.statusNorm = swNorm_(rec.status);

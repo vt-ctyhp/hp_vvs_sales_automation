@@ -13,14 +13,17 @@ function sw_setupSalesWorkflow() {
   var logSheet = swEnsureSheet_(ss, SW_SHEETS.LOG, SW_LOG_HEADERS);
   var configSheet = swEnsureSheet_(ss, SW_SHEETS.CONFIG, SW_CONFIG_HEADERS);
   var templateSheet = swEnsureSheet_(ss, SW_SHEETS.TEMPLATES, SW_TEMPLATE_HEADERS);
+  var usersSheet = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
 
   swStyleSheet_(taskSheet);
   swStyleSheet_(logSheet);
   swStyleSheet_(configSheet);
   swStyleSheet_(templateSheet);
+  swStyleSheet_(usersSheet);
 
   swSeedConfig_(configSheet);
   swSeedTemplates_(templateSheet);
+  swSeedAuthUsers_(usersSheet);
 
   return {
     ok: true,
@@ -152,22 +155,17 @@ function sw_installSalesWorkflowTriggers() {
 /**
  * Read-only UI bootstrap: returns current user, view counts, and initial My Queue tasks.
  */
-function sw_getBootstrap() {
+function sw_getBootstrap(authToken) {
   return swTimed_('sw_getBootstrap', function () {
     var mark = swStepTimer_('sw_getBootstrap');
     var ss = swSpreadsheet_();
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss, { templates: false });
     mark('requiredSheets');
-    var identity = swBuildBootstrapUser_(ss, true);
-    var user = identity.user;
-    mark('identity', { mode: identity.lightweight ? 'configOnly' : 'full' });
+    var user = swAuthUserForApi_(ss, authToken);
+    mark('identity', { mode: authToken ? 'passwordSession' : 'appsScriptIdentity' });
     var state = swReadTaskListState_(ss, true);
     mark('taskListRead', { tasks: state.tasks.length });
-    if (identity.lightweight && user.name === user.email && swTaskStateMayNeedNameIdentity_(state)) {
-      user = swCurrentUser_(ss, swBuildIdentityContext_(ss, true));
-      mark('identityFallback', { reason: 'nameOnlyOwners' });
-    }
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var buckets = swBuildVisibleTaskBuckets_(state, user);
     mark('taskBuckets', {
@@ -197,15 +195,19 @@ function sw_getBootstrap() {
 /**
  * Read-only UI list: returns tasks visible to the current user for the requested view.
  */
-function sw_getMyTasks(view) {
+function sw_getMyTasks(authToken, view) {
   return swTimed_('sw_getMyTasks', function () {
     var mark = swStepTimer_('sw_getMyTasks');
+    if (!view && /^(mine|coverage|admin)$/i.test(String(authToken || ''))) {
+      view = authToken;
+      authToken = '';
+    }
     var viewName = view || 'mine';
     var ss = swSpreadsheet_();
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss, { templates: false });
     mark('requiredSheets');
-    var user = swCurrentUserForTaskListView_(ss, viewName, true);
+    var user = swAuthUserForApi_(ss, authToken);
     mark('identity');
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var state = swReadTaskListState_(ss, true);
@@ -224,12 +226,15 @@ function sw_getMyTasks(view) {
 /**
  * Read-only admin list: returns filterable admin-visible tasks.
  */
-function sw_adminGetTasks(filters) {
+function sw_adminGetTasks(authToken, filters) {
   return swTimed_('sw_adminGetTasks', function () {
+    if (typeof authToken === 'object' && filters == null) {
+      filters = authToken;
+      authToken = '';
+    }
     var ss = swSpreadsheet_();
     swRequireWorkflowReadSheets_(ss, { templates: false });
-    var ctx = swBuildIdentityContext_(ss, true);
-    var user = swCurrentUser_(ss, ctx);
+    var user = swAuthUserForApi_(ss, authToken);
     if (!user.isAdmin) throw new Error('Admin access required.');
     var state = swReadTaskListState_(ss, true);
     var tasks = swListVisibleTasksFromState_(state, user, 'admin');
@@ -247,16 +252,20 @@ function sw_adminGetTasks(filters) {
 /**
  * Read-only detail: returns task payload, rendered template data, and allowed actions.
  */
-function sw_getTaskDetail(taskId) {
+function sw_getTaskDetail(authToken, taskId) {
   return swTimed_('sw_getTaskDetail', function () {
+    if (!taskId && /^SW\|/.test(String(authToken || ''))) {
+      taskId = authToken;
+      authToken = '';
+    }
     var mark = swStepTimer_('sw_getTaskDetail');
     var ss = swSpreadsheet_();
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss);
     mark('requiredSheets');
-    var ctx = swBuildTaskDetailReadContext_(ss, true);
-    mark('detailContext', { mode: ctx.lightweight ? 'adminConfigOnly' : 'full' });
-    var user = ctx.user;
+    var ctx = { templates: swReadTemplates_(ss, true) };
+    mark('detailContext', { mode: authToken ? 'passwordSession' : 'appsScriptIdentity' });
+    var user = swAuthUserForApi_(ss, authToken);
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var task = swReadTaskRowById_(ss, taskId, true);
     mark('taskRowLookup');
@@ -300,19 +309,37 @@ function sw_getTaskDetail(taskId) {
 /**
  * Mutating task action: marks acknowledge-style tasks complete through the standard path.
  */
-function sw_acknowledgeTask(taskId, data) {
+function sw_acknowledgeTask(authToken, taskId, data) {
+  if (!taskId && /^SW\|/.test(String(authToken || ''))) {
+    taskId = authToken;
+    authToken = '';
+  }
+  if (typeof taskId === 'object' && data == null) {
+    data = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
   data = data || {};
   data.acknowledged = true;
-  return sw_completeTask(taskId, data);
+  return sw_completeTask(authToken, taskId, data);
 }
 
 /**
  * Mutating task action: validates and completes a pending task, then refreshes generation.
  */
-function sw_completeTask(taskId, data) {
+function sw_completeTask(authToken, taskId, data) {
+  if (!taskId && /^SW\|/.test(String(authToken || ''))) {
+    taskId = authToken;
+    authToken = '';
+  }
+  if (typeof taskId === 'object' && data == null) {
+    data = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
+  var user = swAuthUserForApi_(ss, authToken);
   var task = swGetTaskById_(ss, taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
@@ -320,6 +347,7 @@ function sw_completeTask(taskId, data) {
 
   data = data || {};
   swValidateCompletion_(ss, task, data);
+  var diamondAction = swDiamondHandleTaskCompletion_(ss, task, data, user);
 
   var template = swTemplateForType_(ss, task.taskType);
   var payload = swParseJson_(task.payloadJson, {});
@@ -332,6 +360,7 @@ function sw_completeTask(taskId, data) {
   payload.completedBy = user.name || user.email;
   payload.completedByEmail = user.email;
   payload.completedAt = swIso_(new Date());
+  if (diamondAction) payload.diamondAction = diamondAction;
 
   var oldOwner = task.currentOwner;
   task.status = SW_STATUSES.COMPLETED;
@@ -355,10 +384,14 @@ function sw_completeTask(taskId, data) {
 /**
  * Mutating task action: lets an eligible user claim a pending coverage task.
  */
-function sw_claimTask(taskId) {
+function sw_claimTask(authToken, taskId) {
+  if (!taskId && /^SW\|/.test(String(authToken || ''))) {
+    taskId = authToken;
+    authToken = '';
+  }
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
+  var user = swAuthUserForApi_(ss, authToken);
   var task = swGetTaskById_(ss, taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   if (!swCanClaimTask_(task, user)) throw new Error('This task is not available for you to claim.');
@@ -380,10 +413,14 @@ function sw_claimTask(taskId) {
 /**
  * Mutating task action: records that the user copied a task template.
  */
-function sw_logTemplateCopied(taskId) {
+function sw_logTemplateCopied(authToken, taskId) {
+  if (!taskId && /^SW\|/.test(String(authToken || ''))) {
+    taskId = authToken;
+    authToken = '';
+  }
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
+  var user = swAuthUserForApi_(ss, authToken);
   var task = swGetTaskById_(ss, taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
@@ -396,10 +433,17 @@ function sw_logTemplateCopied(taskId) {
 /**
  * Mutating admin action: reassigns a pending task to a named owner.
  */
-function sw_adminReassignTask(taskId, ownerName, ownerEmail, reason) {
+function sw_adminReassignTask(authToken, taskId, ownerName, ownerEmail, reason) {
+  if (/^SW\|/.test(String(authToken || ''))) {
+    reason = ownerEmail;
+    ownerEmail = ownerName;
+    ownerName = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
+  var user = swAuthUserForApi_(ss, authToken);
   if (!user.isAdmin) throw new Error('Admin access required.');
 
   var task = swGetTaskById_(ss, taskId);
@@ -423,10 +467,15 @@ function sw_adminReassignTask(taskId, ownerName, ownerEmail, reason) {
 /**
  * Mutating admin action: blocks a task and records the reason.
  */
-function sw_adminBlockTask(taskId, reason) {
+function sw_adminBlockTask(authToken, taskId, reason) {
+  if (/^SW\|/.test(String(authToken || ''))) {
+    reason = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
+  var user = swAuthUserForApi_(ss, authToken);
   if (!user.isAdmin) throw new Error('Admin access required.');
 
   var task = swGetTaskById_(ss, taskId);
@@ -448,10 +497,15 @@ function sw_adminBlockTask(taskId, reason) {
 /**
  * Mutating admin action: returns a blocked task to pending status.
  */
-function sw_adminUnblockTask(taskId, reason) {
+function sw_adminUnblockTask(authToken, taskId, reason) {
+  if (/^SW\|/.test(String(authToken || ''))) {
+    reason = taskId;
+    taskId = authToken;
+    authToken = '';
+  }
   var ss = swSpreadsheet_();
   sw_setupSalesWorkflow();
-  var user = swCurrentUser_(ss);
+  var user = swAuthUserForApi_(ss, authToken);
   if (!user.isAdmin) throw new Error('Admin access required.');
 
   var task = swGetTaskById_(ss, taskId);
@@ -469,6 +523,93 @@ function sw_adminUnblockTask(taskId, reason) {
 }
 
 // Diagnostics and tests.
+
+/**
+ * Read-only setup review for the login + Diamond Viewing workflow rollout.
+ */
+function sw_reviewDiamondWorkflowSetup() {
+  var ss = swSpreadsheet_();
+  var out = {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    sheets: {},
+    diamondRoles: {},
+    diamondTemplates: {},
+    authUsers: [],
+    diamondTracking: {}
+  };
+
+  [SW_SHEETS.CONFIG, SW_SHEETS.TEMPLATES, SW_SHEETS.USERS, SW_SHEETS.TASKS].forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    out.sheets[name] = {
+      exists: !!sh,
+      rows: sh ? Math.max(0, sh.getLastRow() - 1) : 0
+    };
+  });
+
+  var config = ss.getSheetByName(SW_SHEETS.CONFIG)
+    ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
+    : [];
+  [SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT].forEach(function (role) {
+    out.diamondRoles[role] = config.filter(function (row) {
+      return swNorm_(row['Role']) === swNorm_(role);
+    }).map(function (row) {
+      return {
+        key: row['Key'],
+        name: row['Name'],
+        email: row['Email'],
+        active: row['Active?'],
+        priority: row['Priority']
+      };
+    });
+  });
+
+  var templates = ss.getSheetByName(SW_SHEETS.TEMPLATES)
+    ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.TEMPLATES), SW_TEMPLATE_HEADERS)
+    : [];
+  [
+    SW_TASKS.DIAMOND_PROPOSE,
+    SW_TASKS.DIAMOND_QUOTE,
+    SW_TASKS.DIAMOND_ORDER,
+    SW_TASKS.DIAMOND_TRACK,
+    SW_TASKS.DIAMOND_DELIVERY,
+    SW_TASKS.DIAMOND_DECISIONS,
+    SW_TASKS.DIAMOND_RETURN,
+    SW_TASKS.DIAMOND_ETA_REP,
+    SW_TASKS.DIAMOND_ETA_JOC
+  ].forEach(function (taskType) {
+    var row = templates.filter(function (t) { return t['Task Type'] === taskType; })[0];
+    out.diamondTemplates[taskType] = {
+      exists: !!row,
+      title: row ? row['Task Title'] : '',
+      primaryAction: row ? row['Primary Action'] : ''
+    };
+  });
+
+  var users = ss.getSheetByName(SW_SHEETS.USERS)
+    ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.USERS), SW_AUTH_USER_HEADERS)
+    : [];
+  out.authUsers = users.map(function (row) {
+    return {
+      email: row['Email'],
+      name: row['Name'],
+      roles: row['Roles'],
+      active: row['Active?'],
+      passwordSet: !!row['Password Hash'],
+      lastLoginAt: row['Last Login At']
+    };
+  });
+
+  var target = swDiamond200Target_();
+  out.diamondTracking = {
+    available: !!(target && target.sheet),
+    spreadsheetName: target && target.ss ? target.ss.getName() : '',
+    tab: target ? target.tab : '',
+    url: target && target.ss ? target.ss.getUrl() : ''
+  };
+  Logger.log('SW_DIAMOND_WORKFLOW_SETUP_REVIEW ' + JSON.stringify(out, null, 2));
+  return out;
+}
 
 /**
  * Read-only diagnostic: logs server-side speed for initial queue load paths.

@@ -37,6 +37,22 @@
       padding: 32px;
     }
 
+    .auth-screen {
+      align-items: center;
+      display: flex;
+      min-height: 100vh;
+      padding: 32px;
+    }
+
+    .auth-panel {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      margin: 0 auto;
+      max-width: 440px;
+      padding: 32px;
+      width: 100%;
+    }
+
     .masthead {
       display: flex;
       align-items: flex-end;
@@ -278,7 +294,7 @@
       text-transform: uppercase;
     }
 
-    textarea, input {
+    textarea, input, select {
       background: transparent;
       border: 0;
       border-bottom: 1px solid var(--rule);
@@ -296,7 +312,7 @@
       resize: vertical;
     }
 
-    textarea:focus, input:focus {
+    textarea:focus, input:focus, select:focus {
       border-color: var(--accent);
       outline: none;
     }
@@ -321,6 +337,34 @@
       gap: 12px;
     }
 
+    .field-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .mini-table {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 0;
+    }
+
+    .mini-row {
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(120px, 1fr) minmax(120px, 160px);
+      padding: 12px 0;
+    }
+
+    .mini-row.three {
+      grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) minmax(80px, 110px);
+    }
+
+    .login-status {
+      min-height: 18px;
+      margin-top: 12px;
+    }
+
     @media (max-width: 980px) {
       .shell {
         padding: 20px;
@@ -342,7 +386,28 @@
   </style>
 </head>
 <body>
-  <main class="shell">
+  <section class="auth-screen" id="loginScreen">
+    <div class="auth-panel">
+      <div class="eyebrow">Sales Workflow</div>
+      <h1>Sign in</h1>
+      <div class="field-grid" style="margin-top:24px">
+        <div>
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" autocomplete="username">
+        </div>
+        <div>
+          <label for="loginPassword">Password</label>
+          <input id="loginPassword" type="password" autocomplete="current-password">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="loginButton" class="primary" type="button">Sign In</button>
+      </div>
+      <div class="login-status error" id="loginStatus"></div>
+    </div>
+  </section>
+
+  <main class="shell" id="appShell" style="display:none">
     <header class="masthead">
       <div>
         <div class="eyebrow">Sales Appointment Workflow</div>
@@ -358,6 +423,7 @@
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
       <div>
+        <button id="logoutButton" type="button">Sign Out</button>
         <button id="refreshOwnersButton" type="button">Refresh Owners</button>
         <button id="generateTasksButton" class="primary" type="button">Generate Tasks</button>
       </div>
@@ -388,6 +454,7 @@
 
   <script>
     var appState = {
+      token: '',
       user: null,
       view: 'mine',
       selectedTaskId: '',
@@ -396,6 +463,18 @@
     };
 
     function bindEvents() {
+      var loginButton = document.getElementById('loginButton');
+      if (loginButton) loginButton.addEventListener('click', login);
+      var loginPassword = document.getElementById('loginPassword');
+      if (loginPassword) {
+        loginPassword.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter') login();
+        });
+      }
+
+      var logoutButton = document.getElementById('logoutButton');
+      if (logoutButton) logoutButton.addEventListener('click', logout);
+
       ['mine', 'coverage', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
@@ -423,6 +502,9 @@
       if (detailPanel) {
         detailPanel.addEventListener('click', function (event) {
           if (closestMatch_(event.target, '.js-copy-template')) return copyTemplate();
+          if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
+          var refreshButton = closestMatch_(event.target, '.js-refresh-diamond-quote');
+          if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
           if (closestMatch_(event.target, '.js-claim-task')) return claimTask();
           if (closestMatch_(event.target, '.js-complete-task')) return completeTask();
           if (closestMatch_(event.target, '.js-admin-reassign')) return adminReassign();
@@ -442,6 +524,10 @@
       el.className = isError ? 'status error' : 'status';
     }
 
+    function setLoginStatus(message) {
+      document.getElementById('loginStatus').textContent = message || '';
+    }
+
     function setBusy(isBusy, message) {
       appState.busy = isBusy;
       if (message) {
@@ -453,6 +539,8 @@
 
     function serverCall(fnName, args, onSuccess, busyMessage) {
       setBusy(true, busyMessage || 'Working');
+      var callArgs = args || [];
+      if (fnName !== 'sw_login') callArgs = [appState.token].concat(callArgs);
       var runner = google.script.run
         .withSuccessHandler(function (response) {
           setBusy(false, '');
@@ -460,13 +548,31 @@
         })
         .withFailureHandler(function (err) {
           setBusy(false, '');
-          setStatus((err && err.message) ? err.message : String(err), true);
+          var message = (err && err.message) ? err.message : String(err);
+          if (fnName === 'sw_login') setLoginStatus(message);
+          else if (fnName === 'sw_getBootstrap' && !appState.user) {
+            appState.token = '';
+            sessionStorage.removeItem('salesWorkflowToken');
+            showLogin();
+            setLoginStatus(message);
+          }
+          else setStatus(message, true);
         });
-      runner[fnName].apply(runner, args || []);
+      runner[fnName].apply(runner, callArgs);
     }
 
     function init() {
+      appState.token = sessionStorage.getItem('salesWorkflowToken') || '';
+      if (!appState.token) {
+        showLogin();
+        return;
+      }
+      bootstrap();
+    }
+
+    function bootstrap() {
       serverCall('sw_getBootstrap', [], function (res) {
+        showApp();
         appState.user = res.user;
         renderUser(res);
         appState.view = 'mine';
@@ -475,6 +581,37 @@
         renderTasks(res.tasks || []);
         if (res.message) setStatus(res.message);
       });
+    }
+
+    function showLogin() {
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('appShell').style.display = 'none';
+      setLoginStatus('');
+    }
+
+    function showApp() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appShell').style.display = '';
+    }
+
+    function login() {
+      var email = document.getElementById('loginEmail').value;
+      var password = document.getElementById('loginPassword').value;
+      setLoginStatus('');
+      serverCall('sw_login', [email, password], function (res) {
+        appState.token = res.token || '';
+        sessionStorage.setItem('salesWorkflowToken', appState.token);
+        bootstrap();
+      }, 'Signing in');
+    }
+
+    function logout() {
+      serverCall('sw_logout', [], function () {
+        appState.token = '';
+        sessionStorage.removeItem('salesWorkflowToken');
+        appState.user = null;
+        showLogin();
+      }, 'Signing out');
     }
 
     function renderUser(res) {
@@ -568,6 +705,7 @@
         : '';
       var attachments = renderAttachments(res.attachments || (res.attachment && res.attachment.url ? [res.attachment] : []));
       var checklist = renderChecklist(res.checklist || []);
+      var diamondControls = renderDiamondControls(task, res);
       var textArea = renderCompletionTextArea(task, res);
       var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
       var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete') + '</button>' : '';
@@ -588,6 +726,7 @@
           '<div class="detail-section"><label>Instructions</label><div>' + escapeHtml(task.instructions || 'No instructions provided.') + '</div></div>',
           template,
           attachments,
+          diamondControls,
           checklist,
           textArea,
           '<div class="actions">' + claim + complete + '</div>',
@@ -624,6 +763,128 @@
           '</div>',
         '</div>'
       ].join('');
+    }
+
+    function renderDiamondControls(task, res) {
+      var payload = res.payload || {};
+      var extra = payload.extra || {};
+      var diamond = extra.diamond || {};
+      var rows = diamond.rows || [];
+      if (!isDiamondTask(task.taskType)) return '';
+
+      var quoteButtons = '';
+      if (task.taskType === 'PREPARE_DV_QUOTATION') {
+        quoteButtons = [
+          '<div class="detail-section">',
+            '<label>Quotation Refresh</label>',
+            '<div class="actions">',
+              '<button class="js-refresh-diamond-quote" type="button" data-mode="diamonds">Refresh Diamonds</button>',
+              '<button class="js-refresh-diamond-quote" type="button" data-mode="settings">Refresh 3D</button>',
+              '<button class="primary js-refresh-diamond-quote" type="button" data-mode="all">Refresh All</button>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      if (task.taskType === 'ORDER_DIAMONDS') {
+        return quoteButtons + '<div class="detail-section"><label>Order Decisions</label>' +
+          renderOrderDecisionRows(rows) +
+          '<div class="field-grid" style="margin-top:14px"><div><label for="orderedDate">Order Date</label><input id="orderedDate" type="date"></div></div></div>';
+      }
+
+      if (task.taskType === 'TRACK_DIAMONDS') {
+        return quoteButtons + [
+          '<div class="detail-section">',
+            '<label>Tracking Update</label>',
+            '<div class="field-grid">',
+              '<div><label for="trackingEta">Tracking ETA</label><input id="trackingEta" type="date"></div>',
+              '<div><label for="trackingStatus">Tracking Status</label><select id="trackingStatus"><option value="">Select status</option><option>On time</option><option>Delayed</option><option>Unavailable</option><option>Cancelled</option><option>Concerning</option></select></div>',
+              '<div><label for="carrier">Carrier</label><input id="carrier"></div>',
+              '<div><label for="trackingNumber">Tracking Number</label><input id="trackingNumber"></div>',
+              '<div><label for="trackingUrl">Tracking URL</label><input id="trackingUrl"></div>',
+              '<div><label for="trackingNotes">Tracking Notes</label><textarea id="trackingNotes"></textarea></div>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      if (task.taskType === 'CONFIRM_DIAMOND_DELIVERY') {
+        return quoteButtons + '<div class="detail-section"><label>Delivery Confirmation</label>' +
+          renderReadonlyDiamondRows(rows.filter(function (row) { return norm(row.orderStatus) === 'on the way'; })) +
+          '<div class="field-grid" style="margin-top:14px"><div><label for="memoDate">Memo / Invoice Date</label><input id="memoDate" type="date"></div></div></div>';
+      }
+
+      if (task.taskType === 'RECORD_DIAMOND_DECISIONS') {
+        return quoteButtons + '<div class="detail-section"><label>Diamond Decisions</label>' +
+          renderStoneDecisionRows(rows) +
+          '<div class="template-box" style="margin-top:14px" id="manufacturingMessage">' + escapeHtml(extra.manufacturingMessage || '') + '</div>' +
+          '<div class="actions"><button class="js-copy-manufacturing" type="button">Copy Manufacturing Message</button></div></div>';
+      }
+
+      if (task.taskType === 'RETURN_DIAMONDS') {
+        return quoteButtons + '<div class="detail-section"><label>Return Queue</label>' + renderReadonlyDiamondRows(diamond.returnRows || []) + '</div>';
+      }
+
+      return quoteButtons;
+    }
+
+    function renderOrderDecisionRows(rows) {
+      var proposing = (rows || []).filter(function (row) { return norm(row.orderStatus) === 'proposing'; });
+      if (!proposing.length) return '<div class="empty">No proposed stones are currently in the task snapshot.</div>';
+      return '<div class="mini-table">' + proposing.map(function (row) {
+        return '<div class="mini-row three" data-row-index="' + escapeAttrValue(row.rowIndex) + '">' +
+          '<div><strong>' + escapeHtml(diamondLabel(row)) + '</strong><div class="meta">' + escapeHtml(row.vendor || '') + '</div></div>' +
+          '<select class="diamond-order-decision"><option value="">No change</option><option>On the Way</option><option>Not Approved</option></select>' +
+          '<div class="meta">Row ' + escapeHtml(row.rowIndex || '') + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    function renderStoneDecisionRows(rows) {
+      var delivered = (rows || []).filter(function (row) {
+        return norm(row.orderStatus) === 'delivered' || norm(row.stoneStatus).indexOf('in stock') >= 0;
+      });
+      if (!delivered.length) return '<div class="empty">No delivered stones are currently in the task snapshot.</div>';
+      return '<div class="mini-table">' + delivered.map(function (row) {
+        return '<div class="mini-row three" data-row-index="' + escapeAttrValue(row.rowIndex) + '">' +
+          '<div><strong>' + escapeHtml(diamondLabel(row)) + '</strong><div class="meta">' + escapeHtml(row.measurement || '') + '</div></div>' +
+          '<select class="diamond-stone-decision"><option value="">No change</option><option>Purchase</option><option>Return</option></select>' +
+          '<label class="meta"><input class="diamond-hold" type="checkbox"> Hold</label>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    function renderReadonlyDiamondRows(rows) {
+      rows = rows || [];
+      if (!rows.length) return '<div class="empty">No matching diamonds are currently in the task snapshot.</div>';
+      return '<div class="mini-table">' + rows.map(function (row) {
+        return '<div class="mini-row">' +
+          '<div><strong>' + escapeHtml(diamondLabel(row)) + '</strong><div class="meta">' + escapeHtml([row.orderStatus, row.stoneStatus, row.decision].filter(Boolean).join(' | ')) + '</div></div>' +
+          '<div class="meta">' + escapeHtml(row.returnDueDate || row.trackingEta || ('Row ' + (row.rowIndex || ''))) + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    function diamondLabel(row) {
+      return [row.shape, row.carat ? row.carat + 'ct' : '', row.color, row.clarity, row.certNo ? 'Cert ' + row.certNo : ''].filter(Boolean).join(' | ') || ('Row ' + (row.rowIndex || ''));
+    }
+
+    function isDiamondTask(taskType) {
+      return [
+        'PROPOSE_DIAMONDS',
+        'PREPARE_DV_QUOTATION',
+        'ORDER_DIAMONDS',
+        'TRACK_DIAMONDS',
+        'CONFIRM_DIAMOND_DELIVERY',
+        'RECORD_DIAMOND_DECISIONS',
+        'RETURN_DIAMONDS',
+        'REVIEW_DIAMOND_ETA_ASSIGNED_REP',
+        'REVIEW_DIAMOND_ETA_JOC'
+      ].indexOf(taskType) >= 0;
+    }
+
+    function norm(value) {
+      return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
     }
 
     function renderCompletionTextArea(task, res) {
@@ -664,7 +925,37 @@
       var text = document.getElementById('completionText');
       if (text && task.taskType === 'PROCESS_APPOINTMENT_DATA') payload.recapText = text.value;
       if (text && task.taskType === 'APPROVE_RECAP_MESSAGE') payload.approvedText = text.value;
+      if (task.taskType === 'ORDER_DIAMONDS') {
+        payload.orderedDate = valueOf('orderedDate');
+        payload.diamondOrderDecisions = [].slice.call(document.querySelectorAll('.diamond-order-decision')).map(function (select) {
+          var row = select.closest('.mini-row');
+          return { rowIndex: row ? row.getAttribute('data-row-index') : '', decision: select.value };
+        }).filter(function (item) { return item.decision; });
+      }
+      if (task.taskType === 'TRACK_DIAMONDS') {
+        payload.trackingEta = valueOf('trackingEta');
+        payload.trackingStatus = valueOf('trackingStatus');
+        payload.carrier = valueOf('carrier');
+        payload.trackingNumber = valueOf('trackingNumber');
+        payload.trackingUrl = valueOf('trackingUrl');
+        payload.trackingNotes = valueOf('trackingNotes');
+      }
+      if (task.taskType === 'CONFIRM_DIAMOND_DELIVERY') {
+        payload.memoDate = valueOf('memoDate');
+      }
+      if (task.taskType === 'RECORD_DIAMOND_DECISIONS') {
+        payload.diamondDecisions = [].slice.call(document.querySelectorAll('.diamond-stone-decision')).map(function (select) {
+          var row = select.closest('.mini-row');
+          var hold = row ? row.querySelector('.diamond-hold') : null;
+          return { rowIndex: row ? row.getAttribute('data-row-index') : '', decision: select.value, hold: !!(hold && hold.checked) };
+        }).filter(function (item) { return item.decision; });
+      }
       return payload;
+    }
+
+    function valueOf(id) {
+      var el = document.getElementById(id);
+      return el ? el.value : '';
     }
 
     function completeTask() {
@@ -740,11 +1031,31 @@
       navigator.clipboard.writeText(text.textContent || '').then(function () {
         setStatus('Template copied');
         if (appState.selectedTaskId) {
-          google.script.run.sw_logTemplateCopied(appState.selectedTaskId);
+          google.script.run.sw_logTemplateCopied(appState.token, appState.selectedTaskId);
         }
       }, function () {
         setStatus('Copy failed. Select the template text manually.', true);
       });
+    }
+
+    function copyManufacturingMessage() {
+      var text = document.getElementById('manufacturingMessage');
+      if (!text) return;
+      navigator.clipboard.writeText(text.textContent || '').then(function () {
+        setStatus('Manufacturing message copied');
+      }, function () {
+        setStatus('Copy failed. Select the manufacturing message manually.', true);
+      });
+    }
+
+    function refreshDiamondQuote(mode) {
+      if (!appState.selectedTaskId) return;
+      var fn = mode === 'diamonds' ? 'sw_refreshDiamondQuoteFromTracking' :
+        mode === 'settings' ? 'sw_refreshDiamondQuoteFrom3D' : 'sw_refreshDiamondQuoteAll';
+      serverCall(fn, [appState.selectedTaskId], function (res) {
+        setStatus('Quotation refreshed');
+        openTask(appState.selectedTaskId);
+      }, 'Refreshing quotation');
     }
 
     function escapeHtml(value) {

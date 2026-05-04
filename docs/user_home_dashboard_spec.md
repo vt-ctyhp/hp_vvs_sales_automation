@@ -128,3 +128,8 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - Personal task list from Jobs queue filtered to "assigned to me".
 - Calendar/reminder mini panel once integration exists.
 - Export KPIs as downloadable CSV snapshot.
+
+## 14. Sales Workflow Web App Notes
+- The current Apps Script Sales Workflow dashboard uses an email/password login screen before showing the task queue.
+- Login users are stored in `_SalesWorkflowUsers`; task ownership and routing stay in `_SalesWorkflowConfig`.
+- Diamond Viewing workflow setup, ownership, templates, and review steps are documented in [`diamond_viewing_workflow_setup.md`](diamond_viewing_workflow_setup.md).

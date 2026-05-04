@@ -113,7 +113,7 @@ function dp_bootstrapForConfirmDialog_() {
   // Optional: try to show SO# from 100_ (if header exists)
   // We won't join per item (expensive) — but we can display RootApptID and Customer name; SO# can be added later if needed.
 
-  // Defaults: Memo = today; Return DUE DATE = +20 days will be computed server-side
+  // Defaults: Memo = today; Return DUE DATE = Purchased / Ordered Date + 30 days server-side
   var todayIso = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   return {
     items: items,
@@ -157,6 +157,7 @@ function dp_submitConfirmDelivery(payload) {
 
     // Resolve columns for writes
     var cOrder     = dp_findHeaderIndex_(hm200, dp_aliases200_['Order Status'], true);
+    var cOrdDate   = dp_findHeaderIndex_(hm200, dp_aliases200_['Purchased / Ordered Date'], true);
     var cCert = dp_findHeaderIndex_(hm200, dp_aliases200_['Certificate No'], true);
     var deliveredKeys = []; // for optional 400_ sync
     var cStoneStat = dp_findHeaderIndex_(hm200, dp_aliases200_['Stone Status'], true);
@@ -206,8 +207,14 @@ function dp_submitConfirmDelivery(payload) {
         ? defaultMemoDate
         : (dp_parseIsoDateOrEmpty_(it.memoDate, tz) || defaultMemoDate);
 
-      // Compute due date = memo + 20 days (C15)
-      var dueDate = dp_addDays_(memoDate, 20);
+      // Compute due date = Purchased / Ordered Date + 30 days.
+      // This is intentionally based on order date, not delivery/memo date.
+      var orderDateValue = rowVals[cOrdDate - 1];
+      var orderDate = (orderDateValue instanceof Date && !isNaN(orderDateValue.getTime()))
+        ? orderDateValue
+        : (dp_parseIsoDateOrEmpty_(rowDisp[cOrdDate - 1], tz) || new Date(rowDisp[cOrdDate - 1]));
+      if (!(orderDate instanceof Date) || isNaN(orderDate.getTime())) orderDate = memoDate;
+      var dueDate = dp_addDays_(orderDate, 30);
 
       // Merge Stone Status with "In Stock" (do not replace)
       var mergedStoneStatus = cd_mergeStoneStatus_(String(rowDisp[cStoneStat - 1] || ''), 'In Stock');
@@ -216,7 +223,7 @@ function dp_submitConfirmDelivery(payload) {
       rowVals[cStoneStat - 1] = mergedStoneStatus; // e.g., "Diamond Viewing ; In Stock"
       rowVals[cOrder - 1]     = 'Delivered';       // <-- Order Status
       rowVals[cMemo  - 1]     = memoDate;          // Date object
-      rowVals[cDue   - 1]     = dueDate;           // Date object (+20 days)
+      rowVals[cDue   - 1]     = dueDate;           // Date object (order date +30 days)
 
       rowRng.setValues([rowVals]);
 
@@ -425,6 +432,3 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
-

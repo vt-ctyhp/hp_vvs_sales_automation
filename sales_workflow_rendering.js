@@ -26,6 +26,15 @@ function swValidateCompletion_(ss, task, data) {
   if (task.taskType === SW_TASKS.APPROVE && !swTrim_(data.approvedText)) {
     throw new Error('Enter the approved recap text before finalizing.');
   }
+  if (task.taskType === SW_TASKS.DIAMOND_TRACK && !swTrim_(data.trackingEta) && !swTrim_(data.trackingStatus)) {
+    throw new Error('Enter a tracking ETA or tracking status before saving this task.');
+  }
+  if (task.taskType === SW_TASKS.DIAMOND_ORDER && (!data.diamondOrderDecisions || !data.diamondOrderDecisions.length)) {
+    throw new Error('Select at least one diamond order decision before completing this task.');
+  }
+  if (task.taskType === SW_TASKS.DIAMOND_DECISIONS && (!data.diamondDecisions || !data.diamondDecisions.length)) {
+    throw new Error('Select at least one Purchase/Return decision before completing this task.');
+  }
 }
 
 function swRenderDataForTask_(task, payload) {
@@ -45,6 +54,14 @@ function swRenderDataForTask_(task, payload) {
     assistedRepEmail: appt.assistedRepEmail || '',
     clientFolder: appt.clientFolder || '',
     reportUrl: appt.reportUrl || '',
+    quotationUrl: extra.quotationUrl || appt.quotationUrl || '',
+    tracker3dUrl: extra.tracker3dUrl || appt.tracker3dUrl || '',
+    diamondTrackerUrl: extra.diamondTrackerUrl || '',
+    diamondSummary: extra.diamondSummary || appt.dvStonesSummary || '',
+    diamondProposalTarget: extra.diamondProposalTarget || '',
+    diamondActionSummary: extra.diamondActionSummary || '',
+    diamondEtaIssue: extra.diamondEtaIssue || '',
+    manufacturingMessage: extra.manufacturingMessage || '',
     mapLink: extra.mapLink || '',
     locationMsg: extra.locationMsg || '',
     welcomeMessage: extra.welcomeMessage || '',
@@ -63,6 +80,11 @@ function swAttachmentsForTask_(task, template, data) {
   if (task.taskType === SW_TASKS.WELCOME || task.taskType === SW_TASKS.HYBRID) {
     swPushAttachment_(out, 'Welcome Journey Image', data.welcomeImageUrl || '');
   }
+  if (swIsDiamondTaskType_(task.taskType)) {
+    swPushAttachment_(out, 'Quotation Sheet', data.quotationUrl || '');
+    swPushAttachment_(out, '3D Tracker', data.tracker3dUrl || '');
+    swPushAttachment_(out, '200_ Diamond Tracker', data.diamondTrackerUrl || '');
+  }
   return out;
 }
 
@@ -73,6 +95,20 @@ function swPushAttachment_(out, label, url) {
     if (swTrim_(out[i].url) === url) return;
   }
   out.push({ label: swTrim_(label) || url, url: url });
+}
+
+function swIsDiamondTaskType_(taskType) {
+  return [
+    SW_TASKS.DIAMOND_PROPOSE,
+    SW_TASKS.DIAMOND_QUOTE,
+    SW_TASKS.DIAMOND_ORDER,
+    SW_TASKS.DIAMOND_TRACK,
+    SW_TASKS.DIAMOND_DELIVERY,
+    SW_TASKS.DIAMOND_DECISIONS,
+    SW_TASKS.DIAMOND_RETURN,
+    SW_TASKS.DIAMOND_ETA_REP,
+    SW_TASKS.DIAMOND_ETA_JOC
+  ].indexOf(taskType) >= 0;
 }
 
 function swRenderTemplate_(template, data) {
