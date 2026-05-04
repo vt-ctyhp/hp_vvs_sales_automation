@@ -1558,6 +1558,7 @@ details.adv[open] summary::before { content:'−'; }
 }
 .btn-3d:active { background:var(--surf3); }
 .btn-3d:disabled { opacity:.5; cursor:not-allowed; }
+button[aria-busy="true"] { pointer-events:none; }
 
 /* ════════════════════════════════════════════════════════════════
    PRIMARY SUBMIT BUTTON — editorial weight
@@ -2925,7 +2926,7 @@ body.brand-vvs .gf-submit-btn { color:var(--bg); }
             <div style="font-size:12px;color:#166534;margin-top:6px;letter-spacing:.02em;" id="gfSuccessMsg">Record saved to sheet.</div>
 
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:18px;">
-              <button onclick="gfGoToDV()"
+              <button onclick="gfGoToDV(this)"
                       style="width:100%;height:48px;border:none;border-radius:0;
                              background:var(--ink);color:var(--bg);
                              font-family:var(--sans);font-size:11px;font-weight:700;
@@ -2935,7 +2936,7 @@ body.brand-vvs .gf-submit-btn { color:var(--bg); }
                 Generate $25 Diamond Viewing →
               </button>
 
-              <button onclick="gfGoToCustomer()"
+              <button onclick="gfGoToCustomer(this)"
                       style="width:100%;height:48px;border:1px solid var(--ink);
                              border-radius:0;background:transparent;
                              color:var(--ink);font-family:var(--sans);font-size:11px;
@@ -3499,6 +3500,25 @@ const fmt = n  => '$'+(isFinite(n)?Number(n).toLocaleString('en-US',{minimumFrac
 const esc = s  => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,"\\'");
 let qTimer=null;
 
+function setButtonLoading(btn, on) {
+  if (!btn) return;
+  if (on) {
+    btn.dataset.loadingOpacity = btn.style.opacity || '';
+    btn.dataset.loadingCursor = btn.style.cursor || '';
+    btn.style.opacity = '0.55';
+    btn.style.cursor = 'not-allowed';
+  } else {
+    btn.style.opacity = btn.dataset.loadingOpacity || '';
+    btn.style.cursor = btn.dataset.loadingCursor || '';
+    delete btn.dataset.loadingOpacity;
+    delete btn.dataset.loadingCursor;
+  }
+  btn.disabled = !!on;
+  btn.classList.toggle('ld', !!on);
+  if (on) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+}
+
 /* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
@@ -3710,15 +3730,18 @@ function _doLoadRecord(panel, rowIndex, onLoaded) {
     .ipad_loadRecord(rowIndex);
 }
 
-function gfGoToDV() {
+function gfGoToDV(btn) {
+  if (btn && btn.disabled) return;
+  setButtonLoading(btn, true);
   closeWalkin();
   openDV();
 
   const d = window._lastIntake || {};
-  if (!d.masterRowIndex) { showErr('Record not ready.'); return; }
+  if (!d.masterRowIndex) { setButtonLoading(btn, false); showErr('Record not ready.'); return; }
 
   // Nếu folder chưa sẵn sàng → ensure trước rồi load
   _ensureAndLoadRecord('dv', d.masterRowIndex, function(rec) {
+    setButtonLoading(btn, false);
     if (!rec || !rec.ok) {
       showErr(rec && rec.error ? rec.error : 'Could not load customer');
       return;
@@ -3727,10 +3750,13 @@ function gfGoToDV() {
   });
 }
 
-function gfGoToCustomer() {
+function gfGoToCustomer(btn) {
+  if (btn && btn.disabled) return;
+  setButtonLoading(btn, true);
   closeWalkin();
   const d = window._lastIntake || {};
   if (!d.masterRowIndex) {
+    setButtonLoading(btn, false);
     setTimeout(() => {
       const q = $('mQ');
       if (q) { q.focus(); q.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
@@ -3740,6 +3766,7 @@ function gfGoToCustomer() {
 
   // Nếu folder chưa sẵn sàng → ensure trước rồi load
   _ensureAndLoadRecord('m', d.masterRowIndex, function(rec) {
+    setButtonLoading(btn, false);
     if (!rec || !rec.ok) {
       setTimeout(() => {
         const q = $('mQ');
@@ -3808,6 +3835,7 @@ function _gfValidate(){
 
 function submitGfForm() {
   const btn = $('gfSubmitBtn');
+  if (btn.disabled) return;
   $('gfErr').classList.remove('on');
 
   if (!_gfValidate()) {
@@ -4868,6 +4896,7 @@ function dismissConfirmOT() {
 function build3D(){
   const r=S.cust; if(!r){showErr('Select a customer first.');return;}
   const btn=$('btn3D');
+  if(btn.disabled) return;
   btn.disabled=true; btn.textContent='Loading 3D…';
   google.script.run
     .withSuccessHandler(res=>{
@@ -5036,6 +5065,7 @@ function _setMainContentVisible(show){
 
 function subDV(){
   const btn=$('dvBtn'); const r=S.dvCust;
+  if(btn.disabled) return;
   if(!r){showErr('Select a customer first.');return;}
   const isDVReceipt = S.dvDocType === 'Deposit Receipt';
   if(isDVReceipt && !S.dvMethod){
@@ -5080,6 +5110,7 @@ function subDV(){
 ═══════════════════════════════════════════ */
 function subMain(){
   const btn=$('mBtn'); const r=S.cust;
+  if(btn.disabled) return;
   if(!r){showErr('Select a customer first.');return;}
   const lines=readLines();
   if(!lines.length){showErr('Add at least one line item.');return;}
@@ -5100,6 +5131,7 @@ function subMain(){
   }
 
   hideErr();
+  btn.disabled=true; btn.classList.add('ld');
 
   if(S.comboMode){
     // ── COMBO: Step 1 — Submit Sales Invoice ──
@@ -5111,7 +5143,7 @@ function subMain(){
   p21_checkPrerequisite(
     S.dt,
     function(){ _doSubmit(btn, r, lines, amt, isR, isI); },
-    function(msg){ showErr(msg); }
+    function(msg){ btn.disabled=false; btn.classList.remove('ld'); showErr(msg); }
   );
 }
 

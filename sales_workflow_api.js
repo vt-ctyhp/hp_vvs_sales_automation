@@ -190,6 +190,7 @@ function sw_getBootstrap(authToken) {
         diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
         bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
         coverage: user.isJoc || user.isAdmin,
+        adminDashboard: user.isAdmin,
         admin: user.isAdmin
       },
       message: 'Connected. Use Generate Tasks to create or refresh the queue.'

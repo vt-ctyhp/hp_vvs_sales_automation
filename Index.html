@@ -692,6 +692,119 @@
       line-height: 1;
     }
 
+    .admin-filter-panel {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      display: grid;
+      gap: 14px;
+      margin-bottom: 18px;
+      padding: 16px;
+    }
+
+    .admin-filter-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+    }
+
+    .admin-closed-toggle {
+      align-items: center;
+      color: var(--ink-body);
+      display: flex;
+      font-size: 13px;
+      gap: 8px;
+      letter-spacing: 0;
+      margin: 0;
+      text-transform: none;
+    }
+
+    .admin-closed-toggle input {
+      width: auto;
+    }
+
+    .admin-kpi-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      margin-bottom: 18px;
+    }
+
+    .admin-kpi-card {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      min-height: 112px;
+      padding: 14px;
+    }
+
+    .admin-kpi-card .meta {
+      margin-top: 8px;
+    }
+
+    .admin-warning {
+      background: var(--surface-inset);
+      border-top: 2px solid var(--accent);
+      color: var(--ink-body);
+      margin-bottom: 18px;
+      padding: 14px;
+    }
+
+    .admin-kanban-board {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(8, minmax(220px, 1fr));
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .admin-kanban-column {
+      border: 1px solid var(--rule);
+      min-width: 220px;
+      padding: 12px;
+    }
+
+    .admin-kanban-header {
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+    }
+
+    .admin-kanban-count {
+      color: var(--ink-muted);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    button.admin-kanban-card {
+      background: transparent;
+      border-left: 0;
+      border-right: 0;
+      border-bottom: 0;
+      border-top: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: block;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0;
+      line-height: 1.45;
+      padding: 12px 0;
+      text-align: left;
+      text-transform: none;
+      width: 100%;
+    }
+
+    button.admin-kanban-card:hover:not(:disabled) {
+      background: var(--surface-inset);
+      color: var(--ink-body);
+    }
+
+    .admin-card-title {
+      color: var(--ink-primary);
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 4px;
+      overflow-wrap: anywhere;
+    }
+
     button.tracking-row {
       background: transparent;
       border-left: 0;
@@ -785,8 +898,13 @@
         min-height: 96px;
       }
 
-      .stat-grid, .proposal-grid {
+      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-kpi-grid {
         grid-template-columns: 1fr;
+      }
+
+      .admin-kanban-board {
+        grid-template-columns: 1fr;
+        overflow-x: visible;
       }
 
       .stock-filter-heading {
@@ -848,6 +966,7 @@
         <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
         <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
+        <button id="tab-adminDashboard" type="button" data-view="adminDashboard" style="display:none">Admin Dashboard</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
       <div>
@@ -903,6 +1022,8 @@
       },
       bulkReturnRows: [],
       bulkReturnSource: null,
+      adminDashboard: null,
+      adminDashboardFilters: null,
       mainRequestId: 0,
       detailRequestId: 0,
       lastActionButton: null,
@@ -935,7 +1056,7 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
@@ -943,6 +1064,7 @@
           else if (view === 'inStockDiamonds') loadInStockDiamonds();
           else if (view === 'diamondTracking') loadDiamondTracking();
           else if (view === 'bulkReturns') loadBulkReturns();
+          else if (view === 'adminDashboard') loadAdminDashboard();
           else loadTasks(view);
         });
       });
@@ -959,6 +1081,19 @@
           var stockClearButton = closestMatch_(event.target, '.js-stock-filter-clear');
           if (stockClearButton) {
             clearInStockDiamondFilters();
+            return;
+          }
+          if (closestMatch_(event.target, '.js-admin-dashboard-apply')) {
+            loadAdminDashboard(collectAdminDashboardFilters());
+            return;
+          }
+          if (closestMatch_(event.target, '.js-admin-dashboard-clear')) {
+            clearAdminDashboardFilters();
+            return;
+          }
+          var adminCard = closestMatch_(event.target, '.js-admin-kanban-card');
+          if (adminCard) {
+            renderAdminCustomerDetail(adminCard.getAttribute('data-root') || '');
             return;
           }
           var bulkSelectButton = closestMatch_(event.target, '.js-bulk-return-select');
@@ -1187,6 +1322,7 @@
         diamondTracking: !!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant),
         bulkReturns: !!(user.isAdmin || user.isDiamondOrderAdmin),
         coverage: !!(user.isJoc || user.isAdmin),
+        adminDashboard: !!user.isAdmin,
         admin: !!user.isAdmin
       };
     }
@@ -1213,6 +1349,7 @@
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
       document.getElementById('tab-bulkReturns').style.display = res.views && res.views.bulkReturns ? '' : 'none';
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
+      document.getElementById('tab-adminDashboard').style.display = res.views && res.views.adminDashboard ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
     }
@@ -1234,6 +1371,10 @@
         loadBulkReturns();
         return;
       }
+      if (view === 'adminDashboard') {
+        loadAdminDashboard();
+        return;
+      }
       var viewName = view || 'mine';
       var requestId = beginMainRequest(viewName);
       setActiveTab(viewName);
@@ -1246,7 +1387,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -1275,12 +1416,274 @@
         title = 'Select diamonds for bulk return';
         eyebrow = 'Bulk Returns';
       }
+      if (view === 'adminDashboard') {
+        title = 'Weekly metrics and customer pipeline';
+        eyebrow = 'Admin Dashboard';
+      }
       if (view === 'admin') {
         title = 'Open tasks across the workflow';
         eyebrow = 'Admin Review';
       }
       document.getElementById('viewTitle').textContent = title;
       document.getElementById('viewEyebrow').textContent = eyebrow;
+    }
+
+    function loadAdminDashboard(filters) {
+      var requestId = beginMainRequest('adminDashboard');
+      appState.selectedTaskId = '';
+      appState.detailRequestId += 1;
+      setActiveTab('adminDashboard');
+      renderViewHeader('adminDashboard');
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING ADMIN DASHBOARD</div>';
+      document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Admin Dashboard</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
+      serverCall('sw_getAdminDashboard', [filters || appState.adminDashboardFilters || {}], function (res) {
+        if (!isCurrentMainRequest(requestId, 'adminDashboard')) return;
+        appState.adminDashboard = res || {};
+        appState.adminDashboardFilters = (res && res.filters) || filters || {};
+        renderAdminDashboard(res || {});
+        renderAdminDashboardSummary(res || {});
+      }, 'Loading admin dashboard');
+    }
+
+    function collectAdminDashboardFilters() {
+      return {
+        startDate: valueOf('adminDashStartDate'),
+        endDate: valueOf('adminDashEndDate'),
+        brand: valueOf('adminDashBrand'),
+        clientAdvisor: valueOf('adminDashClientAdvisor'),
+        joc: valueOf('adminDashJoc'),
+        includeClosed: checkedOf('adminDashIncludeClosed')
+      };
+    }
+
+    function clearAdminDashboardFilters() {
+      appState.adminDashboardFilters = {};
+      loadAdminDashboard({});
+    }
+
+    function renderAdminDashboard(res) {
+      res = res || {};
+      var warnings = (res.warnings || []).length
+        ? '<div class="admin-warning">' + (res.warnings || []).map(escapeHtml).join('<br>') + '</div>'
+        : '';
+      document.getElementById('taskList').innerHTML = [
+        renderAdminDashboardFilters(res),
+        warnings,
+        renderAdminDashboardMetrics(res.metrics || {}),
+        renderAdminDashboardKanban(res.kanban || { columns: [] })
+      ].join('');
+    }
+
+    function renderAdminDashboardFilters(res) {
+      var filters = res.filters || {};
+      var options = res.filterOptions || {};
+      return [
+        '<div class="admin-filter-panel">',
+          '<div class="admin-filter-grid">',
+            '<div><label for="adminDashStartDate">Start Date</label><input id="adminDashStartDate" type="date" value="' + escapeAttrValue(filters.startDate || '') + '"></div>',
+            '<div><label for="adminDashEndDate">End Date</label><input id="adminDashEndDate" type="date" value="' + escapeAttrValue(filters.endDate || '') + '"></div>',
+            '<div><label for="adminDashBrand">Brand</label><select id="adminDashBrand">' + adminFilterOptionTags(options.brands || [], filters.brand || '', 'All Brands') + '</select></div>',
+            '<div><label for="adminDashClientAdvisor">Client Advisor</label><select id="adminDashClientAdvisor">' + adminFilterOptionTags(options.clientAdvisors || [], filters.clientAdvisor || '', 'All Advisors') + '</select></div>',
+            '<div><label for="adminDashJoc">JOC</label><select id="adminDashJoc">' + adminFilterOptionTags(options.jocs || [], filters.joc || '', 'All JOC') + '</select></div>',
+          '</div>',
+          '<div class="task-top">',
+            '<label class="admin-closed-toggle"><input id="adminDashIncludeClosed" type="checkbox"' + (filters.includeClosed ? ' checked' : '') + '>Include won and lost customers</label>',
+            '<div class="actions" style="margin-top:0">',
+              '<button class="js-admin-dashboard-clear" type="button">Reset</button>',
+              '<button class="primary js-admin-dashboard-apply" type="button">Apply Filters</button>',
+            '</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function adminFilterOptionTags(options, selected, emptyLabel) {
+      var seen = {};
+      var tags = ['<option value="">' + escapeHtml(emptyLabel || 'All') + '</option>'];
+      (options || []).forEach(function (option) {
+        var value = String(option || '');
+        var key = norm(value);
+        if (!value || seen[key]) return;
+        seen[key] = true;
+        tags.push('<option value="' + escapeAttrValue(value) + '"' + (norm(value) === norm(selected) ? ' selected' : '') + '>' + escapeHtml(value) + '</option>');
+      });
+      return tags.join('');
+    }
+
+    function renderAdminDashboardMetrics(metrics) {
+      var cards = [
+        ['Bookings Created', metrics.bookingsCreated || 0, 'New appointments booked in range'],
+        ['Consults Scheduled', metrics.consultationsScheduled || 0, 'Initial consultations on calendar'],
+        ['Viewings Scheduled', metrics.viewingsScheduled || 0, 'Diamond viewings on calendar'],
+        ['Consults Actual', metrics.consultationsActual || 0, 'Completed or attended consultations'],
+        ['Viewings Actual', metrics.viewingsActual || 0, 'Completed or attended viewings'],
+        ['Payments Net', formatAdminCurrency(metrics.paymentsNet || 0), (metrics.paymentsCount || 0) + ' receipt(s)'],
+        ['First Deposits', formatAdminCurrency(metrics.firstDepositNet || 0), (metrics.firstDepositCount || 0) + ' first receipt(s)'],
+        ['Open Admin Tasks', metrics.adminOpenTasks || 0, (metrics.adminOverdueTasks || 0) + ' overdue']
+      ];
+      return '<div class="admin-kpi-grid">' + cards.map(function (card) {
+        return adminMetricCardHtml(card[0], card[1], card[2]);
+      }).join('') + '</div>';
+    }
+
+    function adminMetricCardHtml(label, value, caption) {
+      return [
+        '<div class="admin-kpi-card">',
+          '<div class="eyebrow">' + escapeHtml(label) + '</div>',
+          '<div class="stat-value">' + escapeHtml(value) + '</div>',
+          '<div class="meta">' + escapeHtml(caption || '') + '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderAdminDashboardKanban(kanban) {
+      var columns = kanban.columns || [];
+      if (!columns.length) {
+        return '<div class="empty"><h3>No pipeline data</h3><p>Customer stages will appear when matching master rows are available.</p></div>';
+      }
+      return [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Customer Pipeline</div>',
+          '<h2>Kanban View</h2>',
+        '</div>',
+        '<div class="admin-kanban-board">',
+          columns.map(renderAdminKanbanColumn).join(''),
+        '</div>'
+      ].join('');
+    }
+
+    function renderAdminKanbanColumn(column) {
+      var cards = column.cards || [];
+      return [
+        '<section class="admin-kanban-column">',
+          '<div class="admin-kanban-header">',
+            '<div class="task-title">' + escapeHtml(column.label || '') + '</div>',
+            '<div class="admin-kanban-count">' + escapeHtml(column.count || 0) + ' customer(s)</div>',
+          '</div>',
+          cards.length ? cards.map(renderAdminKanbanCard).join('') : '<div class="empty">No customers</div>',
+          column.hiddenCount ? '<div class="meta">+' + escapeHtml(column.hiddenCount) + ' more</div>' : '',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminKanbanCard(card) {
+      var visit = card.nextVisit ? 'Next ' + card.nextVisit : (card.lastVisit ? 'Last ' + card.lastVisit : 'No visit date');
+      var payment = card.balanceDue !== '' && card.balanceDue != null
+        ? 'Balance ' + formatAdminCurrency(card.balanceDue)
+        : (card.paidNet ? 'Paid ' + formatAdminCurrency(card.paidNet) : 'No payment summary');
+      return [
+        '<button class="admin-kanban-card js-admin-kanban-card" type="button" data-root="' + escapeAttrValue(card.root || '') + '">',
+          '<div class="task-top">',
+            '<div class="task-main">',
+              '<div class="admin-card-title">' + escapeHtml(card.customerName || 'No customer') + '</div>',
+              '<div class="meta">' + escapeHtml([card.clientAdvisor ? 'Advisor ' + card.clientAdvisor : '', card.joc ? 'JOC ' + card.joc : ''].filter(Boolean).join(' | ') || 'Unassigned') + '</div>',
+            '</div>',
+            '<div class="task-side">' + taskBrandChipHtml(card.brand) + '</div>',
+          '</div>',
+          '<div class="meta">' + escapeHtml(visit) + '</div>',
+          '<div class="meta">' + escapeHtml([card.so ? 'SO ' + card.so : '', payment].filter(Boolean).join(' | ')) + '</div>',
+          '<span class="badge">' + escapeHtml(card.stageLabel || '') + '</span>',
+        '</button>'
+      ].join('');
+    }
+
+    function renderAdminDashboardSummary(res) {
+      var metrics = res.metrics || {};
+      var filters = res.filters || {};
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Admin Dashboard</div>',
+          '<h2>Weekly Snapshot</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Window</label>',
+            '<div class="meta">' + escapeHtml([filters.startDate, filters.endDate].filter(Boolean).join(' to ')) + '</div>',
+            '<div class="meta">' + escapeHtml([filters.brand, filters.clientAdvisor, filters.joc].filter(Boolean).join(' | ') || 'All owners and brands') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>At a Glance</label>',
+            '<div class="template-box">' + escapeHtml((metrics.bookingsCreated || 0) + ' booking(s), ' + (metrics.paymentsCount || 0) + ' payment receipt(s), ' + (metrics.adminOpenTasks || 0) + ' open admin task(s).') + '</div>',
+          '</div>',
+          '<div class="empty">Select a customer card to see owner, status, payment, and source links.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderAdminCustomerDetail(root) {
+      var card = findAdminDashboardCard(root);
+      if (!card) return;
+      var links = [
+        card.clientFolder ? '<a href="' + escapeHref(card.clientFolder) + '" target="_blank">Client Folder</a>' : '',
+        card.reportUrl ? '<a href="' + escapeHref(card.reportUrl) + '" target="_blank">Status Report</a>' : '',
+        card.quotationUrl ? '<a href="' + escapeHref(card.quotationUrl) + '" target="_blank">Quotation</a>' : '',
+        card.tracker3dUrl ? '<a href="' + escapeHref(card.tracker3dUrl) + '" target="_blank">3D Tracker</a>' : '',
+        card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : '',
+        card.masterUrl ? '<a href="' + escapeHref(card.masterUrl) + '" target="_blank">Open Master Row</a>' : ''
+      ].filter(Boolean);
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(card.stageLabel || 'Customer') + '</div>',
+          '<h2>' + escapeHtml(card.customerName || 'No customer') + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Owners</label>',
+            '<div class="meta">Client Advisor: ' + escapeHtml(card.clientAdvisor || 'Unassigned') + '</div>',
+            '<div class="meta">JOC: ' + escapeHtml(card.joc || 'Unassigned') + '</div>',
+            '<div class="meta">' + escapeHtml(card.brand || '') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Status</label>',
+            '<div class="meta">Sales Stage: ' + escapeHtml(card.salesStage || '') + '</div>',
+            '<div class="meta">Conversion: ' + escapeHtml(card.conversionStatus || '') + '</div>',
+            '<div class="meta">Custom Order: ' + escapeHtml(card.customOrderStatus || '') + '</div>',
+            '<div class="meta">In Production: ' + escapeHtml(card.inProductionStatus || '') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Appointment</label>',
+            '<div class="meta">Next: ' + escapeHtml(card.nextVisit || 'None scheduled') + '</div>',
+            '<div class="meta">Last: ' + escapeHtml(card.lastVisit || 'None recorded') + '</div>',
+            '<div class="meta">Root: ' + escapeHtml(card.root || '') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Payments</label>',
+            '<div class="meta">SO#: ' + escapeHtml(card.so || '') + '</div>',
+            '<div class="meta">Paid net: ' + escapeHtml(formatAdminCurrency(card.paidNet || 0)) + '</div>',
+            '<div class="meta">Balance: ' + escapeHtml(card.balanceDue !== '' && card.balanceDue != null ? formatAdminCurrency(card.balanceDue) : 'Unavailable') + '</div>',
+            '<div class="meta">Last payment: ' + escapeHtml(card.lastPaymentDate || 'Unavailable') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Next Steps</label>',
+            '<div class="template-box">' + escapeHtml(card.nextSteps || 'No next steps recorded.') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>References</label>',
+            links.length ? '<div class="attachment-list">' + links.map(function (link) { return '<div class="attachment-row">' + link + '</div>'; }).join('') + '</div>' : '<div class="empty">No links available for this customer.</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function findAdminDashboardCard(root) {
+      var columns = ((appState.adminDashboard || {}).kanban || {}).columns || [];
+      for (var i = 0; i < columns.length; i++) {
+        var cards = columns[i].cards || [];
+        for (var j = 0; j < cards.length; j++) {
+          if (String(cards[j].root) === String(root)) return cards[j];
+        }
+      }
+      return null;
+    }
+
+    function formatAdminCurrency(value) {
+      var n = Number(value || 0);
+      if (!isFinite(n)) n = 0;
+      try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+      } catch (_) {
+        return '$' + Math.round(n).toLocaleString();
+      }
     }
 
     function loadCalendar(monthKey) {
