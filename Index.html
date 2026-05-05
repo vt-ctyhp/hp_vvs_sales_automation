@@ -1804,7 +1804,7 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'appointment-drive-only-upload-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'fast-session-loading-2026-05-05';
 
     var appState = {
       token: '',
@@ -2283,6 +2283,7 @@
         showLogin();
         return;
       }
+      showAppLoading();
       bootstrap();
     }
 
@@ -2298,7 +2299,7 @@
         renderViewHeader(appState.view);
         renderTasks(res.tasks || []);
         if (res.message) setStatus(res.message);
-      });
+      }, 'Opening dashboard');
     }
 
     function showLogin() {
@@ -2306,11 +2307,29 @@
       document.getElementById('appShell').style.display = 'none';
       setLoginBusy(false);
       setLoginStatus('');
+      window.setTimeout(function () {
+        var email = document.getElementById('loginEmail');
+        var password = document.getElementById('loginPassword');
+        var target = email && email.value ? password : email;
+        if (target && target.focus) target.focus();
+      }, 0);
     }
 
     function showApp() {
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('appShell').style.display = '';
+    }
+
+    function showAppLoading() {
+      showApp();
+      setStatus('Opening dashboard');
+      var taskList = document.getElementById('taskList');
+      if (taskList) taskList.innerHTML = '<div class="loading">LOADING TASKS</div>';
+      renderTaskDetailPlaceholder(
+        'Task Detail',
+        'Loading Queue',
+        'Task details will appear after the queue opens.'
+      );
     }
 
     function login() {
