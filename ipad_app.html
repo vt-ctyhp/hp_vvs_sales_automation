@@ -3626,12 +3626,12 @@ function _loadIntakeRecord(targetPanel, onLoaded) {
 }
 
 /**
- * Gate function: đảm bảo folder sẵn sàng TRƯỚC khi load record.
+ * Gate function: creates the Master record before loading it.
  *
  * Flow:
  *   1. Kiểm tra _lastIntake.status — nếu 'DONE' → load thẳng
- *   2. Nếu 'QUEUED' → gọi ipad_ensureFolderReady() (tạo folder ngay nếu cần)
- *   3. Sau khi có folder (hoặc timeout) → load record và tiếp tục
+ *   2. Nếu 'QUEUED' → gọi ipad_runIntakeNow()
+ *   3. Sau khi có Master row → load record và tiếp tục
  *
  * @param {'m'|'dv'} panel
  * @param {number}   rowIndex
@@ -3906,10 +3906,9 @@ function submitGfForm() {
       $('gfSuccessMsg').textContent = successMsg;
       $('gfSuccess').style.display = 'block';
 
-      // ── Hiện badge background đang chạy ───────────────────────────
+      // ── Intake record will be created when the user opens a workflow.
       if (res.status === 'QUEUED') {
         _showBgBadge('processing');
-        _pollFolderReady(res.masterRowIndex);
       }
 
       $('gfSuccess').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -3956,39 +3955,6 @@ function _showBgBadge(state) {
     badge.style.color      = '#166534';
     badge.innerHTML        = '✅ Setup complete — folder ready';
   }
-}
-
-
-/* ─── Poll nhẹ mỗi 15 giây, tối đa 6 lần (~1.5 phút) ────────────── */
-function _pollFolderReady(rowIndex) {
-  if (!rowIndex || rowIndex < 2) return;
-  let attempts = 0;
-  const MAX    = 6;
-
-  const timer = setInterval(function() {
-    attempts++;
-    if (attempts > MAX) { clearInterval(timer); return; }
-
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (!result || !result.paymentsFolderURL) return;
-
-        clearInterval(timer);
-
-        // Update S.cust nếu user đã chuyển sang payment flow
-        if (S.cust && S.cust.rowIndex === rowIndex) {
-          S.cust.paymentsFolderURL = result.paymentsFolderURL;
-        }
-        if (window._lastIntake) {
-          window._lastIntake.status = 'DONE';
-        }
-
-        _showBgBadge('ready');
-      })
-      .withFailureHandler(function() { /* silent — thử lại lần sau */ })
-      .ipad_checkFolderReady(rowIndex);
-
-  }, 15000);
 }
 
 /* ═══════════════════════════════════════════

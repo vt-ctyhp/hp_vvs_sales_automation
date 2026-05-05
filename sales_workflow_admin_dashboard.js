@@ -1283,18 +1283,6 @@ function swAdminDashboardStageWeights_(ss) {
   Object.keys(SW_ADMIN_DASHBOARD_STAGE_WEIGHTS).forEach(function (key) {
     weights[key] = SW_ADMIN_DASHBOARD_STAGE_WEIGHTS[key];
   });
-  var sh = ss.getSheetByName('00_Dashboard');
-  if (!sh) return weights;
-  try {
-    var values = sh.getRange('AS30:AT60').getValues();
-    values.forEach(function (row) {
-      var label = swTrim_(row[0]);
-      var value = Number(row[1]);
-      if (!label || !isFinite(value)) return;
-      var key = swAdminDashboardStageKeyFromLabel_(label);
-      if (key) weights[key] = value;
-    });
-  } catch (_) {}
   return weights;
 }
 

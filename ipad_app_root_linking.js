@@ -305,15 +305,15 @@ function ipad_findExistingRootByContact_(email, phone, brand) {
 
 
 // ══════════════════════════════════════════════════════════════════════
-// FAST INTAKE SUBMIT — Phase 1 sync (~300ms) + Phase 2 async (trigger)
+// FAST INTAKE SUBMIT — queue handoff + synchronous run-on-open processing
 // ══════════════════════════════════════════════════════════════════════
 
 /**
- * Phase 1: Ghi row tối thiểu vào Master → return rowIndex NGAY (~300ms)
- * Phase 2: Queue payload → time-trigger xử lý nặng trong nền
+ * The iPad UI writes one pending handoff row, then calls ipad_runIntakeNow()
+ * when the user opens a workflow that needs the Master record.
  *
- * Auto-linking vẫn chạy ở Phase 1 (chỉ đọc sheet, không ghi nhiều)
- * onFormSubmit() nặng được dời sang processIntakeQueue()
+ * Auto-linking still runs before queueing. The background minute worker has
+ * been retired so this path is explicit and easier to reason about.
  */
 function ipad_submitIntake(payload) {
   try {
@@ -396,141 +396,6 @@ function _intake_queueOnly_(p, resolvedUID, brand) {
 }
 
 
-/**
- * Ghi những cột tối thiểu để ipad_loadRecord() chạy được ngay.
- * Không tạo folder, không gọi onFormSubmit.
- *
- * @param {object}  p            payload từ client
- * @param {string}  resolvedUID  UID thật (staffUID hoặc linkedRoot)
- * @param {string}  existingRoot nếu linked, dùng root này thay vì tạo mới
- */
-function _intake_writeMinimalMasterRow_(p, resolvedUID, existingRoot) {
-  const ss  = SpreadsheetApp.getActive();
-  const mSh = ss.getSheetByName(RP_MASTER_SHEET);
-  const tz  = Session.getScriptTimeZone();
-  const now = new Date();
-
-  const brand = String(p.company || p.brand || 'HPUSA')
-                  .toUpperCase().includes('VVS') ? 'VVS' : 'HPUSA';
-
-  // Dùng root cũ nếu linked, ngược lại tạo temp ID
-  const rootApptId = existingRoot ||
-    (resolvedUID && !resolvedUID.startsWith('WALKIN-') ? resolvedUID : '') ||
-    ('WALKIN-' + Utilities.formatDate(now, tz, 'yyyyMMdd-HHmmss'));
-
-  // Nếu linked và đã có PaymentsFolderURL, kế thừa lại
-  let existingFolderURL = '';
-  if (existingRoot) {
-    try {
-      const lc  = mSh.getLastColumn();
-      const hdr = mSh.getRange(1,1,1,lc).getDisplayValues()[0];
-      const map = rp_headerMap([hdr]);
-      const apIdx = rp_pick0(map,'APPT_ID','RootApptID','Root Appt ID');
-      const pfIdx = rp_pick0(map,'PaymentsFolderURL');
-      if (apIdx >= 0 && pfIdx >= 0 && mSh.getLastRow() >= 2) {
-        const vals = mSh.getRange(2,1,mSh.getLastRow()-1,lc).getDisplayValues();
-        for (let i = 0; i < vals.length; i++) {
-          if (String(vals[i][apIdx]||'').trim() === existingRoot) {
-            const u = String(vals[i][pfIdx]||'').trim();
-            if (u) { existingFolderURL = u; break; }
-          }
-        }
-      }
-    } catch(_) {}
-  }
-
-  const minimal = {
-    'Customer Name':     p.name  || '',
-    'Phone':             p.phone || '',
-    'Email':             p.email || '',
-    'Brand':             brand,
-    'APPT_ID':           rootApptId,
-    'RootApptID':        rootApptId,
-    'Order Total':       '',
-    'Paid-to-Date':      0,
-    'Remaining Balance': 0,
-    'PaymentsFolderURL': existingFolderURL,
-    '_IntakeStatus':     'PENDING',
-    '_QueuedAt':         Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss'),
-  };
-
-  const lc  = mSh.getLastColumn();
-  const hdr = mSh.getRange(1,1,1,lc).getValues()[0].map(v => String(v).trim());
-  const row = hdr.map(h => minimal[h] !== undefined ? minimal[h] : '');
-
-  mSh.appendRow(row);
-  const rowIndex = mSh.getLastRow();
-
-  Logger.log('[_intake_writeMinimalMasterRow_] row=%s rootId=%s linked=%s folder=%s',
-    rowIndex, rootApptId, !!existingRoot, existingFolderURL ? 'yes' : 'no');
-
-  return { rowIndex, rootApptId, customerName: p.name || '', brand };
-}
-
-
-/**
- * Ghi vào sheet buffer _IntakeQueue.
- * Time-trigger processIntakeQueue() sẽ đọc và gọi onFormSubmit thật.
- */
-function _intake_queueForBackground_(p, masterRowIndex, resolvedUID) {
-  const ss    = SpreadsheetApp.getActive();
-  let   bufSh = ss.getSheetByName('_IntakeQueue');
-
-  if (!bufSh) {
-    bufSh = ss.insertSheet('_IntakeQueue');
-    bufSh.appendRow(['QueuedAt','Status','MasterRowIndex','ResolvedUID','Payload','ProcessedAt','Error']);
-    bufSh.setFrozenRows(1);
-    bufSh.hideSheet();
-  }
-
-  // Đảm bảo header tồn tại nếu sheet đã có nhưng chưa có header
-  if (bufSh.getLastRow() === 0) {
-    bufSh.appendRow(['QueuedAt','Status','MasterRowIndex','ResolvedUID','Payload','ProcessedAt','Error']);
-    bufSh.setFrozenRows(1);
-  }
-
-  bufSh.appendRow([
-    new Date(),
-    'PENDING',
-    masterRowIndex,
-    resolvedUID || '',
-    JSON.stringify(p),
-    '',
-    '',
-  ]);
-}
-
-
-/**
- * Poll endpoint — client gọi mỗi 15 giây để check folder đã tạo xong chưa.
- * Chỉ đọc 2 cell → cực nhẹ.
- */
-function ipad_checkFolderReady(rowIndex) {
-  try {
-    rowIndex = Number(rowIndex);
-    if (rowIndex < 2) return null;
-
-    const ss  = SpreadsheetApp.getActive();
-    const mSh = ss.getSheetByName(RP_MASTER_SHEET);
-    const lc  = mSh.getLastColumn();
-    const hdr = mSh.getRange(1,1,1,lc).getValues()[0].map(v => String(v).trim());
-
-    const pfIdx  = hdr.indexOf('PaymentsFolderURL');
-    const staIdx = hdr.indexOf('_IntakeStatus');
-    if (pfIdx < 0) return null;
-
-    const row = mSh.getRange(rowIndex, 1, 1, lc).getValues()[0];
-    const url = String(row[pfIdx] || '').trim();
-    if (!url) return null;
-
-    return {
-      paymentsFolderURL: url,
-      status: staIdx >= 0 ? String(row[staIdx] || '').trim() : 'DONE',
-    };
-  } catch(e) {
-    return null;
-  }
-}
 /**
  * Find master row index by rootApptId. Returns rowIndex (≥2) or 0.
  */
@@ -1013,426 +878,11 @@ function ipad_relinkBatch(items, dryRun) {
   return results;
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// TIME-TRIGGER — processIntakeQueue
-// Cài đặt: Apps Script Editor → Triggers → Add Trigger
-//   Function: processIntakeQueue | Time-based | Minute timer | Every 1 minute
-// ══════════════════════════════════════════════════════════════════════
-
 function processIntakeQueue() {
-  const ss    = SpreadsheetApp.getActive();
-  const bufSh = ss.getSheetByName('_IntakeQueue');
-  if (!bufSh || bufSh.getLastRow() < 2) return;
-
-  // ── Lock để tránh 2 trigger chạy đồng thời ───────────────────
-  const lock = LockService.getScriptLock();
-  try { lock.waitLock(5000); } catch(_) {
-    Logger.log('[processIntakeQueue] Could not acquire lock — skipping this run');
-    return;
+  if (typeof sw_retireLegacyAppointmentTrigger_ === 'function') {
+    return sw_retireLegacyAppointmentTrigger_('processIntakeQueue');
   }
-
-  try {
-    const numRows = bufSh.getLastRow() - 1;
-    const data    = bufSh.getRange(2, 1, numRows, 8).getValues();
-    const tz      = Session.getScriptTimeZone();
-
-    for (let i = 0; i < data.length; i++) {
-      const row    = data[i];
-      const status = String(row[1] || '').trim();
-
-      // ── Chỉ xử lý PENDING, bỏ qua RUNNING / DONE / ERROR ──────
-      if (status !== 'PENDING') continue;
-
-      const sheetRow    = i + 2;
-      const resolvedUID = String(row[3] || '').trim();
-      const payloadJson = String(row[5] || '{}');
-
-      // Đánh dấu RUNNING ngay — nhả lock sau đó
-      bufSh.getRange(sheetRow, 2).setValue('RUNNING');
-      SpreadsheetApp.flush();
-      lock.releaseLock();
-
-      try {
-        const p = JSON.parse(payloadJson);
-
-        let visitDateStr = '';
-        if (p.date) {
-          try { visitDateStr = Utilities.formatDate(new Date(p.date + 'T12:00:00'), tz, 'MM/dd/yyyy'); }
-          catch(_) { visitDateStr = p.date || ''; }
-        }
-        let visitTimeStr = '';
-        if (p.time) {
-          const tp = p.time.split(':');
-          let h = parseInt(tp[0], 10);
-          const m = tp[1] || '00';
-          const ap = h >= 12 ? 'PM' : 'AM';
-          h = h % 12 || 12;
-          visitTimeStr = h + ':' + m + ' ' + ap;
-        }
-
-        const diamonds = Array.isArray(p.diamond) ? p.diamond : (p.diamond?[p.diamond]:[]);
-        const budgets  = Array.isArray(p.budget)  ? p.budget  : (p.budget ?[p.budget] :[]);
-        const sources  = Array.isArray(p.source)  ? p.source  : (p.source ?[p.source] :[]);
-        const now      = new Date();
-
-        const namedValues = {
-          'Timestamp':                 [Utilities.formatDate(now, tz, 'M/d/yyyy H:mm:ss')],
-          'Company':                   [p.company   || row[4] || ''],
-          'Customer Name':             [p.name      || ''],
-          'Phone':                     [p.phone     || ''],
-          'Email':                     [p.email     || ''],
-          'Visit Type':                [p.visitType || 'Walk-In'],
-          'Visit Date':                [visitDateStr],
-          'Visit Time':                [visitTimeStr],
-          'Location':                  [p.location  || 'In Store'],
-          'Diamond Type':              [diamonds.join(', ')],
-          'Budget Range':              [budgets.join(', ')],
-          'Source':                    [sources.join(', ')],
-          'Style Notes':               [p.notes || ''],
-          'Admin: Calendly Event UID': [resolvedUID || ''],
-        };
-
-        const inboxSh = ss.getSheetByName('02_Form_Inbox');
-        if (!inboxSh) throw new Error('Sheet "02_Form_Inbox" not found');
-
-        const headers = inboxSh.getRange(1,1,1,inboxSh.getLastColumn()).getValues()[0];
-        const rowData = headers.map(h => { const v=namedValues[h]; return v?v[0]:''; });
-        inboxSh.appendRow(rowData);
-        const newInboxRow = inboxSh.getLastRow();
-
-        const mSh        = ss.getSheetByName(RP_MASTER_SHEET);
-        const rowsBefore  = mSh ? mSh.getLastRow() : 0;
-
-        onFormSubmit({
-          namedValues: namedValues,
-          range:       inboxSh.getRange(newInboxRow, 1, 1, headers.length),
-          values:      rowData,
-        });
-        SpreadsheetApp.flush();
-
-        const rowsAfter    = mSh ? mSh.getLastRow() : 0;
-        const newRowsAdded = rowsAfter - rowsBefore;
-
-        Logger.log('[processIntakeQueue] sheetRow=%s before=%s after=%s newRows=%s',
-          sheetRow, rowsBefore, rowsAfter, newRowsAdded);
-
-        // masterRowIndex = 0 vì architecture mới không ghi minimal row
-        if (newRowsAdded > 0 && mSh) {
-          // Không có minimal row để merge → chỉ cần lấy row mới nhất
-          const newMasterRow = rowsBefore + 1;
-          bufSh.getRange(sheetRow, 3).setValue(newMasterRow);
-        }
-
-        bufSh.getRange(sheetRow, 2).setValue('DONE');
-        bufSh.getRange(sheetRow, 7).setValue(new Date());
-        Logger.log('[processIntakeQueue] DONE sheetRow=%s name=%s', sheetRow, p.name||'');
-
-      } catch(e) {
-        bufSh.getRange(sheetRow, 2).setValue('ERROR');
-        bufSh.getRange(sheetRow, 8).setValue(e.message);
-        Logger.log('[processIntakeQueue] ERROR sheetRow=%s: %s', sheetRow, e.message);
-      }
-
-      // Re-acquire lock cho item tiếp theo
-      try { lock.waitLock(5000); } catch(_) {
-        Logger.log('[processIntakeQueue] Lost lock — stopping this run');
-        return;
-      }
-    }
-
-  } finally {
-    try { lock.releaseLock(); } catch(_) {}
-  }
-}
-
-/**
- * Merge data từ các row mới (onFormSubmit tạo) vào minimal row,
- * rồi xóa sạch các row mới thừa.
- *
- * @param {Sheet}  mSh            Master sheet
- * @param {number} minimalRowIdx  Row minimal đã có (do Phase 1 tạo)
- * @param {number} firstNewRow    Row đầu tiên onFormSubmit thêm vào
- * @param {number} lastNewRow     Row cuối cùng onFormSubmit thêm vào
- */
-function _intake_mergeAndCleanup_(mSh, minimalRowIdx, firstNewRow, lastNewRow) {
-  try {
-    const lc  = mSh.getLastColumn();
-    const hdr = mSh.getRange(1, 1, 1, lc).getValues()[0].map(v => String(v).trim());
-
-    const staIdx = hdr.indexOf('_IntakeStatus');
-    const skipCols = new Set(['_IntakeStatus', '_QueuedAt']);
-
-    // ── Đọc minimal row hiện tại ─────────────────────────────────
-    const minVals = mSh.getRange(minimalRowIdx, 1, 1, lc).getValues()[0];
-
-    // ── Lấy row đầy đủ nhất trong các row mới ────────────────────
-    // Ưu tiên row nào có PaymentsFolderURL
-    const pfIdx = hdr.indexOf('PaymentsFolderURL');
-    let bestNewRow = firstNewRow;
-    let bestVals   = mSh.getRange(firstNewRow, 1, 1, lc).getValues()[0];
-
-    for (let r = firstNewRow + 1; r <= lastNewRow; r++) {
-      const rVals = mSh.getRange(r, 1, 1, lc).getValues()[0];
-      const hasFolder = pfIdx >= 0 && String(rVals[pfIdx] || '').includes('drive.google.com');
-      if (hasFolder) {
-        bestNewRow = r;
-        bestVals   = rVals;
-        break;
-      }
-    }
-
-    Logger.log('[_intake_mergeAndCleanup_] minimalRow=%s bestNewRow=%s', minimalRowIdx, bestNewRow);
-
-    // ── Merge: copy bestVals → minimal row (bỏ qua skip cols) ────
-    const merged = hdr.map(function(colName, idx) {
-      if (skipCols.has(colName)) return minVals[idx];
-      const newVal = bestVals[idx];
-      // Chỉ ghi đè nếu giá trị mới có ý nghĩa
-      if (newVal === '' || newVal === null || newVal === undefined) return minVals[idx];
-      return newVal;
-    });
-
-    mSh.getRange(minimalRowIdx, 1, 1, lc).setValues([merged]);
-    if (staIdx >= 0) mSh.getRange(minimalRowIdx, staIdx + 1).setValue('DONE');
-    SpreadsheetApp.flush();
-
-    Logger.log('[_intake_mergeAndCleanup_] ✅ Merged data into minimalRow=%s', minimalRowIdx);
-
-    // ── Xóa tất cả các row mới (từ dưới lên để index không lệch) ─
-    for (let r = lastNewRow; r >= firstNewRow; r--) {
-      mSh.deleteRow(r);
-      Logger.log('[_intake_mergeAndCleanup_] Deleted duplicate row=%s', r);
-    }
-    SpreadsheetApp.flush();
-
-    Logger.log('[_intake_mergeAndCleanup_] ✅ Deleted %s duplicate row(s)', lastNewRow - firstNewRow + 1);
-
-  } catch(e) {
-    Logger.log('[_intake_mergeAndCleanup_] ERROR: ' + e.message);
-  }
-}
-
-
-/**
- * Fallback: dùng khi onFormSubmit không thêm row mới
- * (trường hợp update existing row thay vì append)
- */
-function _intake_patchMasterRow_(minimalRowIndex, customerName) {
-  try {
-    const ss  = SpreadsheetApp.getActive();
-    const mSh = ss.getSheetByName(RP_MASTER_SHEET);
-    const lc  = mSh.getLastColumn();
-    const hdr = mSh.getRange(1, 1, 1, lc).getValues()[0].map(v => String(v).trim());
-
-    const staIdx = hdr.indexOf('_IntakeStatus');
-    if (staIdx >= 0) {
-      mSh.getRange(minimalRowIndex, staIdx + 1).setValue('DONE');
-    }
-
-    // Thử tìm và merge nếu có row cùng tên với folder URL
-    const nIdx  = hdr.indexOf('Customer Name');
-    const pfIdx = hdr.indexOf('PaymentsFolderURL');
-    if (nIdx < 0 || pfIdx < 0) return;
-
-    const lr   = mSh.getLastRow();
-    const vals = mSh.getRange(2, 1, lr - 1, lc).getValues();
-
-    for (let i = vals.length - 1; i >= 0; i--) {
-      const rowNum = i + 2;
-      if (rowNum === minimalRowIndex) continue;
-      const name   = String(vals[i][nIdx]  || '').trim().toLowerCase();
-      const folder = String(vals[i][pfIdx] || '').trim();
-      if (name === customerName.toLowerCase() && folder.includes('drive.google.com')) {
-        // Dùng _intake_mergeAndCleanup_ để merge và xóa
-        _intake_mergeAndCleanup_(mSh, minimalRowIndex, rowNum, rowNum);
-        return;
-      }
-    }
-
-    Logger.log('[_intake_patchMasterRow_] No duplicate found — only DONE marked');
-  } catch(e) {
-    Logger.log('[_intake_patchMasterRow_] ERROR: ' + e.message);
-  }
-}
-
-/**
- * Cài time-trigger cho processIntakeQueue — chạy 1 lần duy nhất.
- * Gọi thủ công từ Apps Script Editor: chọn function này → Run
- *
- * An toàn: kiểm tra trùng trước khi tạo, không tạo duplicate.
- */
-function installIntakeQueueTrigger() {
-  const FUNC_NAME = 'processIntakeQueue';
-
-  // Kiểm tra trigger đã tồn tại chưa
-  const existing = ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === FUNC_NAME);
-
-  if (existing.length > 0) {
-    Logger.log('[installIntakeQueueTrigger] Trigger đã tồn tại (%s cái) — bỏ qua.', existing.length);
-    return { ok: true, created: false, message: 'Trigger already exists' };
-  }
-
-  // Tạo mới
-  ScriptApp.newTrigger(FUNC_NAME)
-    .timeBased()
-    .everyMinutes(1)
-    .create();
-
-  Logger.log('[installIntakeQueueTrigger] ✅ Trigger đã được tạo: %s — mỗi 1 phút.', FUNC_NAME);
-  return { ok: true, created: true, message: 'Trigger created successfully' };
-}
-
-
-/**
- * Xóa trigger processIntakeQueue nếu cần tắt.
- * Gọi thủ công khi muốn disable background processing.
- */
-function removeIntakeQueueTrigger() {
-  const FUNC_NAME = 'processIntakeQueue';
-
-  const triggers = ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === FUNC_NAME);
-
-  if (triggers.length === 0) {
-    Logger.log('[removeIntakeQueueTrigger] Không tìm thấy trigger nào cho %s.', FUNC_NAME);
-    return { ok: true, removed: 0 };
-  }
-
-  triggers.forEach(t => ScriptApp.deleteTrigger(t));
-  Logger.log('[removeIntakeQueueTrigger] ✅ Đã xóa %s trigger.', triggers.length);
-  return { ok: true, removed: triggers.length };
-}
-
-
-/**
- * Kiểm tra trạng thái trigger — xem đã cài chưa, chạy được không.
- * Gọi bất kỳ lúc nào để debug.
- */
-function checkIntakeQueueTrigger() {
-  const FUNC_NAME = 'processIntakeQueue';
-
-  const all      = ScriptApp.getProjectTriggers();
-  const matching = all.filter(t => t.getHandlerFunction() === FUNC_NAME);
-
-  if (matching.length === 0) {
-    Logger.log('[checkIntakeQueueTrigger] ❌ Chưa cài trigger cho %s.', FUNC_NAME);
-    Logger.log('→ Chạy installIntakeQueueTrigger() để cài.');
-    return { installed: false };
-  }
-
-  matching.forEach(t => {
-    Logger.log('[checkIntakeQueueTrigger] ✅ Trigger: %s | Source: %s | Type: %s',
-      t.getHandlerFunction(),
-      t.getTriggerSource(),
-      t.getEventType()
-    );
-  });
-
-  // Kiểm tra thêm sheet buffer
-  const ss    = SpreadsheetApp.getActive();
-  const bufSh = ss.getSheetByName('_IntakeQueue');
-  if (!bufSh) {
-    Logger.log('[checkIntakeQueueTrigger] ⚠ Sheet _IntakeQueue chưa tồn tại — sẽ tự tạo khi submit đầu tiên.');
-  } else {
-    const pending = bufSh.getLastRow() < 2 ? 0 :
-      bufSh.getRange(2, 2, bufSh.getLastRow() - 1, 1)
-           .getValues()
-           .filter(r => r[0] === 'PENDING').length;
-    Logger.log('[checkIntakeQueueTrigger] Sheet _IntakeQueue: %s rows pending.', pending);
-  }
-
-  return { installed: true, count: matching.length };
-}
-
-/**
- * Đảm bảo PaymentsFolderURL tồn tại cho row.
- * Nếu chưa có → chủ động gọi rp_ensurePaymentsFolder_() tạo ngay.
- * Dùng khi user muốn submit payment trước khi trigger kịp chạy.
- *
- * @param {number} rowIndex
- * @returns {{ ok, paymentsFolderURL, created }}
- */
-function ipad_ensureFolderReady(rowIndex) {
-  try {
-    rowIndex = Number(rowIndex);
-    if (rowIndex < 2) return { ok: false, error: 'Invalid rowIndex' };
-
-    const ss  = SpreadsheetApp.getActive();
-    const mSh = ss.getSheetByName(RP_MASTER_SHEET);
-    const lc  = mSh.getLastColumn();
-    const hdr = mSh.getRange(1, 1, 1, lc).getValues()[0].map(v => String(v).trim());
-
-    const pfIdx  = hdr.indexOf('PaymentsFolderURL');
-    const apIdx  = hdr.indexOf('RootApptID') >= 0
-                   ? hdr.indexOf('RootApptID') : hdr.indexOf('APPT_ID');
-    const nIdx   = hdr.indexOf('Customer Name');
-    const bIdx   = hdr.indexOf('Brand');
-
-    if (pfIdx < 0) return { ok: false, error: 'No PaymentsFolderURL column' };
-
-    const row = mSh.getRange(rowIndex, 1, 1, lc).getValues()[0];
-
-    // ── Trường hợp 1: URL đã có → return ngay ─────────────────────
-    const existingURL = String(row[pfIdx] || '').trim();
-    if (existingURL && existingURL.includes('drive.google.com')) {
-      Logger.log('[ipad_ensureFolderReady] Already has folder: %s', existingURL);
-      return { ok: true, paymentsFolderURL: existingURL, created: false };
-    }
-
-    // ── Trường hợp 2: Chưa có → tìm từ rows cùng rootApptId ──────
-    const rootApptId = apIdx >= 0 ? String(row[apIdx] || '').trim() : '';
-    if (rootApptId && mSh.getLastRow() >= 2) {
-      const vals = mSh.getRange(2, 1, mSh.getLastRow() - 1, lc).getValues();
-      for (let i = 0; i < vals.length; i++) {
-        if (i + 2 === rowIndex) continue;
-        const sameRoot = apIdx >= 0
-          && String(vals[i][apIdx] || '').trim() === rootApptId;
-        if (!sameRoot) continue;
-        const u = pfIdx >= 0 ? String(vals[i][pfIdx] || '').trim() : '';
-        if (u && u.includes('drive.google.com')) {
-          // Patch luôn vào row hiện tại
-          mSh.getRange(rowIndex, pfIdx + 1).setValue(u);
-          Logger.log('[ipad_ensureFolderReady] Inherited folder from row %s: %s', i + 2, u);
-          return { ok: true, paymentsFolderURL: u, created: false };
-        }
-      }
-    }
-
-    // ── Trường hợp 3: Không có → tạo folder mới ngay lập tức ─────
-    const customerName = nIdx >= 0 ? String(row[nIdx] || '').trim() : 'Walk-in';
-    const brand        = bIdx >= 0 ? String(row[bIdx] || '').trim() : 'HPUSA';
-
-    Logger.log('[ipad_ensureFolderReady] Creating folder now for row=%s name=%s', rowIndex, customerName);
-
-    // Gọi hàm tạo folder sẵn có trong hệ thống
-    const folderURL = rp_ensurePaymentsFolder_({
-      customerName: customerName,
-      brand:        brand,
-      rootApptId:   rootApptId,
-    });
-
-    if (folderURL && folderURL.includes('drive.google.com')) {
-      // Ghi URL vào cột
-      mSh.getRange(rowIndex, pfIdx + 1).setValue(folderURL);
-      // Đánh dấu intake status DONE luôn
-      const staIdx = hdr.indexOf('_IntakeStatus');
-      if (staIdx >= 0) mSh.getRange(rowIndex, staIdx + 1).setValue('DONE');
-
-      Logger.log('[ipad_ensureFolderReady] Created folder: %s', folderURL);
-      return { ok: true, paymentsFolderURL: folderURL, created: true };
-    }
-
-    // Nếu rp_ensurePaymentsFolder_ không tồn tại hoặc fail → return ok
-    // nhưng không có URL (backend sẽ tự tạo khi rp_makeDocForPayment chạy)
-    Logger.log('[ipad_ensureFolderReady] Could not create folder — will fallback to backend');
-    return { ok: true, paymentsFolderURL: '', created: false };
-
-  } catch(e) {
-    Logger.log('[ipad_ensureFolderReady] ERROR: ' + e.message);
-    // Không throw — trả ok:true để không block user
-    return { ok: true, paymentsFolderURL: '', created: false };
-  }
+  Logger.log('processIntakeQueue is retired. Current iPad flow calls ipad_runIntakeNow(queueRow).');
 }
 
 /**
@@ -1455,7 +905,7 @@ function ipad_runIntakeNow(queueRow) {
     const bufSh = ss.getSheetByName('_IntakeQueue');
     if (!bufSh) return { ok: false, error: 'No queue sheet' };
 
-    // ── Dùng lock để tránh race với processIntakeQueue ────────────
+    // Lock keeps duplicate UI submissions from processing the same queue row.
     const lock = LockService.getScriptLock();
     try { lock.waitLock(8000); } catch(_) {
       return { ok: false, error: 'Could not acquire lock — try again' };
@@ -1470,7 +920,7 @@ function ipad_runIntakeNow(queueRow) {
       const resolvedUID = String(rowData[3] || '').trim();
       const payloadJson = String(rowData[5] || '{}');
 
-      // Nếu đã DONE hoặc RUNNING (trigger đang xử lý) → đợi kết quả
+      // Nếu đã DONE hoặc RUNNING → đợi kết quả
       if (status === 'DONE') {
         const doneIdx = Number(rowData[2] || 0);
         if (doneIdx >= 2) {
@@ -1498,7 +948,7 @@ function ipad_runIntakeNow(queueRow) {
       }
 
       // ── Đánh dấu RUNNING NGAY — trong khi còn giữ lock ──────────
-      // processIntakeQueue sẽ skip row này
+      // A second UI request will see RUNNING and wait/retry.
       bufSh.getRange(queueRow, 2).setValue('RUNNING');
       SpreadsheetApp.flush();
 
@@ -1606,7 +1056,7 @@ function ipad_runIntakeNow(queueRow) {
     return { ok: true, masterRowIndex, paymentsFolderURL: folderURL };
 
   } catch(e) {
-    // Nếu lỗi → đặt lại PENDING để trigger retry được
+	    // Nếu lỗi → đặt lại PENDING để user có thể retry.
     try {
       const ss2    = SpreadsheetApp.getActive();
       const bufSh2 = ss2.getSheetByName('_IntakeQueue');
@@ -1617,40 +1067,5 @@ function ipad_runIntakeNow(queueRow) {
     } catch(_) {}
     Logger.log('[ipad_runIntakeNow] ERROR: ' + e.message);
     return { ok: false, error: e.message };
-  }
-}
-
-
-/**
- * Poll — client gọi để check queue đã DONE chưa.
- */
-function ipad_checkQueueStatus(queueRow) {
-  try {
-    queueRow = Number(queueRow);
-    const ss    = SpreadsheetApp.getActive();
-    const bufSh = ss.getSheetByName('_IntakeQueue');
-    if (!bufSh || queueRow < 2) return { status: 'UNKNOWN' };
-
-    const row = bufSh.getRange(queueRow, 1, 1, 8).getValues()[0];
-    const status         = String(row[1] || '').trim();
-    const masterRowIndex = Number(row[2] || 0);
-
-    if (status !== 'DONE' || masterRowIndex < 2) {
-      return { status };
-    }
-
-    // DONE → lấy folder URL
-    const mSh = ss.getSheetByName(RP_MASTER_SHEET);
-    const lc  = mSh.getLastColumn();
-    const hdr = mSh.getRange(1,1,1,lc).getValues()[0].map(v=>String(v).trim());
-    const pfIdx = hdr.indexOf('PaymentsFolderURL');
-    let folderURL = '';
-    if (pfIdx >= 0 && masterRowIndex >= 2) {
-      folderURL = String(mSh.getRange(masterRowIndex,1,1,lc).getValues()[0][pfIdx]||'').trim();
-    }
-
-    return { status: 'DONE', masterRowIndex, paymentsFolderURL: folderURL };
-  } catch(e) {
-    return { status: 'ERROR', error: e.message };
   }
 }

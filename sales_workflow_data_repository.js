@@ -47,7 +47,9 @@ function swReadRosterAvailabilityIndex_(ss) {
       defaultJoc: rosterRow ? rosterRow.defaultJoc || '' : '',
       coverageEnabled: !rosterRow || rosterRow.coverageEnabled !== false,
       coveragePartner: rosterRow ? rosterRow.coveragePartner || '' : '',
-      days: rosterRow && rosterRow.days ? rosterRow.days : swDefaultEmployeeScheduleDays_()
+      days: rosterRow && rosterRow.days ? rosterRow.days : swDefaultEmployeeScheduleDays_(),
+      skills: rosterRow && rosterRow.skills ? rosterRow.skills : swDefaultRepSkills_(),
+      skillNotes: rosterRow ? rosterRow.skillNotes || '' : ''
     };
     out.byName[swNorm_(row.name)] = row;
     if (row.email) out.byEmail[row.email] = row;
@@ -98,11 +100,9 @@ function swReadScheduleChangesIndex_(ss) {
 function swEnsureEmployeeScheduleSheets_(ss) {
   var roster = swEnsureSheet_(ss, SW_SHEETS.ROSTER, SW_EMPLOYEE_SCHEDULE_HEADERS);
   var changes = swEnsureSheet_(ss, SW_SHEETS.SCHEDULE_CHANGES, SW_SCHEDULE_CHANGE_HEADERS);
-  var qualifications = swEnsureSheet_(ss, SW_SHEETS.REP_QUALIFICATIONS, SW_REP_QUALIFICATION_HEADERS);
   swStyleSheet_(roster);
   swStyleSheet_(changes);
-  swStyleSheet_(qualifications);
-  return { roster: roster, changes: changes, qualifications: qualifications };
+  return { roster: roster, changes: changes };
 }
 
 function swReadEmployeeScheduleAdminData_(ss) {
@@ -136,7 +136,6 @@ function swReadEmployeeSchedulePeople_(ss) {
   var people = [];
   var seenEmails = {};
   var seenRosterRows = {};
-  var qualifications = swReadRepQualificationIndex_(ss);
   swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, includeInactive: true }).forEach(function (user) {
     var roster = (user.email && rosterByEmail[user.email]) || rosterByName[swNorm_(user.name)] || null;
     var row = {
@@ -151,18 +150,10 @@ function swReadEmployeeSchedulePeople_(ss) {
       defaultJoc: roster ? roster.defaultJoc || '' : '',
       coverageEnabled: !roster || roster.coverageEnabled !== false,
       coveragePartner: roster ? roster.coveragePartner || '' : '',
-      days: roster && roster.days ? roster.days : swDefaultEmployeeScheduleDays_()
+      days: roster && roster.days ? roster.days : swDefaultEmployeeScheduleDays_(),
+      skills: roster && roster.skills ? roster.skills : swDefaultRepSkills_(),
+      skillNotes: roster ? roster.skillNotes || '' : ''
     };
-    var q = (row.email && qualifications.byEmail[row.email]) || qualifications.byName[swNorm_(row.name)] || null;
-    if (q) {
-      row.email = row.email || q.email || '';
-      row.skills = q.skills;
-      if (q.active === false) row.active = false;
-      row.skillNotes = q.notes || '';
-    } else {
-      row.skills = row.skills || swDefaultRepSkills_();
-      row.skillNotes = row.skillNotes || '';
-    }
     people.push(row);
     if (row.email) seenEmails[row.email] = true;
     if (roster && roster.rowNumber) seenRosterRows[roster.rowNumber] = true;
@@ -177,8 +168,8 @@ function swReadEmployeeSchedulePeople_(ss) {
       userActive: false,
       rosterActive: row.active !== false,
       identityStatus: 'orphan',
-      skills: swDefaultRepSkills_(),
-      skillNotes: 'No matching active workflow user.'
+      skills: row.skills || swDefaultRepSkills_(),
+      skillNotes: row.skillNotes || 'No matching active workflow user.'
     }));
   });
 
@@ -203,7 +194,11 @@ function swReadEmployeeRosterRows_(ss) {
     active: swPickIndex_(H, ['Active?', 'Active']),
     defaultJoc: swPickIndex_(H, ['Default JOC', 'Linked JOC', 'JOC Partner']),
     coverageEnabled: swPickIndex_(H, ['Assisted Coverage Enabled?', 'Coverage Enabled?']),
-    coveragePartner: swPickIndex_(H, ['Assisted Coverage Partner', 'Coverage Partner'])
+    coveragePartner: swPickIndex_(H, ['Assisted Coverage Partner', 'Coverage Partner']),
+    lab: swPickIndex_(H, ['Lab Diamond', 'Lab']),
+    natural: swPickIndex_(H, ['Natural Diamond', 'Natural']),
+    general: swPickIndex_(H, ['General Appointment', 'General']),
+    skillNotes: swPickIndex_(H, ['Skill Notes', 'Skills Notes', 'Notes'])
   };
   var days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   var dayCols = {};
@@ -223,6 +218,12 @@ function swReadEmployeeRosterRows_(ss) {
       defaultJoc: C.defaultJoc >= 0 ? swTrim_(values[i][C.defaultJoc]) : '',
       coverageEnabled: C.coverageEnabled < 0 || !swTrim_(values[i][C.coverageEnabled]) || swTruthy_(values[i][C.coverageEnabled]),
       coveragePartner: C.coveragePartner >= 0 ? swTrim_(values[i][C.coveragePartner]) : '',
+      skills: {
+        labDiamond: C.lab >= 0 ? swTruthy_(values[i][C.lab]) : false,
+        naturalDiamond: C.natural >= 0 ? swNormalizeNaturalSkill_(values[i][C.natural]) : 'None',
+        generalAppointment: C.general < 0 || !swTrim_(values[i][C.general]) || swTruthy_(values[i][C.general])
+      },
+      skillNotes: C.skillNotes >= 0 ? swTrim_(values[i][C.skillNotes]) : '',
       days: {}
     };
     days.forEach(function (day) {
@@ -344,54 +345,6 @@ function swEmployeePrimaryRoleRank_(role) {
   if (String(role || '').indexOf(SW_OWNER_ROLES.JOC) >= 0) return 1;
   if (String(role || '').indexOf(SW_OWNER_ROLES.SALES_REP) >= 0) return 2;
   return 9;
-}
-
-function swReadRepQualificationMap_(ss) {
-  var index = swReadRepQualificationIndex_(ss);
-  var out = {};
-  Object.keys(index.byName).forEach(function (key) { out[key] = index.byName[key]; });
-  Object.keys(index.byEmail).forEach(function (key) { out[key] = index.byEmail[key]; });
-  return out;
-}
-
-function swReadRepQualificationIndex_(ss) {
-  var out = {};
-  var indexed = { byName: {}, byEmail: {}, rows: [] };
-  var sh = ss.getSheetByName(SW_SHEETS.REP_QUALIFICATIONS);
-  if (!sh || sh.getLastRow() < 2) return indexed;
-  var values = sh.getDataRange().getDisplayValues();
-  var headers = values[0].map(function (h) { return swTrim_(h); });
-  var H = swHeaderMapFromArray_(headers);
-  var C = {
-    name: swPickIndex_(H, ['Rep Name', 'Rep', 'Name']),
-    email: swPickIndex_(H, ['Rep Email', 'Email']),
-    lab: swPickIndex_(H, ['Lab Diamond', 'Lab']),
-    natural: swPickIndex_(H, ['Natural Diamond', 'Natural']),
-    general: swPickIndex_(H, ['General Appointment', 'General']),
-    active: swPickIndex_(H, ['Active?', 'Active']),
-    notes: swPickIndex_(H, ['Notes', 'Note'])
-  };
-  if (C.name < 0) return indexed;
-  for (var i = 1; i < values.length; i++) {
-    var name = swTrim_(values[i][C.name]);
-    if (!name) continue;
-    var item = {
-      rowNumber: i + 1,
-      name: name,
-      email: C.email >= 0 ? swNormEmail_(values[i][C.email]) : '',
-      active: C.active < 0 || !swTrim_(values[i][C.active]) || swTruthy_(values[i][C.active]),
-      notes: C.notes >= 0 ? swTrim_(values[i][C.notes]) : '',
-      skills: {
-        labDiamond: C.lab >= 0 ? swTruthy_(values[i][C.lab]) : false,
-        naturalDiamond: C.natural >= 0 ? swNormalizeNaturalSkill_(values[i][C.natural]) : 'None',
-        generalAppointment: C.general < 0 || !swTrim_(values[i][C.general]) || swTruthy_(values[i][C.general])
-      }
-    };
-    indexed.rows.push(item);
-    indexed.byName[swNorm_(name)] = item;
-    if (item.email) indexed.byEmail[item.email] = item;
-  }
-  return indexed;
 }
 
 function swNormalizeNaturalSkill_(value) {

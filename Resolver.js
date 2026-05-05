@@ -488,17 +488,26 @@ function _appendNote_(row, msg){
   setCell_(SHT.MASTER, row, 'Automation Notes', (prev ? prev + '\n' : '') + msg);
 }
 
+const APPT_ROOT_SUBFOLDERS_ = [
+  '01_Audio',
+  '02_Materials',
+  '02_Design',
+  '03_Transcripts',
+  '04_Summaries',
+  '04_AI_Summaries',
+  '05_ChatLogs'
+];
+
 function ensureApptSubfolders_(rootApptId, apFolder) {
-  ['01_Audio','02_Design','03_Transcripts','04_AI_Summaries','05_ChatLogs']
-    .forEach(name => {
-      const it = apFolder.getFoldersByName(name);
-      if (!it.hasNext()) apFolder.createFolder(name);
-    });
+  APPT_ROOT_SUBFOLDERS_.forEach(name => {
+    const it = apFolder.getFoldersByName(name);
+    if (!it.hasNext()) apFolder.createFolder(name);
+  });
 }
 
 function _ensureApSubfoldersByFolderId_(apFolderId) {
   const apFolder = DriveApp.getFolderById(apFolderId);
-  ['01_Audio','02_Design','03_Transcripts','04_AI_Summaries','05_ChatLogs'].forEach(name => {
+  APPT_ROOT_SUBFOLDERS_.forEach(name => {
     const it = apFolder.getFoldersByName(name);
     if (!it.hasNext()) apFolder.createFolder(name);
   });
@@ -606,73 +615,10 @@ function bootstrapApFolderForRow_(row) {
 }
 
 function ensureBootstrapForRecentRows_() {
-  // ── FIX: ngăn chạy đồng thời khi trigger fire 2 lần ──
-  const lock = LockService.getDocumentLock();
-  const gotLock = lock.tryLock(5000);
-  if (!gotLock) {
-    Logger.log('ensureBootstrapForRecentRows_: already running, skipped.');
-    return;
+  if (typeof sw_retireLegacyAppointmentTrigger_ === 'function') {
+    return sw_retireLegacyAppointmentTrigger_('ensureBootstrapForRecentRows_');
   }
-
-  try {
-    const sh = _openMaster_();
-    const H  = _headers_(sh);
-    const colApId = H['RootApptID'];
-    const colFid  = H['RootAppt Folder ID'];
-    const colPfId = H['ProspectFolderID'];
-
-    if (!colApId || !colFid) {
-      Logger.log('Missing required headers (RootApptID / RootAppt Folder ID)');
-      return;
-    }
-
-    const last = sh.getLastRow();
-    if (last < 2) return;
-
-    const N = Math.min(5, last - 1);
-    const startRow = Math.max(2, last - N + 1);
-
-    const apIds = sh.getRange(startRow, colApId, N, 1).getValues();
-    const fids  = sh.getRange(startRow, colFid,  N, 1).getValues();
-    const pfIds = colPfId
-      ? sh.getRange(startRow, colPfId, N, 1).getValues()
-      : Array(N).fill(['']);
-
-    let bootstrapped = 0;
-    for (let i = 0; i < N; i++) {
-      const row  = startRow + i;
-      const ap   = String(apIds[i][0] || '').trim();
-      const fid  = String(fids[i][0]  || '').trim();
-      const pfid = String(pfIds[i][0] || '').trim();
-
-      if (!ap)         continue;
-      if (fid || pfid) continue;
-
-      try {
-        const id = bootstrapApFolderForRow_(row);
-        Logger.log(`Bootstrapped AP folder ${id} for row ${row}`);
-        bootstrapped++;
-      } catch (e) {
-        Logger.log(`Row ${row}: bootstrap error: ${e && (e.message || e)}`);
-      }
-    }
-
-    if (bootstrapped) Logger.log(`ensureBootstrapForRecentRows_: bootstrapped ${bootstrapped} row(s).`);
-
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function installBootstrapMinuteWorker() {
-  const fn = 'ensureBootstrapForRecentRows_';
-  const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === fn);
-  if (!exists) {
-    ScriptApp.newTrigger(fn).timeBased().everyMinutes(1).create();
-    Logger.log('Installed minute worker for ensureBootstrapForRecentRows_()');
-  } else {
-    Logger.log('Minute worker already installed.');
-  }
+  Logger.log('ensureBootstrapForRecentRows_ is retired. Current repair path: repairMissingUrls_ hourly.');
 }
 
 /********** MASTER MERGE **********/
@@ -2576,11 +2522,24 @@ function backfillAllRootApptFolders() {
 // ====================================================================
 // FIX #4: URL REPAIR WORKER
 // ====================================================================
-function repairMissingUrls_() {
+function repairMissingUrls_(e) {
   const REPAIR_LOOKBACK_ROWS = 50;
   const REPAIR_WINDOW_HOURS  = 48;
+  const isTriggerRun = !!(e && e.triggerUid);
+  const forceRun = !!(e && e.force);
 
   Logger.log('===== REPAIR START =====');
+
+  if (isTriggerRun) {
+    repairMissingUrlsNormalizeTriggerSchedule_();
+    const throttleKey = 'repairMissingUrls_hourly_throttle';
+    const throttleCache = CacheService.getScriptCache();
+    if (!forceRun && throttleCache.get(throttleKey)) {
+      Logger.log('repairMissingUrls_: skipped by hourly throttle.');
+      return { ok: true, skipped: true, reason: 'hourlyThrottle' };
+    }
+    throttleCache.put(throttleKey, '1', 55 * 60);
+  }
 
   const s    = SH(SHT.MASTER);
   const H    = headers_(SHT.MASTER);
@@ -2591,6 +2550,8 @@ function repairMissingUrls_() {
   if (last < 2) { Logger.log('No data rows'); return; }
 
   const cAppt    = H['APPT_ID']       || 0;
+  const cRoot    = H['RootApptID']    || 0;
+  const cRootFld = H['RootAppt Folder ID'] || 0;
   const cBrand   = H['Brand']         || 0;
   const cIntake  = H['IntakeDocURL']  || 0;
   const cChk     = H['Checklist URL'] || 0;
@@ -2604,7 +2565,7 @@ function repairMissingUrls_() {
 
   Logger.log('Scanning rows from ' + startRow + ' → ' + last);
 
-  const colsToRead = [cAppt, cBrand, cIntake, cChk, cQuo, cTs].filter(Boolean);
+  const colsToRead = [cAppt, cRoot, cRootFld, cBrand, cIntake, cChk, cQuo, cTs].filter(Boolean);
   const maxCol = Math.max(...colsToRead);
   const block  = s.getRange(startRow, 1, numRows, maxCol).getValues();
 
@@ -2618,6 +2579,7 @@ function repairMissingUrls_() {
     const r = block[i];
 
     const appt  = cAppt  ? String(r[cAppt-1]  || '').trim() : '';
+    const root  = cRoot  ? String(r[cRoot-1]  || '').trim() : appt;
     const brand = cBrand ? String(r[cBrand-1] || '').trim() : '';
     if (!appt || !brand) continue;
 
@@ -2630,8 +2592,12 @@ function repairMissingUrls_() {
     const intakeVal = cIntake ? String(r[cIntake-1] || '').trim() : '';
     const chkVal    = cChk    ? String(r[cChk-1]    || '').trim() : '';
     const quoVal    = cQuo    ? String(r[cQuo-1]    || '').trim() : '';
+    const rootFld   = cRootFld ? String(r[cRootFld-1] || '').trim() : '';
 
-    if (intakeVal && chkVal && quoVal) continue;
+    const missingUrls = !(intakeVal && chkVal && quoVal);
+    const missingRootFolder = !!(cRootFld && root && !rootFld && /^AP-\d{8}-\d{3}$/i.test(root));
+
+    if (!missingUrls && !missingRootFolder) continue;
 
     // ✅ Fix: kiểm tra repair lock riêng để tránh chạy lại liên tục
     const repairLockKey = `repair_lock_${sheetRow}`;
@@ -2642,27 +2608,39 @@ function repairMissingUrls_() {
     }
     repairCache.put(repairLockKey, '1', 300); // ✅ không retry trong 5 phút
 
-    Logger.log('[row ' + sheetRow + '] MISSING URL → healing');
+    Logger.log('[row ' + sheetRow + '] missing appointment artifacts/root folder -> healing');
 
     try {
-      const repairLock = LockService.getUserLock();
-      const gotRepairLock = repairLock.tryLock(3000);
-      if (gotRepairLock) {
-        try { ensureArtifactsForRow_(sheetRow); }
-        finally { repairLock.releaseLock(); }
-      } else {
-        Logger.log('[repair] row ' + sheetRow + ' lock busy - will retry next run');
+      if (missingUrls) {
+        const repairLock = LockService.getUserLock();
+        const gotRepairLock = repairLock.tryLock(3000);
+        if (gotRepairLock) {
+          try { ensureArtifactsForRow_(sheetRow); }
+          finally { repairLock.releaseLock(); }
+        } else {
+          Logger.log('[repair] row ' + sheetRow + ' lock busy - will retry next run');
+        }
+      }
+
+      if (missingRootFolder) {
+        try {
+          const folderId = bootstrapApFolderForRow_(sheetRow);
+          Logger.log('[row ' + sheetRow + '] RootAppt folder repaired: ' + folderId);
+        } catch (folderErr) {
+          Logger.log('[row ' + sheetRow + '] RootAppt folder repair failed: ' + (folderErr && folderErr.message || folderErr));
+        }
       }
 
       // ✅ Re-read từ sheet sau khi chạy xong (không dùng cache cũ)
       const afterIntake = getCell_(SHT.MASTER, sheetRow, 'IntakeDocURL');
       const afterChk    = getCell_(SHT.MASTER, sheetRow, 'Checklist URL');
       const afterQuo    = getCell_(SHT.MASTER, sheetRow, 'Quotation URL');
+      const afterRoot   = cRootFld ? getCell_(SHT.MASTER, sheetRow, 'RootAppt Folder ID') : '';
 
-      Logger.log('[row ' + sheetRow + '] AFTER repair: intake=' + !!afterIntake + ' chk=' + !!afterChk + ' quo=' + !!afterQuo);
+      Logger.log('[row ' + sheetRow + '] AFTER repair: intake=' + !!afterIntake + ' chk=' + !!afterChk + ' quo=' + !!afterQuo + ' rootFolder=' + !!afterRoot);
 
       // ✅ Chỉ tính là repaired nếu thực sự có URL sau khi chạy
-      if (afterIntake || afterChk || afterQuo) repaired++;
+      if (afterIntake || afterChk || afterQuo || afterRoot) repaired++;
 
     } catch (e) {
       Logger.log('[row ' + sheetRow + '] ERROR: ' + (e && e.message));
@@ -2672,15 +2650,29 @@ function repairMissingUrls_() {
   Logger.log('===== REPAIR DONE | repaired ' + repaired + ' row(s) =====');
 }
 
-function installUrlRepairWorker() {
-  const FN = 'repairMissingUrls_';
-  const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === FN);
-  if (!exists) {
-    ScriptApp.newTrigger(FN).timeBased().everyMinutes(1).create();
-    Logger.log('[repairWorker] trigger installed: every 1 minute');
-  } else {
-    Logger.log('[repairWorker] already installed');
+function repairMissingUrlsNormalizeTriggerSchedule_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('REPAIR_MISSING_URLS_TRIGGER_MODE') === 'hourly') return;
+  try {
+    installUrlRepairHourlyWorker();
+    props.setProperty('REPAIR_MISSING_URLS_TRIGGER_MODE', 'hourly');
+  } catch (err) {
+    Logger.log('[repairWorker] trigger normalization failed: ' + (err && err.message || err));
   }
+}
+
+function installUrlRepairWorker() {
+  return installUrlRepairHourlyWorker();
+}
+
+function installUrlRepairHourlyWorker() {
+  const FN = 'repairMissingUrls_';
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === FN)
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger(FN).timeBased().everyHours(1).create();
+  PropertiesService.getScriptProperties().setProperty('REPAIR_MISSING_URLS_TRIGGER_MODE', 'hourly');
+  Logger.log('[repairWorker] trigger installed: every 1 hour');
 }
 
 function uninstallUrlRepairWorker() {
@@ -2688,10 +2680,11 @@ function uninstallUrlRepairWorker() {
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === FN)
     .forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty('REPAIR_MISSING_URLS_TRIGGER_MODE');
   Logger.log('[repairWorker] trigger removed');
 }
 
-function TEST_REPAIR() { repairMissingUrls_(); }
+function TEST_REPAIR() { repairMissingUrls_({ force: true }); }
 
 // ====================================================================
 // BACKFILL: Fix existing rows that have duplicate Prospect Folders
@@ -3595,26 +3588,6 @@ function installDailyBackfill() {
     ScriptApp.newTrigger(FN).timeBased().everyDays(1).atHour(3).create();
     Logger.log('Installed daily backfill trigger at 3am');
   }
-}
-
-function fix_changeTriggerTo2Min() {
-  const FN = 'ensureBootstrapForRecentRows_';
-
-  // Xóa trigger cũ (1 phút)
-  ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === FN)
-    .forEach(t => {
-      ScriptApp.deleteTrigger(t);
-      Logger.log('Đã xóa trigger cũ: ' + t.getUniqueId());
-    });
-
-  // Tạo trigger mới (2 phút)
-  ScriptApp.newTrigger(FN)
-    .timeBased()
-    .everyMinutes(1)
-    .create();
-
-  Logger.log('✅ Đã tạo trigger mới: ' + FN + ' chạy mỗi 2 phút');
 }
 
 function debug_diagRepeatCustomerRow() {

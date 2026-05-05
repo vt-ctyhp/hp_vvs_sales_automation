@@ -464,6 +464,10 @@ function swEnsureOrSyncRosterForWorkflowUser_(ss, userData, actor) {
       coverageenabled: 'Y',
       assistedcoveragepartner: '',
       coveragepartner: '',
+      labdiamond: 'N',
+      naturaldiamond: 'None',
+      generalappointment: 'Y',
+      skillnotes: '',
       updatedat: swIso_(new Date()),
       updatedby: actor ? (actor.name || actor.email || '') : ''
     };

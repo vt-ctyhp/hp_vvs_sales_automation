@@ -18,16 +18,13 @@ var SW_LEGACY_QUEUE_RETIRED_TABS_ = [
 
 var SW_LEGACY_QUEUE_PROTECTED_TABS_ = [
   '00_Master Appointments',
-  '00_Dashboard',
   '03_Client_Status_Log',
   '04_Reminders_Queue',
   '07_Root_Index',
   '10_Roster_Schedule',
   '15_Reminders_Log',
-  '100_Metrics_View',
   '200_ Diamond Tracker',
-  'Schedule Changes',
-  'Rep Qualifications'
+  'Schedule Changes'
 ];
 
 var SW_LEGACY_QUEUE_TRIGGER_HANDLERS_ = [
@@ -47,6 +44,283 @@ var SW_LEGACY_QUEUE_TRIGGER_HANDLERS_ = [
   'submitMyQueueUnified',
   'recomputeAckStatusSummary'
 ];
+
+var SW_LEGACY_APPOINTMENT_TRIGGER_HANDLERS_ = [
+  'processUploadQueue',
+  'processSummariesWorker',
+  'processIntakeQueue',
+  'ensureBootstrapForRecentRows_'
+];
+
+var SW_LEGACY_APPOINTMENT_RETIRED_TABS_ = [
+  '_upload_queue'
+];
+
+var SW_LEGACY_APPOINTMENT_RETAINED_TABS_ = [
+  '_AppointmentArtifacts',
+  '_IntakeQueue'
+];
+
+var SW_LEGACY_SHEET_DASHBOARD_TABS_ = [
+  '00_Dashboard',
+  '100_Metrics_View',
+  '99_3D_Status_Map',
+  'Drill_KPI',
+  'Drill_Unified',
+  'Debug_Cohort2nd',
+  'Audit_Orphans'
+];
+
+var SW_LEGACY_SHEET_DASHBOARD_TRIGGER_HANDLERS_ = [
+  'refreshDashboardHourly',
+  'runOnceToBuildAll',
+  'buildMetricsView_',
+  'writeDashboard_',
+  'snapshotKpisForHistory_',
+  'buildUnifiedDrillDown_',
+  'runBuildUnifiedDrillDown',
+  'P15_alertOnHoldOrders'
+];
+
+function sw_dryRunCleanupLegacyAppointmentAutomation() {
+  return sw_cleanupLegacyAppointmentAutomation({ apply: false });
+}
+
+function sw_applyCleanupLegacyAppointmentAutomation() {
+  return sw_cleanupLegacyAppointmentAutomation({
+    apply: true,
+    deleteRetiredSheets: true,
+    installHourlyRepair: true
+  });
+}
+
+function sw_retireLegacyAppointmentTrigger_(handlerName) {
+  return sw_cleanupLegacyAppointmentAutomation({
+    apply: true,
+    handlerOnly: handlerName,
+    deleteRetiredSheets: false,
+    installHourlyRepair: handlerName === 'ensureBootstrapForRecentRows_'
+  });
+}
+
+function sw_cleanupLegacyAppointmentAutomation(options) {
+  options = options || {};
+  var apply = options.apply === true;
+  var handlerOnly = String(options.handlerOnly || '');
+  var deleteRetiredSheets = options.deleteRetiredSheets === true;
+  var installHourlyRepair = options.installHourlyRepair === true;
+  var ss = (typeof swSpreadsheet_ === 'function')
+    ? swSpreadsheet_()
+    : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('No spreadsheet is available for appointment automation cleanup.');
+
+  var retiredTriggerSet = swLegacyQueueNameSet_(SW_LEGACY_APPOINTMENT_TRIGGER_HANDLERS_);
+  var retiredTabSet = swLegacyQueueNameSet_(SW_LEGACY_APPOINTMENT_RETIRED_TABS_);
+  var result = {
+    ok: true,
+    apply: apply,
+    handlerOnly: handlerOnly,
+    spreadsheetId: ss.getId(),
+    spreadsheetName: ss.getName(),
+    candidateTriggers: [],
+    deletedTriggers: [],
+    candidateSheets: [],
+    deletedSheets: [],
+    retainedSheets: [],
+    installedRepairTrigger: false,
+    errors: []
+  };
+
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    var handler = trigger.getHandlerFunction();
+    var isRetired = retiredTriggerSet[handler] === true;
+    var isRepair = installHourlyRepair && handler === 'repairMissingUrls_';
+    if (handlerOnly) {
+      if (handler !== handlerOnly && !isRepair) return;
+    } else if (!isRetired && !isRepair) {
+      return;
+    }
+    result.candidateTriggers.push(swDescribeLegacyQueueTrigger_(trigger));
+  });
+
+  if (!handlerOnly && deleteRetiredSheets) {
+    ss.getSheets().forEach(function(sheet) {
+      var name = sheet.getName();
+      if (retiredTabSet[name] === true) {
+        result.candidateSheets.push({
+          name: name,
+          sheetId: sheet.getSheetId(),
+          reason: 'retired appointment upload queue',
+          lastRow: sheet.getLastRow(),
+          lastColumn: sheet.getLastColumn()
+        });
+      }
+    });
+  }
+
+  SW_LEGACY_APPOINTMENT_RETAINED_TABS_.forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (sheet) {
+      result.retainedSheets.push({
+        name: name,
+        reason: name === '_IntakeQueue'
+          ? 'current iPad handoff queue used by ipad_runIntakeNow'
+          : 'current appointment artifact workflow table',
+        lastRow: sheet.getLastRow(),
+        lastColumn: sheet.getLastColumn()
+      });
+    }
+  });
+
+  if (apply) {
+    result.candidateTriggers.forEach(function(triggerInfo) {
+      try {
+        var match = swFindProjectTriggerByUid_(triggerInfo.uniqueId, triggerInfo.handler);
+        if (match) {
+          ScriptApp.deleteTrigger(match);
+          result.deletedTriggers.push(triggerInfo);
+        }
+      } catch (err) {
+        result.errors.push({
+          type: 'trigger',
+          handler: triggerInfo.handler,
+          message: err && err.message ? err.message : String(err)
+        });
+      }
+    });
+
+    result.candidateSheets.forEach(function(sheetInfo) {
+      try {
+        var sheet = ss.getSheetByName(sheetInfo.name);
+        if (!sheet) return;
+        if (ss.getSheets().length <= 1) throw new Error('Cannot delete the last remaining sheet.');
+        ss.deleteSheet(sheet);
+        result.deletedSheets.push(sheetInfo);
+      } catch (err) {
+        result.errors.push({
+          type: 'sheet',
+          name: sheetInfo.name,
+          message: err && err.message ? err.message : String(err)
+        });
+      }
+    });
+
+    if (installHourlyRepair && typeof repairMissingUrls_ === 'function') {
+      try {
+        var hasRepair = ScriptApp.getProjectTriggers().some(function(trigger) {
+          return trigger.getHandlerFunction() === 'repairMissingUrls_';
+        });
+        if (!hasRepair) {
+          ScriptApp.newTrigger('repairMissingUrls_').timeBased().everyHours(1).create();
+          result.installedRepairTrigger = true;
+        }
+      } catch (err) {
+        result.errors.push({
+          type: 'trigger',
+          handler: 'repairMissingUrls_',
+          message: err && err.message ? err.message : String(err)
+        });
+      }
+    }
+  }
+
+  result.ok = result.errors.length === 0;
+  Logger.log('SW_LEGACY_APPOINTMENT_AUTOMATION_CLEANUP ' + JSON.stringify(result));
+  return result;
+}
+
+function sw_dryRunCleanupLegacySheetDashboards() {
+  return sw_cleanupLegacySheetDashboards({ apply: false });
+}
+
+function sw_applyCleanupLegacySheetDashboards() {
+  return sw_cleanupLegacySheetDashboards({ apply: true });
+}
+
+function sw_cleanupLegacySheetDashboards(options) {
+  options = options || {};
+  var apply = options.apply === true;
+  var ss = (typeof swSpreadsheet_ === 'function')
+    ? swSpreadsheet_()
+    : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('No spreadsheet is available for legacy sheet dashboard cleanup.');
+
+  var retiredSet = swLegacyQueueNameSet_(SW_LEGACY_SHEET_DASHBOARD_TABS_);
+  var retiredTriggerSet = swLegacyQueueNameSet_(SW_LEGACY_SHEET_DASHBOARD_TRIGGER_HANDLERS_);
+  var result = {
+    ok: true,
+    apply: apply,
+    spreadsheetId: ss.getId(),
+    spreadsheetName: ss.getName(),
+    candidateSheets: [],
+    deletedSheets: [],
+    candidateTriggers: [],
+    deletedTriggers: [],
+    skippedSheets: [],
+    errors: []
+  };
+
+  ss.getSheets().forEach(function(sheet) {
+    var name = sheet.getName();
+    if (retiredSet[name] !== true) return;
+    result.candidateSheets.push({
+      name: name,
+      sheetId: sheet.getSheetId(),
+      lastRow: sheet.getLastRow(),
+      lastColumn: sheet.getLastColumn()
+    });
+  });
+
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    var handler = trigger.getHandlerFunction();
+    if (retiredTriggerSet[handler] !== true) return;
+    result.candidateTriggers.push(swDescribeLegacyQueueTrigger_(trigger));
+  });
+
+  if (apply) {
+    result.candidateTriggers.forEach(function(triggerInfo) {
+      try {
+        var match = swFindProjectTriggerByUid_(triggerInfo.uniqueId, triggerInfo.handler);
+        if (match) {
+          ScriptApp.deleteTrigger(match);
+          result.deletedTriggers.push(triggerInfo);
+        }
+      } catch (err) {
+        result.errors.push({
+          type: 'trigger',
+          handler: triggerInfo.handler,
+          message: err && err.message ? err.message : String(err)
+        });
+      }
+    });
+
+    result.candidateSheets.forEach(function(sheetInfo) {
+      try {
+        var sheet = ss.getSheetByName(sheetInfo.name);
+        if (!sheet) return;
+        if (ss.getSheets().length <= 1) {
+          result.skippedSheets.push({
+            name: sheetInfo.name,
+            reason: 'cannot delete the last remaining sheet'
+          });
+          return;
+        }
+        ss.deleteSheet(sheet);
+        result.deletedSheets.push(sheetInfo);
+      } catch (err) {
+        result.errors.push({
+          type: 'sheet',
+          name: sheetInfo.name,
+          message: err && err.message ? err.message : String(err)
+        });
+      }
+    });
+  }
+
+  result.ok = result.errors.length === 0;
+  Logger.log('SW_LEGACY_SHEET_DASHBOARD_CLEANUP ' + JSON.stringify(result));
+  return result;
+}
 
 function sw_dryRunCleanupLegacyQueueWorkflow() {
   return sw_cleanupLegacyQueueWorkflow({ apply: false });

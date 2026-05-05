@@ -1674,6 +1674,8 @@ function sw_installAppointmentAutomationTriggers() {
   var remove = {
     processUploadQueue: true,
     processSummariesWorker: true,
+    processIntakeQueue: true,
+    ensureBootstrapForRecentRows_: true,
     sw_processAppointmentAutomation: true
   };
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
@@ -1682,7 +1684,7 @@ function sw_installAppointmentAutomationTriggers() {
   ScriptApp.newTrigger('sw_processAppointmentAutomation').timeBased().everyMinutes(5).create();
   return {
     ok: true,
-    message: 'Installed 5-minute appointment automation worker and removed old upload/summary workers.'
+    message: 'Installed 5-minute appointment automation worker and removed retired appointment background workers.'
   };
 }
 

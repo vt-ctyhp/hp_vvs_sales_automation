@@ -15,7 +15,6 @@ var SW_SHEETS = {
   READ_MODEL_CUSTOMERS: '_SW_CustomerReadModel',
   READ_MODEL_META: '_SW_ReadModelMeta',
   ROSTER: '10_Roster_Schedule',
-  REP_QUALIFICATIONS: 'Rep Qualifications',
   SCHEDULE_CHANGES: 'Schedule Changes',
   DROPDOWN: 'Dropdown'
 };
@@ -277,6 +276,10 @@ var SW_EMPLOYEE_SCHEDULE_HEADERS = [
   'Default JOC',
   'Assisted Coverage Enabled?',
   'Assisted Coverage Partner',
+  'Lab Diamond',
+  'Natural Diamond',
+  'General Appointment',
+  'Skill Notes',
   'Updated At',
   'Updated By'
 ];
@@ -288,17 +291,6 @@ var SW_SCHEDULE_CHANGE_HEADERS = [
   'Change Type',
   'Available From',
   'Available Until',
-  'Notes',
-  'Updated At',
-  'Updated By'
-];
-var SW_REP_QUALIFICATION_HEADERS = [
-  'Rep Name',
-  'Rep Email',
-  'Lab Diamond',
-  'Natural Diamond',
-  'General Appointment',
-  'Active?',
   'Notes',
   'Updated At',
   'Updated By'
