@@ -230,7 +230,7 @@ function swCustomerSearchKanbanFromRows_(ss, rows, source) {
     column.count++;
     if (column.cards.length < SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN) {
       var card = swCustomerSearchCardForRecord_(ss, masterGid, root, rec, rootRows, stage, aiBriefByRoot[root]);
-      column.cards.push(card);
+      column.cards.push(swCustomerSearchKanbanCardForList_(card));
     } else {
       column.hiddenCount++;
     }
@@ -270,6 +270,28 @@ function swCustomerSearchCardForRecord_(ss, masterGid, root, rec, rootRows, stag
     return swCustomerSearchCardFromReadModel_(ss, masterGid, rec, stage);
   }
   return swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage, aiBrief);
+}
+
+function swCustomerSearchKanbanCardForList_(card) {
+  card = card || {};
+  return {
+    root: card.root || '',
+    appt: card.appt || '',
+    customerName: card.customerName || '',
+    brand: card.brand || '',
+    clientAdvisor: card.clientAdvisor || '',
+    joc: card.joc || '',
+    nextVisit: card.nextVisit || '',
+    lastVisit: card.lastVisit || '',
+    salesStage: card.salesStage || '',
+    conversionStatus: card.conversionStatus || '',
+    customOrderStatus: card.customOrderStatus || '',
+    inProductionStatus: card.inProductionStatus || '',
+    so: card.so || '',
+    deadline3d: card.deadline3d || '',
+    waxStatus: card.waxStatus || '',
+    badges: card.badges || []
+  };
 }
 
 function sw_getCustomerSearchDetail(authToken, rootApptId) {
