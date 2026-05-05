@@ -13,8 +13,8 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'LOCATION_MSG_HUNG_PHAT', '', '', '', '', 'Y', '', 'Store/location message for Hung Phat / HPUSA map/instructions templates.'],
     ['SYSTEM', 'WELCOME_MSG_VVS', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey text message for VVS appointments.'],
     ['SYSTEM', 'WELCOME_MSG_HUNG_PHAT', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey text message for Hung Phat / HPUSA appointments.'],
-    ['SYSTEM', 'HYBRID_MSG_VVS', '{{welcomeMessage}}\n\n{{locationMsg}}\n\n{{welcomeImageUrl}}', '', '', '', 'Y', '', 'Hybrid welcome + instructions message for VVS appointments. Supports {{welcomeImageUrl}}, {{mapLink}}, {{welcomeMessage}}, and {{locationMsg}}.'],
-    ['SYSTEM', 'HYBRID_MSG_HUNG_PHAT', '{{welcomeMessage}}\n\n{{locationMsg}}\n\n{{welcomeImageUrl}}', '', '', '', 'Y', '', 'Hybrid welcome + instructions message for Hung Phat / HPUSA appointments. Supports {{welcomeImageUrl}}, {{mapLink}}, {{welcomeMessage}}, and {{locationMsg}}.'],
+    ['SYSTEM', 'HYBRID_MSG_VVS', swDefaultHybridMessageTemplate_(), '', '', '', 'Y', '', 'Hybrid welcome + instructions message body for VVS appointments. Use {{welcomeMessage}} and {{locationMsg}}; photo and map links are shown separately as message links.'],
+    ['SYSTEM', 'HYBRID_MSG_HUNG_PHAT', swDefaultHybridMessageTemplate_(), '', '', '', 'Y', '', 'Hybrid welcome + instructions message body for Hung Phat / HPUSA appointments. Use {{welcomeMessage}} and {{locationMsg}}; photo and map links are shown separately as message links.'],
     ['SYSTEM', 'WELCOME_IMAGE_VVS', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey image URL for VVS appointments.'],
     ['SYSTEM', 'WELCOME_IMAGE_HUNG_PHAT', '', '', '', '', 'Y', '', 'Welcome to Your Ring Journey image URL for Hung Phat / HPUSA appointments.'],
     ['SYSTEM', 'WORKFLOW_LOOKBACK_DAYS', '14', '', '', '', 'Y', '', 'Do not generate new tasks for appointments older than this.'],
@@ -64,6 +64,11 @@ function swMigrateConfigRows_(sh) {
     var section = swNorm_(values[r][0]);
     var key = swHeaderKey_(values[r][1]);
     if (section !== 'system') continue;
+    if (key === 'hybridmsgvvs' || key === 'hybridmsghungphat') {
+      if (swShouldUseDefaultHybridConfigValue_(values[r][2])) {
+        sh.getRange(rowIndex, 3).setValue(swDefaultHybridMessageTemplate_());
+      }
+    }
     if (key === 'maplink' || key === 'locationlabel') {
       sh.deleteRow(rowIndex);
       continue;

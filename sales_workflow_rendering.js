@@ -80,7 +80,7 @@ function swRenderDataForTask_(task, payload) {
   var completion = payload.completion || {};
   var rawBrand = task.brand || appt.brand || '';
   var visitTime = swFormatAppointmentTime_(task.visitTime || appt.visitTime || '');
-  var hybridMessage = extra.hybridMessage || [extra.welcomeMessage, extra.locationMsg, extra.welcomeImageUrl].filter(function (value) {
+  var hybridMessage = extra.hybridMessage || [extra.welcomeMessage, extra.locationMsg].filter(function (value) {
     return swTrim_(value);
   }).join('\n\n');
   return {
@@ -198,11 +198,14 @@ function swShouldUseDefaultMapTemplate_(template) {
 function swShouldUseDefaultHybridTemplate_(template) {
   var text = String(template || '');
   if (!swTrim_(text)) return true;
+  if (text.indexOf('welcomeImageUrl') >= 0) return true;
+  if (text.indexOf('mapLink') >= 0) return true;
+  if (swContainsGoogleDriveLink_(text)) return true;
+  if (text.indexOf('hybridMessage') >= 0 && text.indexOf('locationMsg') >= 0) return true;
   if (text.indexOf('hybridMessage') >= 0) return false;
   if (swIsLegacyDefaultHybridTemplate_(text)) return true;
-  if (text.indexOf('mapLink') >= 0) return true;
   if (/we are looking forward to seeing you/i.test(text)) return true;
-  return swContainsGoogleDriveLink_(text);
+  return false;
 }
 
 function swIsLegacyDefaultHybridTemplate_(template) {
@@ -214,10 +217,21 @@ function swContainsGoogleDriveLink_(text) {
   return /\b(?:https?:\/\/)?(?:drive|docs)\.google\.com\//i.test(String(text || ''));
 }
 
+function swDefaultHybridMessageTemplate_() {
+  return '{{welcomeMessage}}\n\n{{locationMsg}}';
+}
+
+function swShouldUseDefaultHybridConfigValue_(value) {
+  var text = String(value || '');
+  if (!swTrim_(text)) return true;
+  if (text.indexOf('welcomeImageUrl') >= 0) return true;
+  if (text.indexOf('mapLink') >= 0) return true;
+  return swContainsGoogleDriveLink_(text);
+}
+
 function swRenderedCopyableTemplateForTask_(task, template, data) {
   var rendered = template && template.template ? swRenderTemplate_(template.template, data) : '';
   if (!swIsClientMessageTaskType_(task && task.taskType)) return rendered;
-  if (task && task.taskType === SW_TASKS.HYBRID) return rendered;
   return swStripGoogleDriveLinks_(rendered);
 }
 
