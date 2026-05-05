@@ -74,6 +74,8 @@ var SW_ARTIFACT_UPLOAD_FIELDS = [
   { field: 'diamondViewingRecording', driveUrlField: 'diamondViewingRecordingDriveUrl', type: SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING },
   { field: 'intakeMaterial', driveUrlField: 'intakeMaterialDriveUrl', type: SW_ARTIFACT_TYPES.CLIENT_INTAKE }
 ];
+var SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS = 2 * 60;
+var SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_ = {};
 
 function swEnsureAppointmentArtifactsSheet_(ss) {
   var sh = swEnsureSheet_(ss, SW_APPOINTMENT_ARTIFACT_SHEET, SW_APPOINTMENT_ARTIFACT_HEADERS);
@@ -105,29 +107,112 @@ function swReadAppointmentArtifactRows_(ss) {
 function swAppointmentArtifactRowsForRoot_(ss, rootApptId) {
   var root = swTrim_(rootApptId);
   if (!root) return [];
+  var cached = swCachedAppointmentArtifactRowsForRoot_(ss, root);
+  if (cached !== null) return cached;
+
   var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
   if (!sh || sh.getLastRow() < 2) return [];
   var rootCol = SW_APPOINTMENT_ARTIFACT_HEADERS.indexOf('RootApptID') + 1;
   if (swHeaderKey_(sh.getRange(1, rootCol).getDisplayValue()) !== swHeaderKey_('RootApptID')) {
-    return swReadAppointmentArtifactRows_(ss).filter(function (row) {
+    var fallbackRows = swReadAppointmentArtifactRows_(ss).filter(function (row) {
       return swTrim_(row['RootApptID']) === root;
     });
+    swCacheAppointmentArtifactRowsForRoot_(ss, root, fallbackRows);
+    return fallbackRows;
   }
   var rowCount = sh.getLastRow() - 1;
-  var roots = sh.getRange(2, rootCol, rowCount, 1).getDisplayValues();
   var width = Math.min(sh.getLastColumn(), SW_APPOINTMENT_ARTIFACT_HEADERS.length);
+  var found = swFindAppointmentArtifactRowsByRoot_(sh, rootCol, root, rowCount, width);
+  if (found !== null) {
+    swCacheAppointmentArtifactRowsForRoot_(ss, root, found);
+    return found;
+  }
+
+  var roots = sh.getRange(2, rootCol, rowCount, 1).getDisplayValues();
   var out = [];
   for (var i = 0; i < roots.length; i++) {
     if (swTrim_(roots[i][0]) !== root) continue;
     var rowNumber = i + 2;
-    var values = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
-    var row = { __rowNumber: rowNumber, rowNumber: rowNumber };
-    for (var j = 0; j < SW_APPOINTMENT_ARTIFACT_HEADERS.length; j++) {
-      row[SW_APPOINTMENT_ARTIFACT_HEADERS[j]] = j < values.length ? values[j] : '';
-    }
-    out.push(row);
+    out.push(swAppointmentArtifactRowAtNumber_(sh, rowNumber, width));
   }
+  swCacheAppointmentArtifactRowsForRoot_(ss, root, out);
   return out;
+}
+
+function swFindAppointmentArtifactRowsByRoot_(sh, rootCol, root, rowCount, width) {
+  try {
+    var range = sh.getRange(2, rootCol, rowCount, 1);
+    var pattern = '^\\s*' + swEscapeTextFinderRegex_(root) + '\\s*$';
+    var finder = range.createTextFinder(pattern);
+    if (finder.useRegularExpression) finder.useRegularExpression(true);
+    var matches = finder.findAll() || [];
+    var out = [];
+    for (var i = 0; i < matches.length; i++) {
+      out.push(swAppointmentArtifactRowAtNumber_(sh, matches[i].getRow(), width));
+    }
+    return out;
+  } catch (_) {}
+  return null;
+}
+
+function swAppointmentArtifactRowAtNumber_(sh, rowNumber, width) {
+  var values = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+  var row = { __rowNumber: rowNumber, rowNumber: rowNumber };
+  for (var j = 0; j < SW_APPOINTMENT_ARTIFACT_HEADERS.length; j++) {
+    row[SW_APPOINTMENT_ARTIFACT_HEADERS[j]] = j < values.length ? values[j] : '';
+  }
+  return row;
+}
+
+function swEscapeTextFinderRegex_(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function swCachedAppointmentArtifactRowsForRoot_(ss, root) {
+  var key = swAppointmentArtifactRootCacheKey_(ss, root);
+  try {
+    var memory = SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.rows || [];
+  } catch (_) {}
+
+  try {
+    var cached = CacheService.getScriptCache().get(key);
+    if (cached == null) return null;
+    var rows = swParseJson_(cached, []);
+    SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS * 1000,
+      rows: rows || []
+    };
+    return rows || [];
+  } catch (_) {}
+  return null;
+}
+
+function swCacheAppointmentArtifactRowsForRoot_(ss, root, rows) {
+  var key = swAppointmentArtifactRootCacheKey_(ss, root);
+  rows = rows || [];
+  try {
+    SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS * 1000,
+      rows: rows
+    };
+  } catch (_) {}
+  try {
+    var text = swStringify_(rows);
+    if (text.length < 90000) CacheService.getScriptCache().put(key, text, SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swInvalidateAppointmentArtifactRowsForRoot_(ss, root) {
+  root = swTrim_(root);
+  if (!root) return;
+  var key = swAppointmentArtifactRootCacheKey_(ss, root);
+  try { delete SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_[key]; } catch (_) {}
+  try { CacheService.getScriptCache().remove(key); } catch (_) {}
+}
+
+function swAppointmentArtifactRootCacheKey_(ss, root) {
+  return 'sw:artifactRoot:v1:' + ss.getId() + ':' + encodeURIComponent(root);
 }
 
 function swPublicAppointmentArtifacts_(ss, rootApptId) {
@@ -415,6 +500,7 @@ function swAppendAppointmentArtifactRow_(ss, record) {
     if (record[header] != null) values[H[header] - 1] = record[header];
   });
   sh.getRange(sh.getLastRow() + 1, 1, 1, values.length).setValues([values]);
+  swInvalidateAppointmentArtifactRowsForRoot_(ss, record && record['RootApptID']);
 }
 
 function swPatchAppointmentArtifactRow_(ss, row, patch) {
@@ -428,6 +514,10 @@ function swPatchAppointmentArtifactRow_(ss, row, patch) {
     values[col - 1] = patch[header] == null ? '' : patch[header];
   });
   sh.getRange(row.rowNumber, 1, 1, values.length).setValues([values]);
+  swInvalidateAppointmentArtifactRowsForRoot_(ss, row['RootApptID']);
+  if (patch && patch['RootApptID'] && patch['RootApptID'] !== row['RootApptID']) {
+    swInvalidateAppointmentArtifactRowsForRoot_(ss, patch['RootApptID']);
+  }
 }
 
 function swDriveFileIdFromUrl_(urlOrId) {
@@ -782,7 +872,9 @@ function sw_processAppointmentAutomation() {
 
 function swArtifactReadyForWorker_(row, now) {
   var stage = row['Workflow Stage'];
-  if (stage === SW_ARTIFACT_STAGES.ERROR) return swArtifactCanRetryDriveSharingError_(row);
+  if (stage === SW_ARTIFACT_STAGES.ERROR) {
+    return swArtifactCanRetryDriveSharingError_(row) || swArtifactCanRetryOpenAISummaryError_(row);
+  }
   if (stage === SW_ARTIFACT_STAGES.DUPLICATE_SKIPPED ||
       stage === SW_ARTIFACT_STAGES.REVIEW_PENDING ||
       stage === SW_ARTIFACT_STAGES.APPROVED || stage === SW_ARTIFACT_STAGES.JOC_HANDOFF) return false;
@@ -804,6 +896,19 @@ function swProcessAppointmentArtifact_(ss, row, now) {
       'Updated At': swIso_(now)
     });
     row['Workflow Stage'] = SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED;
+    row['Attempts'] = 0;
+    row['Last Error'] = '';
+    stage = row['Workflow Stage'];
+  }
+  if (stage === SW_ARTIFACT_STAGES.ERROR && swArtifactCanRetryOpenAISummaryError_(row)) {
+    swPatchAppointmentArtifactRow_(ss, row, {
+      'Workflow Stage': SW_ARTIFACT_STAGES.SUMMARY_QUEUED,
+      'Attempts': 0,
+      'Next Poll At': swIso_(now),
+      'Last Error': '',
+      'Updated At': swIso_(now)
+    });
+    row['Workflow Stage'] = SW_ARTIFACT_STAGES.SUMMARY_QUEUED;
     row['Attempts'] = 0;
     row['Last Error'] = '';
     stage = row['Workflow Stage'];
@@ -893,6 +998,15 @@ function swArtifactCanRetryDriveSharingError_(row) {
   if (oldSharingError) return true;
   var size = swBytesNumber_(row['Size Bytes']);
   return !size || size <= swAssemblyAppsScriptUploadMaxBytes_();
+}
+
+function swArtifactCanRetryOpenAISummaryError_(row) {
+  if (!swArtifactNeedsTranscription_(row['Artifact Type'])) return false;
+  if (!swTrim_(row['Transcript Doc ID'])) return false;
+  if (swTrim_(row['Summary Doc ID'])) return false;
+  var lastError = String(row['Last Error'] || '');
+  return lastError.indexOf('OpenAI response incomplete') >= 0 &&
+    lastError.indexOf('max_output_tokens') >= 0;
 }
 
 function swStartAssemblyTranscription_(ss, row, now) {
@@ -1206,19 +1320,18 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
     throw err;
   }
   var model = swTrim_(PropertiesService.getScriptProperties().getProperty('OPENAI_APPOINTMENT_SUMMARY_MODEL')) ||
-    (typeof OPENAI_MODEL_ === 'function' ? OPENAI_MODEL_() : '') ||
-    'gpt-5-mini';
+    'gpt-5.4-mini';
   var body = {
     model: model,
     input: [
       {
         role: 'system',
-        content: 'You summarize jewelry sales appointments for internal Client Advisor and JOC workflow. Extract only information supported by the transcript. Use concise, operational language.'
+        content: 'You write concise internal appointment summaries for a jewelry sales team. Use only facts from the transcript and appointment context. Do not produce analytics, scoring, JSON, or a client-facing message.'
       },
       {
         role: 'user',
         content: [
-          'Appointment context JSON:',
+          'Appointment context:',
           JSON.stringify({
             rootApptId: artifact['RootApptID'] || '',
             customerName: appointment.name || '',
@@ -1233,20 +1346,18 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
             diamondRequirements: appointment.dvCustomerLookingFor || appointment.dvCustomerRequirementsJson || ''
           }, null, 2),
           '',
+          'Write one plain-text appointment summary for internal use.',
+          'Keep it under 500 words.',
+          'Focus on what happened, what the customer wanted, what was discussed or shown, any decisions, and any stated next steps.',
+          'If a detail is not in the transcript, do not infer it.',
+          '',
           'Transcript:',
           transcriptText
         ].join('\n')
       }
     ],
-    max_output_tokens: 4000,
-    text: {
-      format: {
-        type: 'json_schema',
-        name: 'appointment_completion_summary',
-        strict: true,
-        schema: swAppointmentSummarySchema_()
-      }
-    }
+    max_output_tokens: 1200,
+    text: { format: { type: 'text' } }
   };
   var response = UrlFetchApp.fetch('https://api.openai.com/v1/responses', {
     method: 'post',
@@ -1257,9 +1368,36 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
   });
   var parsed = swFetchJsonOrThrow_(response, 'OpenAI appointment summary');
   if (parsed.status === 'incomplete') throw new Error('OpenAI response incomplete: ' + swStringify_(parsed.incomplete_details || {}));
-  var json = swExtractOpenAIJson_(parsed);
-  if (!json) throw new Error('OpenAI did not return valid structured summary JSON.');
-  return json;
+  var summaryText = swExtractOpenAIText_(parsed);
+  if (!summaryText) throw new Error('OpenAI did not return appointment summary text.');
+  return {
+    internal_appointment_summary: summaryText,
+    key_customer_insights: {},
+    recommended_next_steps: [],
+    client_follow_up_message_draft: '',
+    confidence_warning_flags: []
+  };
+}
+
+function swExtractOpenAIText_(body) {
+  if (typeof __extractTextFromResponsesBody__ === 'function') {
+    var extracted = __extractTextFromResponsesBody__(body);
+    if (swTrim_(extracted)) return swTrim_(extracted);
+  }
+  if (body && typeof body.output_text === 'string') return swTrim_(body.output_text);
+  try {
+    var texts = [];
+    var output = body.output || [];
+    for (var i = 0; i < output.length; i++) {
+      var content = output[i].content || [];
+      for (var j = 0; j < content.length; j++) {
+        if (typeof content[j].text === 'string') texts.push(content[j].text);
+        if (typeof content[j].content === 'string') texts.push(content[j].content);
+      }
+    }
+    return swTrim_(texts.join('\n'));
+  } catch (_) {}
+  return '';
 }
 
 function swAppointmentSummarySchema_() {
@@ -1356,22 +1494,30 @@ function swNormalizeAppointmentSummary_(result) {
 }
 
 function swReadableAppointmentSummary_(summary) {
-  return [
-    'Internal Appointment Summary',
-    summary.internal_appointment_summary || '',
-    '',
-    'Key Customer Insights',
-    swInsightsToText_(summary.key_customer_insights),
-    '',
-    'Recommended Next Steps',
-    swNextStepsToText_(summary.recommended_next_steps),
-    '',
-    'Client-Facing Follow-Up Draft',
-    summary.client_follow_up_message_draft || '',
-    '',
-    'Confidence / Warning Flags',
-    (summary.confidence_warning_flags || []).join('\n') || 'None flagged.'
-  ].join('\n');
+  var lines = [
+    'Appointment Summary',
+    summary.internal_appointment_summary || ''
+  ];
+  if (swSummaryHasInsights_(summary.key_customer_insights)) {
+    lines.push('', 'Key Customer Insights', swInsightsToText_(summary.key_customer_insights));
+  }
+  if ((summary.recommended_next_steps || []).length) {
+    lines.push('', 'Recommended Next Steps', swNextStepsToText_(summary.recommended_next_steps));
+  }
+  if (summary.client_follow_up_message_draft) {
+    lines.push('', 'Client-Facing Follow-Up Draft', summary.client_follow_up_message_draft);
+  }
+  if ((summary.confidence_warning_flags || []).length) {
+    lines.push('', 'Confidence / Warning Flags', (summary.confidence_warning_flags || []).join('\n'));
+  }
+  return lines.join('\n');
+}
+
+function swSummaryHasInsights_(insights) {
+  insights = insights || {};
+  return ['preferences', 'budget_signals', 'concerns', 'decision_makers', 'style_notes'].some(function (key) {
+    return (insights[key] || []).length > 0;
+  });
 }
 
 function swInsightsToText_(insights) {

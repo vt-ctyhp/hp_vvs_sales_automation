@@ -452,11 +452,30 @@ function swReadTaskRowById_(ss, taskId, readOnly) {
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
     : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
-  if (readOnly) return swReadTaskRowByIdOnePass_(sh, taskId);
+  if (readOnly) {
+    var cachedTask = swCachedTaskListRowById_(ss, taskId);
+    if (cachedTask && cachedTask.rowNumber) {
+      var cachedRow = swReadTaskRowAtNumber_(sh, cachedTask.rowNumber);
+      if (cachedRow && String(cachedRow.taskId) === String(taskId)) return cachedRow;
+    }
+    return swReadTaskRowByIdOnePass_(sh, taskId);
+  }
 
   var rowNumber = swFindTaskRow_(sh, taskId);
   if (!rowNumber) return null;
 
+  return swReadTaskRowAtNumber_(sh, rowNumber);
+}
+
+function swCachedTaskListRowById_(ss, taskId) {
+  if (!taskId) return null;
+  var cached = swReadCachedTaskListState_(ss);
+  return cached && cached.byId ? cached.byId[taskId] : null;
+}
+
+function swReadTaskRowAtNumber_(sh, rowNumber) {
+  rowNumber = Number(rowNumber);
+  if (!isFinite(rowNumber) || rowNumber < 2 || rowNumber > sh.getLastRow()) return null;
   var colCount = Math.min(sh.getLastColumn(), SW_TASK_HEADERS.length);
   var values = sh.getRange(rowNumber, 1, 1, colCount).getDisplayValues()[0];
   return swTaskFromValues_(values, rowNumber);
