@@ -797,8 +797,6 @@ function swTaskDashboardUserSignature_(user, cleanupTabEnabled) {
   user = user || {};
   var parts = [
     swNormEmail_(user.email || ''),
-    swNorm_(user.name || ''),
-    (user.roles || []).map(swNorm_).sort().join(','),
     user.isAdmin ? 'admin' : '',
     user.isJoc ? 'joc' : '',
     user.isRep ? 'rep' : '',
