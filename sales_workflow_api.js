@@ -357,7 +357,7 @@ function sw_getDiamondTrackingDashboard(authToken) {
     if (!C.trackingEta) missingColumns.push('Tracking ETA');
     if (!C.trackingStatus) missingColumns.push('Tracking Status');
 
-    var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+    var values = swDiamondRead200Rows_(sh, 3, lr - 2, C, lc);
     var today = new Date();
     var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     var warningMs = todayMs + 7 * 24 * 60 * 60 * 1000;
@@ -498,7 +498,7 @@ function sw_getInStockDiamonds(authToken) {
       returnDueDate: swDiamondFind200Column_(hm, ['Return DUE DATE', 'Return Due Date', 'Return Due'])
     };
 
-    var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+    var values = swDiamondRead200Rows_(sh, 3, lr - 2, C, lc);
     var today = new Date();
     var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     var warningMs = todayMs + returnWarning * 24 * 60 * 60 * 1000;
@@ -653,7 +653,7 @@ function sw_getBulkReturnCandidates(authToken) {
       returnDueDate: swDiamondFind200Column_(hm, ['Return DUE DATE', 'Return Due Date', 'Return Due'])
     };
 
-    var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+    var values = swDiamondRead200Rows_(sh, 3, lr - 2, C, lc);
     var today = new Date();
     var todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     var warningMs = todayMs + returnWarning * 24 * 60 * 60 * 1000;

@@ -252,7 +252,7 @@ function swDiamondBuildRowsByRoot_() {
   var hm = swDiamond200HeaderMap_(sh);
   var C = swDiamond200Columns_(hm);
   if (!C.root) return out;
-  var values = sh.getRange(3, 1, lr - 2, lc).getDisplayValues();
+  var values = swDiamondRead200Rows_(sh, 3, lr - 2, C, lc);
   values.forEach(function (row, i) {
     var root = swTrim_(row[C.root - 1]);
     if (!root) return;
@@ -361,6 +361,22 @@ function swDiamondEnsure200Column_(sh, header) {
 
 function swDiamondCell_(row, col) {
   return col ? swTrim_(row[col - 1]) : '';
+}
+
+function swDiamondRead200Rows_(sh, startRow, rowCount, columns, lastCol) {
+  var indexes = [];
+  Object.keys(columns || {}).forEach(function (key) {
+    var col = Number(columns[key]);
+    if (isFinite(col) && col > 0) indexes.push(col - 1);
+  });
+  if (typeof swReadSelectedRows_ === 'function') {
+    return swReadSelectedRows_(sh, startRow, rowCount, indexes, 'display');
+  }
+  var maxCol = 1;
+  indexes.forEach(function (idx) {
+    if (idx + 1 > maxCol) maxCol = idx + 1;
+  });
+  return sh.getRange(startRow, 1, rowCount, Math.min(Number(lastCol) || maxCol, maxCol)).getDisplayValues();
 }
 
 function swDiamondTrackerUrl_() {

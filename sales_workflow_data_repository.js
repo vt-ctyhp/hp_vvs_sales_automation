@@ -187,10 +187,10 @@ function swReadAppointments_(ss) {
 
   var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
   var idx = swAppointmentColumnIndex_(headers);
-  var width = swAppointmentDataWidth_(idx, lastCol);
+  var indexes = swAppointmentColumnIndexes_(idx);
   var rowCount = lastRow - 1;
-  var values = sh.getRange(2, 1, rowCount, width).getValues();
-  var display = sh.getRange(2, 1, rowCount, width).getDisplayValues();
+  var values = swReadSelectedRows_(sh, 2, rowCount, indexes, 'values');
+  var display = swReadSelectedRows_(sh, 2, rowCount, indexes, 'display');
 
   var out = [];
   for (var i = 0; i < values.length; i++) {
@@ -218,14 +218,14 @@ function swReadAppointmentsForRoot_(ss, rootApptId) {
   }
 
   var rowCount = lastRow - 1;
-  var width = swAppointmentDataWidth_(idx, lastCol);
+  var indexes = swAppointmentColumnIndexes_(idx);
   var cachedRows = swCachedAppointmentRootRows_(ss, want);
   if (cachedRows && cachedRows.length) {
     var cachedOut = [];
     cachedRows.forEach(function (rowNumber) {
       if (rowNumber < 2 || rowNumber > lastRow) return;
-      var values = sh.getRange(rowNumber, 1, 1, width).getValues()[0];
-      var display = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+      var values = swReadSelectedRows_(sh, rowNumber, 1, indexes, 'values')[0] || [];
+      var display = swReadSelectedRows_(sh, rowNumber, 1, indexes, 'display')[0] || [];
       var rec = swAppointmentRecordFromRows_(display, values, idx, rowNumber);
       if (swTrim_(rec.root) === want || swTrim_(rec.appt) === want) cachedOut.push(rec);
     });
@@ -240,20 +240,20 @@ function swReadAppointmentsForRoot_(ss, rootApptId) {
     var appt = appts.length ? swTrim_(appts[i][0]) : '';
     if (root !== want && appt !== want) continue;
     var rowNumber = i + 2;
-    var values = sh.getRange(rowNumber, 1, 1, width).getValues()[0];
-    var display = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+    var values = swReadSelectedRows_(sh, rowNumber, 1, indexes, 'values')[0] || [];
+    var display = swReadSelectedRows_(sh, rowNumber, 1, indexes, 'display')[0] || [];
     out.push(swAppointmentRecordFromRows_(display, values, idx, rowNumber));
   }
   return out;
 }
 
-function swAppointmentDataWidth_(idx, lastCol) {
-  var max = 0;
+function swAppointmentColumnIndexes_(idx) {
+  var out = [];
   Object.keys(idx || {}).forEach(function (key) {
     var col = Number(idx[key]);
-    if (isFinite(col) && col >= 0 && col > max) max = col;
+    if (isFinite(col) && col >= 0) out.push(col);
   });
-  return Math.max(1, Math.min(Number(lastCol) || 1, max + 1));
+  return out;
 }
 
 function swCacheAppointmentRootRows_(ss, appointments) {

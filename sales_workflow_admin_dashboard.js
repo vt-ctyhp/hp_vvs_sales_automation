@@ -473,10 +473,10 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
     return out;
   }
 
-  var width = swAdminDashboardPaymentDataWidth_(C, lc);
   var rowCount = lr - 1;
-  var values = sh.getRange(2, 1, rowCount, width).getValues();
-  var display = sh.getRange(2, 1, rowCount, width).getDisplayValues();
+  var indexes = swAdminDashboardPaymentColumnIndexes_(C);
+  var values = swReadSelectedRows_(sh, 2, rowCount, indexes, 'values');
+  var display = swReadSelectedRows_(sh, 2, rowCount, indexes, 'display');
   var receipts = [];
   for (var i = 0; i < display.length; i++) {
     var row = values[i];
@@ -530,13 +530,13 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   return out;
 }
 
-function swAdminDashboardPaymentDataWidth_(columns, lastCol) {
-  var max = 0;
+function swAdminDashboardPaymentColumnIndexes_(columns) {
+  var out = [];
   Object.keys(columns || {}).forEach(function (key) {
     var col = Number(columns[key]);
-    if (isFinite(col) && col >= 0 && col > max) max = col;
+    if (isFinite(col) && col >= 0) out.push(col);
   });
-  return Math.max(1, Math.min(Number(lastCol) || 1, max + 1));
+  return out;
 }
 
 function swAdminDashboardPaymentsSheet_() {
