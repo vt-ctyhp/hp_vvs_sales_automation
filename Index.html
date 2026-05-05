@@ -1630,6 +1630,214 @@
       gap: 18px;
     }
 
+    .admin-dashboard-toolbar {
+      align-items: end;
+      border-bottom: 1px solid var(--rule);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      padding-bottom: 16px;
+    }
+
+    .admin-health-section {
+      border: 1px solid var(--rule);
+      padding: 22px;
+    }
+
+    .admin-health-section.unframed {
+      border: 0;
+      padding: 0;
+    }
+
+    .admin-health-heading {
+      align-items: end;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .admin-risk-grid,
+    .admin-pulse-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .admin-risk-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .admin-health-card {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      min-width: 0;
+      padding: 16px;
+    }
+
+    .admin-health-card.danger {
+      border-top: 2px solid #A71358;
+    }
+
+    .admin-health-card.warn {
+      border-top: 2px solid #B56A00;
+    }
+
+    .admin-health-card.info {
+      border-top: 2px solid #1261A6;
+    }
+
+    .admin-health-value {
+      color: var(--ink-primary);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 34px;
+      line-height: 1;
+      overflow-wrap: anywhere;
+    }
+
+    .admin-health-footnote {
+      color: var(--ink-primary);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .admin-stage-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .admin-stage-card {
+      background: var(--surface-card);
+      border-top: 3px solid var(--rule);
+      padding: 12px;
+    }
+
+    .admin-stage-card.lead { border-top-color: #A71358; }
+    .admin-stage-card.hotLead { border-top-color: #B56A00; }
+    .admin-stage-card.followUp { border-top-color: #7E6DD8; }
+    .admin-stage-card.appointment { border-top-color: #1261A6; }
+    .admin-stage-card.deposit { border-top-color: #168A62; }
+    .admin-stage-card.inProduction { border-top-color: #5B6C72; }
+
+    .admin-dashboard-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+    }
+
+    .admin-trend-chart {
+      align-items: end;
+      border-bottom: 1px solid var(--rule);
+      border-left: 1px solid var(--rule);
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(12, minmax(18px, 1fr));
+      height: 220px;
+      padding: 12px 8px 0;
+    }
+
+    .admin-trend-week {
+      align-items: end;
+      display: grid;
+      gap: 6px;
+      height: 100%;
+      min-width: 0;
+    }
+
+    .admin-trend-bars {
+      align-items: end;
+      display: flex;
+      gap: 3px;
+      height: 160px;
+      justify-content: center;
+    }
+
+    .admin-trend-bar {
+      background: #7E6DD8;
+      min-height: 2px;
+      width: 12px;
+    }
+
+    .admin-trend-dot {
+      background: #168A62;
+      min-height: 2px;
+      width: 4px;
+    }
+
+    .admin-trend-label {
+      color: var(--ink-muted);
+      font-size: 10px;
+      overflow: hidden;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .admin-source-list,
+    .admin-deal-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .admin-source-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .admin-source-top,
+    .admin-deal-row {
+      align-items: baseline;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+    }
+
+    .admin-source-track {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .admin-source-fill {
+      background: var(--ink-primary);
+      height: 100%;
+    }
+
+    .admin-scorecard-wrap {
+      overflow-x: auto;
+    }
+
+    .admin-scorecard {
+      border-collapse: collapse;
+      min-width: 760px;
+      width: 100%;
+    }
+
+    .admin-scorecard th,
+    .admin-scorecard td {
+      border-bottom: 1px solid var(--rule);
+      font-size: 12px;
+      padding: 10px 8px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .admin-scorecard th:first-child,
+    .admin-scorecard td:first-child {
+      text-align: left;
+    }
+
+    .admin-scorecard th {
+      color: var(--ink-muted);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
     .admin-kanban-board {
       display: grid;
       gap: 12px;
@@ -2137,7 +2345,7 @@
         min-height: 96px;
       }
 
-      .stat-grid, .proposal-grid, .admin-filter-grid {
+      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-risk-grid, .admin-pulse-grid, .admin-dashboard-grid, .admin-stage-grid {
         grid-template-columns: 1fr;
       }
 
@@ -2371,7 +2579,7 @@
             </button>
             <button id="tab-adminDashboard" class="nav-menu-item" type="button" data-view="adminDashboard" role="menuitem" style="display:none">
               <span class="nav-item-label">Customer Pipeline</span>
-              <span class="nav-item-description">Full-width customer pipeline</span>
+              <span class="nav-item-description">Business health view</span>
             </button>
           </div>
         </div>
@@ -2483,8 +2691,6 @@
       diamondSyncPreview: null,
       adminDashboard: null,
       adminDashboardFilters: null,
-      adminDashboardDetail: null,
-      adminDashboardSelectedRoot: '',
       employeeScheduleFilter: 'all',
       customerSearch: {
         query: '',
@@ -2745,11 +2951,6 @@
           var customerCard = closestMatch_(event.target, '.js-customer-search-card');
           if (customerCard) {
             openCustomerSearchDetail(customerCard.getAttribute('data-root') || '');
-            return;
-          }
-          var adminCard = closestMatch_(event.target, '.js-admin-kanban-card');
-          if (adminCard) {
-            openAdminDashboardCustomerDetail(adminCard.getAttribute('data-root') || '');
             return;
           }
           var bulkSelectButton = closestMatch_(event.target, '.js-bulk-return-select');
@@ -3590,8 +3791,8 @@
         eyebrow = 'Bulk Returns';
       }
       if (view === 'adminDashboard') {
-        title = 'Customer pipeline';
-        eyebrow = 'Admin Dashboard';
+        title = 'Business health and customer pipeline';
+        eyebrow = 'Customer Pipeline';
       }
       if (view === 'employeeSchedules') {
         title = 'Employee schedules and coverage';
@@ -3605,14 +3806,9 @@
       document.getElementById('viewEyebrow').textContent = eyebrow;
     }
 
-    function loadAdminDashboard(filters, preserveDetail) {
+    function loadAdminDashboard(filters) {
       var requestId = beginMainRequest('adminDashboard');
       appState.selectedTaskId = '';
-      if (!preserveDetail) {
-        appState.detailRequestId += 1;
-        appState.adminDashboardDetail = null;
-        appState.adminDashboardSelectedRoot = '';
-      }
       setActiveTab('adminDashboard');
       renderViewHeader('adminDashboard');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING ADMIN DASHBOARD</div>';
@@ -3650,7 +3846,9 @@
         generatedAt: next.generatedAt || prev.generatedAt || '',
         filters: next.filters || prev.filters || {},
         filterOptions: next.filterOptions || prev.filterOptions || {},
-        kanban: next.kanban || prev.kanban || null,
+        metrics: next.metrics || prev.metrics || {},
+        health: next.health || prev.health || null,
+        taskCount: next.taskCount == null ? prev.taskCount : next.taskCount,
         warnings: next.warnings || prev.warnings || []
       };
     }
@@ -4115,10 +4313,16 @@
       updateAdminDashboardLayoutMode();
       document.getElementById('taskList').innerHTML = [
         '<div class="admin-dashboard-shell">',
+          '<div class="admin-dashboard-toolbar">',
+            '<div>',
+              '<div class="eyebrow">Customer Pipeline</div>',
+              '<h2>Business health</h2>',
+            '</div>',
+            '<div class="meta">' + escapeHtml(((res.filters || {}).windowLabel) || '') + '</div>',
+          '</div>',
           renderAdminDashboardFilters(res),
           warnings,
-          '<div id="adminDashboardDetailMount"' + (appState.adminDashboardDetail ? '' : ' style="display:none"') + '>' + (appState.adminDashboardDetail ? customerSearchDetailPanelHtml(appState.adminDashboardDetail) : '') + '</div>',
-          renderAdminDashboardKanban(res.kanban || { columns: [] }),
+          renderAdminDashboardHealth(res.health || {}),
         '</div>'
       ].join('');
     }
@@ -4170,71 +4374,218 @@
       return tags.join('');
     }
 
-    function openAdminDashboardCustomerDetail(root) {
-      if (!root) return;
-      appState.adminDashboardSelectedRoot = root;
-      appState.detailRequestId += 1;
-      var detailRequestId = appState.detailRequestId;
-      var mount = document.getElementById('adminDashboardDetailMount');
-      if (mount) {
-        mount.innerHTML = '<div class="customer-detail-card"><div class="loading">LOADING CUSTOMER</div></div>';
-        mount.style.display = '';
-      }
-      serverCall('sw_getCustomerSearchDetail', [root], function (res) {
-        if (detailRequestId !== appState.detailRequestId || appState.adminDashboardSelectedRoot !== root) return;
-        appState.adminDashboardDetail = res || {};
-        renderAdminDashboard(appState.adminDashboard || {});
-      }, 'Loading customer');
-    }
-
-    function renderAdminDashboardKanban(kanban) {
-      var columns = kanban.columns || [];
-      if (!columns.length) {
-        return '<div class="empty"><h3>No pipeline data</h3><p>Customer stages will appear when matching master rows are available.</p></div>';
-      }
+    function renderAdminDashboardHealth(health) {
+      health = health || {};
       return [
-        '<div class="panel-header">',
-          '<div class="eyebrow">Customer Pipeline</div>',
-          '<h2>Full-width Pipeline</h2>',
+        renderAdminRiskSnapshot(health.snapshot || []),
+        renderAdminPulse(health.pulse || []),
+        renderAdminPipeline(health.pipeline || {}),
+        '<div class="admin-dashboard-grid">',
+          renderAdminTrend(health.trend || {}),
+          renderAdminLeadSources(health.leadSources || {}),
         '</div>',
-        '<div class="admin-kanban-board">',
-          columns.map(renderAdminKanbanColumn).join(''),
+        renderAdminAdvisorScorecard((health.advisorScorecard || {}).rows || []),
+        '<div class="admin-dashboard-grid">',
+          renderAdminTopDeals(health.topDeals || []),
+          renderAdminReceivables(health.receivables || {}),
         '</div>'
       ].join('');
     }
 
-    function renderAdminKanbanColumn(column) {
-      var cards = column.cards || [];
+    function renderAdminRiskSnapshot(cards) {
       return [
-        '<section class="admin-kanban-column">',
-          '<div class="admin-kanban-header">',
-            '<div class="task-title">' + escapeHtml(column.label || '') + '</div>',
-            '<div class="admin-kanban-count">' + escapeHtml(column.count || 0) + ' customer(s)</div>',
+        '<section class="admin-health-section unframed">',
+          '<div class="admin-health-heading">',
+            '<div><div class="eyebrow">At-risk snapshot</div><h2>Needs attention now</h2></div>',
           '</div>',
-          cards.length ? cards.map(renderAdminKanbanCard).join('') : '<div class="empty">No customers</div>',
-          column.hiddenCount ? '<div class="meta">+' + escapeHtml(column.hiddenCount) + ' more</div>' : '',
+          '<div class="admin-risk-grid">',
+            (cards || []).map(function (card) {
+              return [
+                '<div class="admin-health-card ' + escapeAttr(card.tone || '') + '">',
+                  '<div class="eyebrow">' + escapeHtml(card.title || '') + '</div>',
+                  '<div class="admin-health-value">' + escapeHtml(card.value == null ? 0 : card.value) + '</div>',
+                  '<div class="meta">' + escapeHtml(card.caption || '') + '</div>',
+                  '<div class="admin-health-footnote">' + escapeHtml(card.footnote || '') + '</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
         '</section>'
       ].join('');
     }
 
-    function renderAdminKanbanCard(card) {
-      var visit = card.nextVisit ? 'Next ' + card.nextVisit : (card.lastVisit ? 'Last ' + card.lastVisit : 'No visit date');
-      var payment = card.balanceDue !== '' && card.balanceDue != null
-        ? 'Balance ' + formatAdminCurrency(card.balanceDue)
-        : (card.paidNet ? 'Paid ' + formatAdminCurrency(card.paidNet) : 'No payment summary');
+    function renderAdminPulse(cards) {
       return [
-        '<button class="admin-kanban-card js-admin-kanban-card" type="button" data-root="' + escapeAttrValue(card.root || '') + '">',
-          '<div class="task-top">',
-            '<div class="task-main">',
-              '<div class="admin-card-title">' + escapeHtml(card.customerName || 'No customer') + '</div>',
-              '<div class="meta">' + escapeHtml([card.clientAdvisor ? 'Advisor ' + card.clientAdvisor : '', card.joc ? 'JOC ' + card.joc : ''].filter(Boolean).join(' | ') || 'Unassigned') + '</div>',
-            '</div>',
-            '<div class="task-side">' + taskBrandChipHtml(card.brand) + '</div>',
+        '<section class="admin-health-section unframed">',
+          '<div class="admin-health-heading">',
+            '<div><div class="eyebrow">Weekly pulse</div><h2>Current window</h2></div>',
           '</div>',
-          '<div class="meta">' + escapeHtml(visit) + '</div>',
-          '<div class="meta">' + escapeHtml([card.so ? 'SO ' + card.so : '', payment].filter(Boolean).join(' | ')) + '</div>',
-          '<span class="badge">' + escapeHtml(card.stageLabel || '') + '</span>',
-        '</button>'
+          '<div class="admin-pulse-grid">',
+            (cards || []).map(function (card) {
+              return [
+                '<div class="admin-health-card">',
+                  '<div class="eyebrow">' + escapeHtml(card.label || '') + '</div>',
+                  '<div class="admin-health-value">' + escapeHtml(card.value == null ? 0 : card.value) + '</div>',
+                  '<div class="meta">' + escapeHtml(card.caption || '') + '</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminPipeline(pipeline) {
+      pipeline = pipeline || {};
+      var stages = pipeline.stages || [];
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading">',
+            '<div>',
+              '<div class="eyebrow">Pipeline by stage</div>',
+              '<h2>Active customers - weighted value</h2>',
+              '<div class="meta">' + escapeHtml((pipeline.activeCustomers || 0) + ' active customer(s) | ' + formatAdminCurrency(pipeline.weightedValue || 0) + ' total weighted pipeline | ' + formatAdminCurrency(pipeline.outstandingReceivables || 0) + ' outstanding receivables') + '</div>',
+            '</div>',
+          '</div>',
+          '<div class="admin-stage-grid">',
+            stages.map(function (stage) {
+              return [
+                '<div class="admin-stage-card ' + escapeAttr(stage.key || '') + '">',
+                  '<div class="eyebrow">' + escapeHtml(stage.label || '') + '</div>',
+                  '<div class="stat-value">' + escapeHtml(stage.count || 0) + '</div>',
+                  '<div class="meta">' + escapeHtml(formatAdminCurrency(stage.weightedValue || 0)) + ' weighted</div>',
+                  '<div class="meta">' + escapeHtml(formatAdminCurrency(stage.receivables || 0)) + ' receivable</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+          '<div class="template-box" style="margin-top:14px;min-height:0">' + escapeHtml(pipeline.insight || '') + '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminTrend(trend) {
+      trend = trend || {};
+      var weeks = trend.weeks || [];
+      var maxBookings = Math.max(1, Number(trend.maxBookings || 0));
+      var maxDeposits = Math.max(1, Number(trend.maxDeposits || 0));
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Trend - last 12 weeks</div><h2>Bookings and first-time deposits</h2></div></div>',
+          '<div class="admin-trend-chart">',
+            weeks.map(function (week) {
+              var bookingHeight = Math.max(2, Math.round((Number(week.bookings || 0) / maxBookings) * 150));
+              var depositHeight = Math.max(2, Math.round((Number(week.firstDeposits || 0) / maxDeposits) * 150));
+              return [
+                '<div class="admin-trend-week" title="' + escapeAttrValue((week.startDate || '') + ' to ' + (week.endDate || '') + ': ' + (week.bookings || 0) + ' booking(s), ' + (week.firstDeposits || 0) + ' first deposit(s)') + '">',
+                  '<div class="admin-trend-bars">',
+                    '<div class="admin-trend-bar" style="height:' + bookingHeight + 'px"></div>',
+                    '<div class="admin-trend-dot" style="height:' + depositHeight + 'px"></div>',
+                  '</div>',
+                  '<div class="admin-trend-label">' + escapeHtml(week.label || '') + '</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+          '<div class="meta" style="margin-top:10px"><span style="color:#7E6DD8">Bookings</span> | <span style="color:#168A62">First-time deposits</span></div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminLeadSources(sourceData) {
+      sourceData = sourceData || {};
+      if (!sourceData.available) {
+        return [
+          '<section class="admin-health-section">',
+            '<div class="admin-health-heading"><div><div class="eyebrow">Lead sources - 90 days</div><h2>Where customers come from</h2></div></div>',
+            '<div class="empty">' + escapeHtml(sourceData.note || 'Lead source data is unavailable.') + '</div>',
+          '</section>'
+        ].join('');
+      }
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Lead sources - 90 days</div><h2>Where customers come from</h2></div></div>',
+          '<div class="admin-source-list">',
+            (sourceData.rows || []).map(function (row) {
+              return [
+                '<div class="admin-source-row">',
+                  '<div class="admin-source-top"><span>' + escapeHtml(row.source || '') + '</span><span class="meta">' + escapeHtml((row.count || 0) + ' | ' + (row.pct || 0) + '%') + '</span></div>',
+                  '<div class="admin-source-track"><div class="admin-source-fill" style="width:' + Math.max(1, Math.min(100, Number(row.pct || 0))) + '%"></div></div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+          '<div class="meta" style="margin-top:12px">' + escapeHtml(sourceData.note || '') + '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminAdvisorScorecard(rows) {
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Advisor scorecard</div><h2>Performance and hygiene by rep</h2></div></div>',
+          rows.length ? [
+            '<div class="admin-scorecard-wrap"><table class="admin-scorecard">',
+              '<thead><tr><th>Rep</th><th>Customers</th><th>Active Pipeline</th><th>Win Rate</th><th>Collected</th><th>No-touch &gt;48h</th><th>3D Overdue</th><th>Escalations</th></tr></thead>',
+              '<tbody>',
+                rows.map(function (row) {
+                  return [
+                    '<tr>',
+                      '<td>' + escapeHtml(row.advisor || 'Unassigned') + '</td>',
+                      '<td>' + escapeHtml(row.customers || 0) + '</td>',
+                      '<td>' + escapeHtml(formatAdminCurrency(row.weightedPipeline || 0)) + '</td>',
+                      '<td>' + escapeHtml(row.winRate == null ? '-' : row.winRate + '%') + '</td>',
+                      '<td>' + escapeHtml(formatAdminCurrency(row.collected || 0)) + '</td>',
+                      '<td>' + escapeHtml(row.noTouch || 0) + '</td>',
+                      '<td>' + escapeHtml(row.threeDOverdue || 0) + '</td>',
+                      '<td>' + escapeHtml(row.escalations || 0) + '</td>',
+                    '</tr>'
+                  ].join('');
+                }).join(''),
+              '</tbody>',
+            '</table></div>'
+          ].join('') : '<div class="empty">No advisor data matches these filters.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminTopDeals(rows) {
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Top deals to protect</div><h2>Highest weighted pipeline</h2></div></div>',
+          rows.length ? '<div class="admin-deal-list">' + rows.map(function (row) {
+            var title = row.masterUrl ? '<a href="' + escapeHref(row.masterUrl) + '" target="_blank">' + escapeHtml(row.customerName || '') + '</a>' : escapeHtml(row.customerName || '');
+            return [
+              '<div class="admin-deal-row">',
+                '<div><div class="task-title">' + title + '</div><div class="meta">' + escapeHtml([row.advisor, row.stageLabel, row.quietDays == null ? '' : row.quietDays + 'd quiet'].filter(Boolean).join(' | ')) + '</div></div>',
+                '<div class="task-side">' + escapeHtml(formatAdminCurrency(row.weightedValue || 0)) + '</div>',
+              '</div>'
+            ].join('');
+          }).join('') + '</div>' : '<div class="empty">No weighted pipeline deals match these filters.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminReceivables(data) {
+      data = data || {};
+      var rows = data.rows || [];
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Receivables watch</div><h2>Outstanding deposit balances</h2></div></div>',
+          '<div class="admin-health-card" style="margin-bottom:12px">',
+            '<div class="eyebrow">Open balance - ' + escapeHtml(data.customers || 0) + ' customer(s)</div>',
+            '<div class="admin-health-value">' + escapeHtml(formatAdminCurrency(data.openBalance || 0)) + '</div>',
+          '</div>',
+          rows.length ? '<div class="admin-deal-list">' + rows.map(function (row) {
+            var title = row.masterUrl ? '<a href="' + escapeHref(row.masterUrl) + '" target="_blank">' + escapeHtml(row.customerName || '') + '</a>' : escapeHtml(row.customerName || '');
+            return [
+              '<div class="admin-deal-row">',
+                '<div><div class="task-title">' + title + '</div><div class="meta">' + escapeHtml([row.advisor, row.stageLabel, row.lastPaymentDate ? 'last touch ' + row.lastPaymentDate : ''].filter(Boolean).join(' | ')) + '</div></div>',
+                '<div class="task-side">' + escapeHtml(formatAdminCurrency(row.balanceDue || 0)) + '</div>',
+              '</div>'
+            ].join('');
+          }).join('') + '</div>' : '<div class="empty">No open balances match these filters.</div>',
+        '</section>'
       ].join('');
     }
 
@@ -4778,13 +5129,12 @@
     }
 
     function activeCustomerDetailPayload() {
-      if (appState.view === 'adminDashboard') return appState.adminDashboardDetail || {};
       return ((appState.customerSearch || {}).detail) || {};
     }
 
     function customerSearchRoot() {
       var detail = activeCustomerDetailPayload();
-      return detail.root || ((detail.card || {}).root) || (appState.view === 'adminDashboard' ? appState.adminDashboardSelectedRoot : appState.customerSearch.selectedRoot) || '';
+      return detail.root || ((detail.card || {}).root) || appState.customerSearch.selectedRoot || '';
     }
 
     function openCustomerStatusAction() {
@@ -4851,14 +5201,6 @@
 
     function customerSearchActionSuccess(message) {
       return function (res) {
-        if (appState.view === 'adminDashboard') {
-          appState.adminDashboardDetail = res || {};
-          appState.adminDashboardSelectedRoot = (res && res.root) || appState.adminDashboardSelectedRoot || '';
-          renderAdminDashboard(appState.adminDashboard || {});
-          setStatus(message);
-          loadAdminDashboard(appState.adminDashboardFilters || {}, true);
-          return;
-        }
         appState.customerSearch.detail = res || {};
         appState.customerSearch.selectedRoot = (res && res.root) || appState.customerSearch.selectedRoot || '';
         renderCustomerSearchDetail(res || {});
