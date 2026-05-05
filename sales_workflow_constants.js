@@ -9,6 +9,8 @@ var SW_SHEETS = {
   CONFIG: '_SalesWorkflowConfig',
   TEMPLATES: '_SalesWorkflowTemplates',
   USERS: '_SalesWorkflowUsers',
+  DATA_CLEANUP: '_SalesDataCleanup',
+  APPOINTMENT_ARTIFACTS: '_AppointmentArtifacts',
   ROSTER: '10_Roster_Schedule',
   SCHEDULE_CHANGES: 'Schedule Changes',
   DROPDOWN: 'Dropdown'
@@ -44,7 +46,10 @@ var SW_TASKS = {
   DIAMOND_ORDER_ACK_REP: 'ACK_DIAMONDS_ORDERED_ASSIGNED_REP',
   DIAMOND_ORDER_ACK_JOC: 'ACK_DIAMONDS_ORDERED_JOC',
   DIAMOND_ETA_REP: 'REVIEW_DIAMOND_ETA_ASSIGNED_REP',
-  DIAMOND_ETA_JOC: 'REVIEW_DIAMOND_ETA_JOC'
+  DIAMOND_ETA_JOC: 'REVIEW_DIAMOND_ETA_JOC',
+  DATA_CLEANUP_REVIEW: 'CUSTOMER_DATA_CLEANUP_REVIEW',
+  DATA_CLEANUP_CONFIRM: 'CUSTOMER_DATA_CLEANUP_CONFIRM',
+  DATA_CLEANUP_REVISE: 'CUSTOMER_DATA_CLEANUP_REVISE'
 };
 var SW_OWNER_ROLES = {
   SYSTEM: 'System',
@@ -160,4 +165,41 @@ var SW_AUTH_USER_HEADERS = [
   'Temporary Password?',
   'Last Login At',
   'Notes'
+];
+var SW_DATA_CLEANUP_HEADERS = [
+  'CaseID',
+  'Campaign ID',
+  'RootApptID',
+  'APPT_ID',
+  'Customer Name',
+  'Brand',
+  'Client Advisor',
+  'Client Advisor Email',
+  'JOC',
+  'JOC Email',
+  'Stage Key',
+  'Current Sales Stage',
+  'Current Conversion Status',
+  'Current Custom Order Status',
+  'Current In Production Status',
+  'Last Touch At',
+  'Stale Days',
+  'Status',
+  'Campaign Tab?',
+  'Proposal JSON',
+  'Proposed By',
+  'Proposed By Email',
+  'Proposed Role',
+  'Proposed At',
+  'Confirmation By',
+  'Confirmation Email',
+  'Confirmed At',
+  'Return Reason',
+  'Returned By',
+  'Returned At',
+  'Revision Count',
+  'Applied At',
+  'Applied Result JSON',
+  'Created At',
+  'Updated At'
 ];

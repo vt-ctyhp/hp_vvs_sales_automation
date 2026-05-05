@@ -178,20 +178,28 @@ function swListVisibleTasks_(ss, user, view) {
   return swListVisibleTasksFromState_(state, user, view);
 }
 
-function swListVisibleTasksFromState_(state, user, view) {
-  return swBuildVisibleTaskBuckets_(state, user)[view || 'mine'] || [];
+function swListVisibleTasksFromState_(state, user, view, options) {
+  return swBuildVisibleTaskBuckets_(state, user, options)[view || 'mine'] || [];
 }
 
-function swBuildVisibleTaskBuckets_(state, user) {
+function swBuildVisibleTaskBuckets_(state, user, options) {
+  options = options || {};
   var now = new Date().getTime();
   var tasks = state.tasks || Object.keys(state.byId || {}).map(function (id) { return state.byId[id]; });
-  var buckets = { mine: [], coverage: [], admin: [] };
+  var buckets = { mine: [], cleanup: [], coverage: [], admin: [] };
   tasks.forEach(function (t) {
-    if (swTaskDueForQueue_(t, now) && swTaskOwnedByUser_(t, user)) {
+    var due = swTaskDueForQueue_(t, now);
+    var cleanupCampaignTask = typeof swIsDataCleanupTaskType_ === 'function' &&
+      swIsDataCleanupTaskType_(t.taskType) &&
+      swNorm_(t.lifecycleStage) === swNorm_('Cleanup Campaign');
+    if (options.cleanupCampaignTabEnabled && cleanupCampaignTask && due && (user.isAdmin || swTaskOwnedByUser_(t, user))) {
+      buckets.cleanup.push(t);
+    }
+    if (due && swTaskOwnedByUser_(t, user) && !(options.cleanupCampaignTabEnabled && cleanupCampaignTask)) {
       buckets.mine.push(t);
     }
     if ((user.isJoc || user.isAdmin) && t.ownerRole === 'JOC' &&
-      swTaskDueForQueue_(t, now) &&
+      due &&
       (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'))) {
       buckets.coverage.push(t);
     }
@@ -201,6 +209,7 @@ function swBuildVisibleTaskBuckets_(state, user) {
   });
 
   buckets.mine = swSortAndPublishTasks_(buckets.mine, now);
+  buckets.cleanup = swSortAndPublishTasks_(buckets.cleanup, now);
   buckets.coverage = swSortAndPublishTasks_(buckets.coverage, now);
   buckets.admin = swSortAndPublishTasks_(buckets.admin, now);
   return buckets;

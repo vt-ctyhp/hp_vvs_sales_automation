@@ -14,18 +14,23 @@ function sw_setupSalesWorkflow() {
   var configSheet = swEnsureSheet_(ss, SW_SHEETS.CONFIG, SW_CONFIG_HEADERS);
   var templateSheet = swEnsureSheet_(ss, SW_SHEETS.TEMPLATES, SW_TEMPLATE_HEADERS);
   var usersSheet = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
+  var cleanupSheet = swEnsureSheet_(ss, SW_SHEETS.DATA_CLEANUP, SW_DATA_CLEANUP_HEADERS);
+  var artifactSheet = swEnsureAppointmentArtifactsSheet_(ss);
 
   swStyleSheet_(taskSheet);
   swStyleSheet_(logSheet);
   swStyleSheet_(configSheet);
   swStyleSheet_(templateSheet);
   swStyleSheet_(usersSheet);
+  swStyleSheet_(cleanupSheet);
+  swStyleSheet_(artifactSheet);
 
   swSeedConfig_(configSheet);
   swSeedTemplates_(templateSheet);
   swSeedAuthUsers_(usersSheet);
   swNormalizeWorkflowUserRoleLabels_(ss);
   swEnsureDiamondRequirementMasterHeaders_(ss);
+  if (typeof swEnsureDataCleanupMasterHeaders_ === 'function') swEnsureDataCleanupMasterHeaders_(ss);
 
   return {
     ok: true,
@@ -46,6 +51,7 @@ function sw_generateSalesWorkflowTasks() {
 
       var ss = swSpreadsheet_();
       var ctx = swBuildContext_(ss, true);
+      ctx.appointmentSummaryByRoot = typeof swAppointmentSummaryIndex_ === 'function' ? swAppointmentSummaryIndex_(ss) : {};
       if (swNorm_(swConfigValue_(ctx.config, 'SYSTEM', 'FEATURE_ENABLED', 'Y')) === 'n') {
         return {
           ok: true,
@@ -88,6 +94,10 @@ function sw_generateSalesWorkflowTasks() {
 
         swGenerateTasksForAppointment_(ss, taskState, ctx, rec, now, summary);
       });
+
+      if (typeof swGenerateDataCleanupTasks_ === 'function') {
+        summary.dataCleanup = swGenerateDataCleanupTasks_(ss, taskState, ctx, masterRows, now, summary);
+      }
 
       swFlushDeferredTaskWrites_(ss, taskState);
       return summary;
@@ -140,15 +150,18 @@ function sw_refreshTaskOwners() {
 function sw_installSalesWorkflowTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
     var fn = trigger.getHandlerFunction();
-    if (fn === 'sw_generateSalesWorkflowTasks' || fn === 'sw_refreshTaskOwners') {
+    if (fn === 'sw_generateSalesWorkflowTasks' || fn === 'sw_refreshTaskOwners' ||
+        fn === 'processUploadQueue' || fn === 'processSummariesWorker' ||
+        fn === 'sw_processAppointmentAutomation') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
   ScriptApp.newTrigger('sw_generateSalesWorkflowTasks').timeBased().everyHours(1).create();
   ScriptApp.newTrigger('sw_refreshTaskOwners').timeBased().everyDays(1).atHour(7).create();
+  ScriptApp.newTrigger('sw_processAppointmentAutomation').timeBased().everyMinutes(5).create();
   return {
     ok: true,
-    message: 'Installed hourly task generation and daily 7am owner refresh.'
+    message: 'Installed hourly task generation, daily 7am owner refresh, and 5-minute appointment automation.'
   };
 }
 
@@ -166,12 +179,17 @@ function sw_getBootstrap(authToken) {
     mark('requiredSheets');
     var user = swAuthUserForApi_(ss, authToken);
     mark('identity', { mode: authToken ? 'passwordSession' : 'appsScriptIdentity' });
+    var config = swReadConfig_(ss, true);
+    var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
+      ? swDataCleanupCampaignTabEnabled_(config)
+      : false;
     var state = swReadTaskListState_(ss, true);
     mark('taskListRead', { tasks: state.tasks.length });
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
-    var buckets = swBuildVisibleTaskBuckets_(state, user);
+    var buckets = swBuildVisibleTaskBuckets_(state, user, { cleanupCampaignTabEnabled: cleanupTabEnabled });
     mark('taskBuckets', {
       mine: buckets.mine.length,
+      cleanup: buckets.cleanup.length,
       coverage: buckets.coverage.length,
       admin: buckets.admin.length
     });
@@ -181,6 +199,7 @@ function sw_getBootstrap(authToken) {
       tasks: buckets.mine,
       counts: {
         mine: buckets.mine.length,
+        cleanup: buckets.cleanup.length,
         coverage: buckets.coverage.length,
         admin: user.isAdmin ? buckets.admin.length : 0
       },
@@ -190,6 +209,7 @@ function sw_getBootstrap(authToken) {
         inStockDiamonds: true,
         diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
         bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
+        cleanup: cleanupTabEnabled,
         coverage: user.isJoc || user.isAdmin,
         adminDashboard: user.isAdmin,
         admin: user.isAdmin
@@ -205,7 +225,7 @@ function sw_getBootstrap(authToken) {
 function sw_getMyTasks(authToken, view) {
   return swTimed_('sw_getMyTasks', function () {
     var mark = swStepTimer_('sw_getMyTasks');
-    if (!view && /^(mine|coverage|admin)$/i.test(String(authToken || ''))) {
+    if (!view && /^(mine|cleanup|coverage|admin)$/i.test(String(authToken || ''))) {
       view = authToken;
       authToken = '';
     }
@@ -217,9 +237,13 @@ function sw_getMyTasks(authToken, view) {
     var user = swAuthUserForApi_(ss, authToken);
     mark('identity');
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+    var config = swReadConfig_(ss, true);
+    var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
+      ? swDataCleanupCampaignTabEnabled_(config)
+      : false;
     var state = swReadTaskListState_(ss, true);
     mark('taskListRead', { tasks: state.tasks.length });
-    var tasks = swListVisibleTasksFromState_(state, user, viewName);
+    var tasks = swListVisibleTasksFromState_(state, user, viewName, { cleanupCampaignTabEnabled: cleanupTabEnabled });
     mark('filter', { view: viewName, tasks: tasks.length });
     return {
       ok: true,
@@ -463,6 +487,7 @@ function sw_getInStockDiamonds(authToken) {
       customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
       appointment: swDiamondFind200Column_(hm, ['Customer Appt Time & Date', 'Customer Appointment Date', 'Appointment Date']),
       assignedRep: swDiamondFind200Column_(hm, ['Client Advisor', 'Assigned Rep', 'Sales Rep']),
+      joc: swDiamondFind200Column_(hm, ['JOC', 'Assisted Rep', 'Assistant Rep']),
       company: swDiamondFind200Column_(hm, ['Company', 'Brand']),
       vendor: swDiamondFind200Column_(hm, ['Vendor']),
       stoneType: swDiamondFind200Column_(hm, ['Stone Type', 'StoneType']),
@@ -493,6 +518,7 @@ function sw_getInStockDiamonds(authToken) {
       returnSoon: 0,
       returnOverdue: 0,
       noReturnDate: 0,
+      assignmentMissing: 0,
       warningDays: returnWarning
     };
 
@@ -521,12 +547,18 @@ function sw_getInStockDiamonds(authToken) {
       var color = swDiamondCell_(row, C.color);
       var clarity = swDiamondCell_(row, C.clarity);
       var daysUntilReturn = returnMs ? Math.ceil((returnMs - todayMs) / (24 * 60 * 60 * 1000)) : '';
+      var root = swDiamondCell_(row, C.root);
+      var customerName = swDiamondCell_(row, C.customerName);
+      var assignedRep = swDiamondCell_(row, C.assignedRep);
+      var joc = swDiamondCell_(row, C.joc);
+      var assignmentMissing = !root || !customerName || !assignedRep || !joc;
       rows.push({
         rowIndex: i + 3,
-        root: swDiamondCell_(row, C.root),
-        customerName: swDiamondCell_(row, C.customerName),
+        root: root,
+        customerName: customerName,
         appointment: swDiamondCell_(row, C.appointment),
-        assignedRep: swDiamondCell_(row, C.assignedRep),
+        assignedRep: assignedRep,
+        joc: joc,
         company: swDiamondCell_(row, C.company),
         vendor: swDiamondCell_(row, C.vendor),
         stoneType: swDiamondCell_(row, C.stoneType),
@@ -548,6 +580,7 @@ function sw_getInStockDiamonds(authToken) {
         daysUntilReturn: daysUntilReturn,
         warningDays: returnWarning,
         issue: issue,
+        assignmentMissing: assignmentMissing,
         availabilityLabel: returnDueDate ? ('Available until ' + returnDueDate) : 'Return date missing'
       });
       stats.total++;
@@ -555,6 +588,7 @@ function sw_getInStockDiamonds(authToken) {
       if (issue === 'Return soon') stats.returnSoon++;
       if (issue === 'Return overdue') stats.returnOverdue++;
       if (issue === 'No return date') stats.noReturnDate++;
+      if (assignmentMissing) stats.assignmentMissing++;
     });
 
     rows.sort(function (a, b) {
@@ -941,6 +975,7 @@ function sw_getTaskDetail(authToken, taskId) {
       },
       attachments: attachments,
       formOptions: typeof swTaskFormOptions_ === 'function' ? swTaskFormOptions_(ss, task) : {},
+      appointmentArtifacts: typeof swPublicAppointmentArtifacts_ === 'function' ? swPublicAppointmentArtifacts_(ss, task.root || task.appt || '') : [],
       assignmentOptions: user.isAdmin ? swReadAssignmentOptions_(ss) : {},
       missingFields: missingFields,
       checklist: checklist,
@@ -998,6 +1033,18 @@ function sw_completeTask(authToken, taskId, data) {
   var postConsultAction = typeof swHandlePostConsultTaskCompletion_ === 'function'
     ? swHandlePostConsultTaskCompletion_(ss, task, data, user)
     : null;
+  var dataCleanupAction = typeof swHandleDataCleanupTaskCompletion_ === 'function'
+    ? swHandleDataCleanupTaskCompletion_(ss, task, data, user)
+    : null;
+  var appointmentAction = typeof swHandleAppointmentCompletion_ === 'function'
+    ? swHandleAppointmentCompletion_(ss, task, data, user)
+    : null;
+  var approvalAction = task.taskType === SW_TASKS.APPROVE && typeof swMarkAppointmentSummaryApproved_ === 'function'
+    ? swMarkAppointmentSummaryApproved_(ss, task.root || task.appt || '', data.approvedText || '', user)
+    : null;
+  var jocHandoffAction = task.taskType === SW_TASKS.FINAL && typeof swMarkAppointmentJocHandoff_ === 'function'
+    ? swMarkAppointmentJocHandoff_(ss, task.root || task.appt || '', user)
+    : null;
 
   var template = swTemplateForType_(ss, task.taskType);
   var payload = swParseJson_(task.payloadJson, {});
@@ -1012,6 +1059,10 @@ function sw_completeTask(authToken, taskId, data) {
   payload.completedAt = swIso_(new Date());
   if (diamondAction) payload.diamondAction = diamondAction;
   if (postConsultAction) payload.postConsultAction = postConsultAction;
+  if (dataCleanupAction) payload.dataCleanupAction = dataCleanupAction;
+  if (appointmentAction) payload.appointmentAction = appointmentAction;
+  if (approvalAction) payload.approvalAction = approvalAction;
+  if (jocHandoffAction) payload.jocHandoffAction = jocHandoffAction;
 
   var oldOwner = task.currentOwner;
   task.status = SW_STATUSES.COMPLETED;

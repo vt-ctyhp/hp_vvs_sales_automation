@@ -260,6 +260,9 @@ function swMasterRowForTask_(ss, task) {
 }
 
 function swTaskFormOptions_(ss, task) {
+  if (task && typeof swIsDataCleanupTaskType_ === 'function' && swIsDataCleanupTaskType_(task.taskType)) {
+    return swDataCleanupFormOptions_(ss, task);
+  }
   if (!task || !swIsPostConsultTaskType_(task.taskType)) return {};
   var out = {
     salesStages: ['Lead', 'Follow-Up Required', 'Viewing Scheduled', 'Order In Progress', 'Lost Lead'],

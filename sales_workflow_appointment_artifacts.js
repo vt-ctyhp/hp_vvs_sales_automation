@@ -1,0 +1,1165 @@
+/**
+ * Appointment artifacts: upload tracking, AssemblyAI transcription, OpenAI summaries,
+ * Client Advisor approval, and JOC handoff state.
+ */
+
+var SW_APPOINTMENT_ARTIFACT_SHEET = '_AppointmentArtifacts';
+var SW_APPOINTMENT_ARTIFACT_HEADERS = [
+  'ArtifactID',
+  'RootApptID',
+  'APPT_ID',
+  'TaskID',
+  'Artifact Type',
+  'Workflow Stage',
+  'Original Filename',
+  'Canonical Filename',
+  'Mime Type',
+  'Size Bytes',
+  'Drive File ID',
+  'Drive URL',
+  'Folder ID',
+  'Uploaded By',
+  'Uploaded By Email',
+  'Uploaded At',
+  'Assembly Upload URL',
+  'Assembly Transcript ID',
+  'Assembly Status',
+  'Transcript Doc ID',
+  'Transcript Doc URL',
+  'Summary JSON File ID',
+  'Summary JSON URL',
+  'Summary Doc ID',
+  'Summary Doc URL',
+  'Internal Summary',
+  'Customer Insights',
+  'Recommended Next Steps',
+  'Client Follow-Up Draft',
+  'Confidence Flags',
+  'Summary Snapshot JSON',
+  'Attempts',
+  'Next Poll At',
+  'Last Error',
+  'Approved By',
+  'Approved By Email',
+  'Approved At',
+  'JOC Handoff At',
+  'Updated At'
+];
+
+var SW_ARTIFACT_TYPES = {
+  APPOINTMENT_RECORDING: 'APPOINTMENT_RECORDING',
+  CLIENT_ADVISOR_RECAP: 'CLIENT_ADVISOR_RECAP',
+  DIAMOND_VIEWING_RECORDING: 'DIAMOND_VIEWING_RECORDING',
+  CLIENT_INTAKE: 'CLIENT_INTAKE'
+};
+
+var SW_ARTIFACT_STAGES = {
+  UPLOADED: 'UPLOADED',
+  TRANSCRIPTION_QUEUED: 'TRANSCRIPTION_QUEUED',
+  TRANSCRIBING: 'TRANSCRIBING',
+  TRANSCRIPT_READY: 'TRANSCRIPT_READY',
+  SUMMARY_QUEUED: 'SUMMARY_QUEUED',
+  SUMMARY_READY: 'SUMMARY_READY',
+  REVIEW_PENDING: 'REVIEW_PENDING',
+  APPROVED: 'APPROVED',
+  JOC_HANDOFF: 'JOC_HANDOFF',
+  ERROR: 'ERROR'
+};
+
+var SW_ARTIFACT_UPLOAD_FIELDS = [
+  { field: 'appointmentRecording', type: SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING },
+  { field: 'advisorRecap', type: SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP },
+  { field: 'diamondViewingRecording', type: SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING },
+  { field: 'intakeMaterial', type: SW_ARTIFACT_TYPES.CLIENT_INTAKE }
+];
+
+function swEnsureAppointmentArtifactsSheet_(ss) {
+  var sh = swEnsureSheet_(ss, SW_APPOINTMENT_ARTIFACT_SHEET, SW_APPOINTMENT_ARTIFACT_HEADERS);
+  swStyleSheet_(sh);
+  return sh;
+}
+
+function swArtifactHeaderMap_(sh) {
+  var values = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), SW_APPOINTMENT_ARTIFACT_HEADERS.length))
+    .getDisplayValues()[0];
+  var map = {};
+  values.forEach(function (h, i) {
+    h = swTrim_(h);
+    if (h) map[h] = i + 1;
+  });
+  return map;
+}
+
+function swReadAppointmentArtifactRows_(ss) {
+  var sh = swEnsureAppointmentArtifactsSheet_(ss);
+  var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_APPOINTMENT_ARTIFACT_HEADERS);
+  return rows.map(function (row) {
+    row.rowNumber = row.__rowNumber || row.rowNumber || 0;
+    return row;
+  });
+}
+
+function swAppointmentArtifactRowsForRoot_(ss, rootApptId) {
+  var root = swTrim_(rootApptId);
+  if (!root) return [];
+  return swReadAppointmentArtifactRows_(ss).filter(function (row) {
+    return swTrim_(row['RootApptID']) === root;
+  });
+}
+
+function swPublicAppointmentArtifacts_(ss, rootApptId) {
+  return swAppointmentArtifactRowsForRoot_(ss, rootApptId).map(function (row) {
+    return {
+      artifactId: row['ArtifactID'] || '',
+      rootApptId: row['RootApptID'] || '',
+      apptId: row['APPT_ID'] || '',
+      artifactType: row['Artifact Type'] || '',
+      typeLabel: swArtifactTypeLabel_(row['Artifact Type']),
+      workflowStage: row['Workflow Stage'] || '',
+      stageLabel: swArtifactStageLabel_(row['Workflow Stage']),
+      originalFilename: row['Original Filename'] || '',
+      canonicalFilename: row['Canonical Filename'] || '',
+      mimeType: row['Mime Type'] || '',
+      sizeBytes: row['Size Bytes'] || '',
+      driveUrl: row['Drive URL'] || '',
+      transcriptDocUrl: row['Transcript Doc URL'] || '',
+      summaryDocUrl: row['Summary Doc URL'] || '',
+      summaryJsonUrl: row['Summary JSON URL'] || '',
+      uploadedBy: row['Uploaded By'] || '',
+      uploadedAt: row['Uploaded At'] || '',
+      assemblyStatus: row['Assembly Status'] || '',
+      lastError: row['Last Error'] || '',
+      updatedAt: row['Updated At'] || ''
+    };
+  }).sort(function (a, b) {
+    return String(b.uploadedAt || b.updatedAt || '').localeCompare(String(a.uploadedAt || a.updatedAt || ''));
+  });
+}
+
+function swArtifactTypeLabel_(type) {
+  var map = {};
+  map[SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING] = 'Appointment Recording';
+  map[SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP] = 'Client Advisor Recap';
+  map[SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING] = 'Diamond Viewing Recording';
+  map[SW_ARTIFACT_TYPES.CLIENT_INTAKE] = 'Client Intake / Photo';
+  return map[type] || swTrim_(type);
+}
+
+function swArtifactStageLabel_(stage) {
+  return swTrim_(stage).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, function (c) {
+    return c.toUpperCase();
+  });
+}
+
+function swArtifactStageRank_(stage) {
+  var rank = {};
+  rank[SW_ARTIFACT_STAGES.UPLOADED] = 10;
+  rank[SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED] = 20;
+  rank[SW_ARTIFACT_STAGES.TRANSCRIBING] = 30;
+  rank[SW_ARTIFACT_STAGES.TRANSCRIPT_READY] = 40;
+  rank[SW_ARTIFACT_STAGES.SUMMARY_QUEUED] = 50;
+  rank[SW_ARTIFACT_STAGES.SUMMARY_READY] = 60;
+  rank[SW_ARTIFACT_STAGES.REVIEW_PENDING] = 70;
+  rank[SW_ARTIFACT_STAGES.APPROVED] = 80;
+  rank[SW_ARTIFACT_STAGES.JOC_HANDOFF] = 90;
+  rank[SW_ARTIFACT_STAGES.ERROR] = -1;
+  return rank[stage] || 0;
+}
+
+function swArtifactNeedsTranscription_(type) {
+  return type === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING ||
+    type === SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING;
+}
+
+function swAppointmentHasPrimaryRecording_(ss, rootApptId) {
+  return swAppointmentArtifactRowsForRoot_(ss, rootApptId).some(function (row) {
+    return row['Artifact Type'] === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING &&
+      row['Workflow Stage'] !== SW_ARTIFACT_STAGES.ERROR &&
+      swTrim_(row['Drive File ID']);
+  });
+}
+
+function swPrimarySummaryArtifactForRoot_(ss, rootApptId) {
+  var readyRank = swArtifactStageRank_(SW_ARTIFACT_STAGES.SUMMARY_READY);
+  var rows = swAppointmentArtifactRowsForRoot_(ss, rootApptId).filter(function (row) {
+    return row['Artifact Type'] === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING &&
+      swArtifactStageRank_(row['Workflow Stage']) >= readyRank &&
+      swTrim_(row['Client Follow-Up Draft']);
+  });
+  if (!rows.length) return null;
+  rows.sort(function (a, b) {
+    var aPrimary = a['Artifact Type'] === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING ? 1 : 0;
+    var bPrimary = b['Artifact Type'] === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING ? 1 : 0;
+    if (aPrimary !== bPrimary) return bPrimary - aPrimary;
+    return String(b['Updated At'] || b['Uploaded At'] || '').localeCompare(String(a['Updated At'] || a['Uploaded At'] || ''));
+  });
+  return rows[0];
+}
+
+function swSummaryExtraForRoot_(ss, rootApptId) {
+  var row = swPrimarySummaryArtifactForRoot_(ss, rootApptId);
+  if (!row) return { ready: false };
+  return swSummaryExtraFromArtifactRow_(row);
+}
+
+function swAppointmentSummaryIndex_(ss) {
+  var readyRank = swArtifactStageRank_(SW_ARTIFACT_STAGES.SUMMARY_READY);
+  var byRoot = {};
+  swReadAppointmentArtifactRows_(ss).forEach(function (row) {
+    if (row['Artifact Type'] !== SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING) return;
+    if (swArtifactStageRank_(row['Workflow Stage']) < readyRank) return;
+    if (!swTrim_(row['Client Follow-Up Draft'])) return;
+    var root = swTrim_(row['RootApptID']);
+    if (!root) return;
+    if (!byRoot[root] || swCompareSummaryArtifacts_(row, byRoot[root]) < 0) byRoot[root] = row;
+  });
+  var out = {};
+  Object.keys(byRoot).forEach(function (root) {
+    out[root] = swSummaryExtraFromArtifactRow_(byRoot[root]);
+  });
+  return out;
+}
+
+function swCompareSummaryArtifacts_(a, b) {
+  var aPrimary = a['Artifact Type'] === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING ? 1 : 0;
+  var bPrimary = b['Artifact Type'] === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING ? 1 : 0;
+  if (aPrimary !== bPrimary) return bPrimary - aPrimary;
+  return String(b['Updated At'] || b['Uploaded At'] || '').localeCompare(String(a['Updated At'] || a['Uploaded At'] || ''));
+}
+
+function swSummaryExtraFromArtifactRow_(row) {
+  return {
+    ready: true,
+    artifactId: row['ArtifactID'] || '',
+    workflowStage: row['Workflow Stage'] || '',
+    transcriptDocUrl: row['Transcript Doc URL'] || '',
+    summaryDocUrl: row['Summary Doc URL'] || '',
+    summaryJsonUrl: row['Summary JSON URL'] || '',
+    internalSummary: row['Internal Summary'] || '',
+    customerInsights: row['Customer Insights'] || '',
+    recommendedNextSteps: row['Recommended Next Steps'] || '',
+    confidenceFlags: row['Confidence Flags'] || '',
+    clientFollowUpDraft: row['Client Follow-Up Draft'] || '',
+    recapDraft: row['Client Follow-Up Draft'] || '',
+    approvedText: row['Client Follow-Up Draft'] || ''
+  };
+}
+
+function sw_uploadAppointmentArtifacts(form) {
+  var ss = swSpreadsheet_();
+  sw_setupSalesWorkflow();
+  form = form || {};
+  var user = swAuthUserForApi_(ss, form.swAuthToken || form.authToken || '');
+  var taskId = swTrim_(form.taskId || '');
+  var task = taskId ? swGetTaskById_(ss, taskId) : null;
+  if (task && !swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this appointment task.');
+
+  var root = swTrim_(form.rootApptId || (task && task.root) || '');
+  if (!root) throw new Error('Missing RootApptID for appointment upload.');
+
+  var created = [];
+  SW_ARTIFACT_UPLOAD_FIELDS.forEach(function (slot) {
+    var blobs = swFormBlobs_(form[slot.field]);
+    blobs.forEach(function (blob) {
+      created.push(swCreateAppointmentArtifactFromBlob_(ss, root, taskId, slot.type, blob, user, {}));
+    });
+  });
+
+  if (!created.length) throw new Error('Choose at least one file to upload.');
+  return {
+    ok: true,
+    uploaded: created.length,
+    artifacts: swPublicAppointmentArtifacts_(ss, root)
+  };
+}
+
+function swFormBlobs_(value) {
+  if (!value) return [];
+  var values = Array.isArray(value) ? value : [value];
+  return values.filter(function (blob) {
+    return blob && typeof blob.getBytes === 'function' && blob.getBytes().length;
+  });
+}
+
+function swCreateAppointmentArtifactFromBlob_(ss, rootApptId, taskId, artifactType, blob, user, options) {
+  options = options || {};
+  var now = new Date();
+  var folders = swEnsureAppointmentFolderForRoot_(ss, rootApptId);
+  var originalName = swTrim_(options.filename || (blob.getName && blob.getName()) || 'upload');
+  var canonicalName = swArtifactCanonicalName_(rootApptId, artifactType, originalName, now);
+  var targetFolder = swArtifactTargetFolder_(folders, artifactType);
+  var bytes = blob.getBytes();
+  var uploadBlob = blob.copyBlob ? blob.copyBlob() : Utilities.newBlob(bytes, blob.getContentType(), originalName);
+  uploadBlob.setName(canonicalName);
+  var file = targetFolder.createFile(uploadBlob);
+  var appt = swAppointmentRecordForRoot_(ss, rootApptId);
+  var needsTranscription = swArtifactNeedsTranscription_(artifactType);
+  var stage = needsTranscription ? SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED : SW_ARTIFACT_STAGES.UPLOADED;
+  var record = {
+    'ArtifactID': 'ART-' + Utilities.getUuid(),
+    'RootApptID': rootApptId,
+    'APPT_ID': appt && appt.appt ? appt.appt : '',
+    'TaskID': taskId || '',
+    'Artifact Type': artifactType,
+    'Workflow Stage': stage,
+    'Original Filename': originalName,
+    'Canonical Filename': canonicalName,
+    'Mime Type': blob.getContentType ? blob.getContentType() : '',
+    'Size Bytes': bytes.length,
+    'Drive File ID': file.getId(),
+    'Drive URL': file.getUrl(),
+    'Folder ID': targetFolder.getId(),
+    'Uploaded By': user.name || user.email || 'System',
+    'Uploaded By Email': user.email || '',
+    'Uploaded At': swIso_(now),
+    'Attempts': 0,
+    'Next Poll At': needsTranscription ? swIso_(now) : '',
+    'Last Error': '',
+    'Updated At': swIso_(now)
+  };
+  swAppendAppointmentArtifactRow_(ss, record);
+  return record;
+}
+
+function swAppendAppointmentArtifactRow_(ss, record) {
+  var sh = swEnsureAppointmentArtifactsSheet_(ss);
+  sh.appendRow(SW_APPOINTMENT_ARTIFACT_HEADERS.map(function (h) {
+    return record[h] == null ? '' : record[h];
+  }));
+}
+
+function swPatchAppointmentArtifactRow_(ss, row, patch) {
+  if (!row || !row.rowNumber) return;
+  var sh = swEnsureAppointmentArtifactsSheet_(ss);
+  var H = swArtifactHeaderMap_(sh);
+  var values = sh.getRange(row.rowNumber, 1, 1, SW_APPOINTMENT_ARTIFACT_HEADERS.length).getValues()[0];
+  Object.keys(patch || {}).forEach(function (header) {
+    var col = H[header];
+    if (!col) return;
+    values[col - 1] = patch[header] == null ? '' : patch[header];
+  });
+  sh.getRange(row.rowNumber, 1, 1, SW_APPOINTMENT_ARTIFACT_HEADERS.length).setValues([values]);
+}
+
+function swEnsureAppointmentFolderForRoot_(ss, rootApptId) {
+  var folderId = '';
+  try {
+    if (typeof getApFolderIdForRoot_ === 'function') folderId = getApFolderIdForRoot_(ss, rootApptId);
+  } catch (_) {}
+  if (!folderId) {
+    try {
+      if (typeof _resolveApFolderId_ === 'function') folderId = _resolveApFolderId_(ss, rootApptId);
+    } catch (_) {}
+  }
+  if (!folderId) throw new Error('No client appointment folder found for ' + rootApptId + '.');
+  var ap = DriveApp.getFolderById(folderId);
+  return {
+    root: ap,
+    audio: swGetOrCreateSubfolder_(ap, '01_Audio'),
+    materials: swGetOrCreateSubfolder_(ap, '02_Materials'),
+    transcripts: swGetOrCreateSubfolder_(ap, '03_Transcripts'),
+    summaries: swGetOrCreateSubfolder_(ap, '04_Summaries')
+  };
+}
+
+function swGetOrCreateSubfolder_(folder, name) {
+  var it = folder.getFoldersByName(name);
+  return it.hasNext() ? it.next() : folder.createFolder(name);
+}
+
+function swArtifactTargetFolder_(folders, artifactType) {
+  if (swArtifactNeedsTranscription_(artifactType)) return folders.audio;
+  return folders.materials;
+}
+
+function swArtifactCanonicalName_(rootApptId, artifactType, originalName, date) {
+  var tz = swTimezone_();
+  var stamp = Utilities.formatDate(date || new Date(), tz, 'yyyyMMdd-HHmmss');
+  return [
+    swSafeFilePart_(rootApptId),
+    swSafeFilePart_(artifactType.toLowerCase()),
+    stamp,
+    swSafeFilename_(originalName || 'upload')
+  ].join('__');
+}
+
+function swSafeFilePart_(value) {
+  return swTrim_(value).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'value';
+}
+
+function swSafeFilename_(value) {
+  var out = swTrim_(value).replace(/[\\/:*?"<>|#%{}~&]+/g, '-').replace(/\s+/g, '-');
+  out = out.replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return out.slice(0, 120) || 'upload';
+}
+
+function swAppointmentRecordForRoot_(ss, rootApptId) {
+  var rows = swReadAppointments_(ss);
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].root === rootApptId || rows[i].appt === rootApptId) return rows[i];
+  }
+  return null;
+}
+
+function sw_ingestRawAppointmentUpload_(e) {
+  try {
+    var params = (e && e.parameter) || {};
+    var tokenParam = swTrim_(params.token || '');
+    var tokenWant = swTrim_(PropertiesService.getScriptProperties().getProperty('UPLOAD_TOKEN') || '');
+    if (!tokenParam || tokenParam !== tokenWant) return ContentService.createTextOutput('ACK (invalid token)');
+    if (!e || !e.postData || !e.postData.getBytes) return ContentService.createTextOutput('ACK (empty body)');
+
+    var root = swTrim_(params.root_appt_id || params.rootApptId || '');
+    if (!root) return ContentService.createTextOutput('ACK (missing RootApptID)');
+    var filename = swTrim_(params.filename || (root + '__upload.m4a'));
+    var mime = swTrim_(e.postData.type || '') || swMimeForFilename_(filename) || 'application/octet-stream';
+    var type = swLegacyArtifactType_(params.rectype || params.type || '');
+    var blob = Utilities.newBlob(e.postData.getBytes(), mime, filename);
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = {
+      name: swTrim_(params.rep_name || params.uploaded_by || 'External Upload'),
+      email: swNormEmail_(params.rep_email || ''),
+      isAdmin: true
+    };
+    var created = swCreateAppointmentArtifactFromBlob_(ss, root, '', type, blob, user, { filename: filename });
+    return ContentService.createTextOutput('ACK (queued ' + created['ArtifactID'] + ')');
+  } catch (err) {
+    return ContentService.createTextOutput('ACK (error: ' + swTrim_(err && err.message || err) + ')');
+  }
+}
+
+function swLegacyArtifactType_(value) {
+  var v = swNorm_(value).replace(/^\d+[.)]?\s*/, '');
+  if (v === 'debrief' || v.indexOf('recap') >= 0) return SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP;
+  if (v.indexOf('diamond') >= 0) return SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING;
+  return SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING;
+}
+
+function swMimeForFilename_(filename) {
+  var ext = String(filename || '').split('.').pop().toLowerCase();
+  var map = {
+    mp3: 'audio/mpeg',
+    mpeg: 'audio/mpeg',
+    mpga: 'audio/mpeg',
+    mp4: 'audio/mp4',
+    m4a: 'audio/mp4',
+    wav: 'audio/wav',
+    webm: 'audio/webm',
+    mov: 'video/quicktime'
+  };
+  return map[ext] || '';
+}
+
+function swHandleAppointmentCompletion_(ss, task, data, user) {
+  if (!task || task.taskType !== SW_TASKS.CHECKLIST) return null;
+  var outcome = swTrim_(data.appointmentOutcome || '');
+  if (!outcome) outcome = 'Completed';
+  var root = task.root || task.appt || '';
+  var rowsUpdated = swWriteAppointmentOutcomeToMaster_(ss, root, outcome);
+  return {
+    rootApptId: root,
+    outcome: outcome,
+    rowsUpdated: rowsUpdated,
+    actor: user.name || user.email || ''
+  };
+}
+
+function swWriteAppointmentOutcomeToMaster_(ss, rootApptId, outcome) {
+  var sh = ss.getSheetByName(SW_SHEETS.MASTER);
+  if (!sh) throw new Error('Missing sheet: ' + SW_SHEETS.MASTER);
+  var headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map(swTrim_);
+  var H = swHeaderMapFromArray_(headers);
+  var rootCol = swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'APPT_ID']) + 1;
+  if (!rootCol) throw new Error('Missing RootApptID/APPT_ID on Master.');
+  var statusCol = swEnsureMasterColumnByAliases_(sh, headers, ['Status'], 'Status');
+  var activeCol = swEnsureMasterColumnByAliases_(sh, headers, ['Active?', 'Active', 'Is Active'], 'Active?');
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var values = sh.getRange(2, rootCol, last - 1, 1).getDisplayValues();
+  var rows = [];
+  for (var i = 0; i < values.length; i++) {
+    if (swTrim_(values[i][0]) === rootApptId) rows.push(i + 2);
+  }
+  rows.forEach(function (rowNumber) {
+    if (swIsNoShowOutcome_(outcome)) {
+      sh.getRange(rowNumber, statusCol).setValue('No Show');
+      sh.getRange(rowNumber, activeCol).setValue('No');
+    } else {
+      sh.getRange(rowNumber, statusCol).setValue('Completed');
+    }
+  });
+  return rows.length;
+}
+
+function swEnsureMasterColumnByAliases_(sh, headers, aliases, canonical) {
+  var H = swHeaderMapFromArray_(headers);
+  var idx = swPickIndex_(H, aliases);
+  if (idx >= 0) return idx + 1;
+  var col = sh.getLastColumn() + 1;
+  sh.getRange(1, col).setValue(canonical);
+  headers.push(canonical);
+  return col;
+}
+
+function swAppointmentOutcomeForRoot_(state, rec) {
+  var payload = swTaskPayload_(state, swTaskId_(rec, SW_TASKS.CHECKLIST));
+  return swTrim_(swDeepValue_(payload, ['completion', 'appointmentOutcome']));
+}
+
+function swIsNoShowOutcome_(outcome) {
+  return swNorm_(outcome).replace(/[-_]+/g, ' ') === 'no show';
+}
+
+function swMarkAppointmentSummaryApproved_(ss, rootApptId, approvedText, user) {
+  var row = swPrimarySummaryArtifactForRoot_(ss, rootApptId);
+  if (!row) return null;
+  var now = swIso_(new Date());
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Workflow Stage': SW_ARTIFACT_STAGES.APPROVED,
+    'Client Follow-Up Draft': approvedText || row['Client Follow-Up Draft'] || '',
+    'Approved By': user.name || user.email || '',
+    'Approved By Email': user.email || '',
+    'Approved At': now,
+    'Updated At': now
+  });
+  return { artifactId: row['ArtifactID'], stage: SW_ARTIFACT_STAGES.APPROVED };
+}
+
+function swMarkAppointmentJocHandoff_(ss, rootApptId, user) {
+  var row = swPrimarySummaryArtifactForRoot_(ss, rootApptId);
+  if (!row) return null;
+  var now = swIso_(new Date());
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Workflow Stage': SW_ARTIFACT_STAGES.JOC_HANDOFF,
+    'JOC Handoff At': now,
+    'Updated At': now
+  });
+  return { artifactId: row['ArtifactID'], stage: SW_ARTIFACT_STAGES.JOC_HANDOFF };
+}
+
+function sw_processAppointmentAutomation() {
+  return swTimed_('sw_processAppointmentAutomation', function () {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    var refreshTasks = false;
+    var summary = {
+      ok: true,
+      processed: 0,
+      errors: 0,
+      generatedTasks: false,
+      at: swIso_(new Date())
+    };
+    try {
+      sw_setupSalesWorkflow();
+      var ss = swSpreadsheet_();
+      var now = new Date();
+      var rows = swReadAppointmentArtifactRows_(ss);
+      for (var i = 0; i < rows.length && summary.processed < 8; i++) {
+        var row = rows[i];
+        if (!swArtifactReadyForWorker_(row, now)) continue;
+        try {
+          var result = swProcessAppointmentArtifact_(ss, row, now);
+          if (result && result.refreshTasks) refreshTasks = true;
+          summary.processed++;
+        } catch (err) {
+          summary.errors++;
+          swHandleArtifactWorkerError_(ss, row, err);
+        }
+      }
+      if (refreshTasks) {
+        try {
+          sw_generateSalesWorkflowTasks();
+          summary.generatedTasks = true;
+        } catch (genErr) {
+          summary.errors++;
+          summary.generationError = swTrim_(genErr && genErr.message || genErr);
+        }
+      }
+      return summary;
+    } finally {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  });
+}
+
+function swArtifactReadyForWorker_(row, now) {
+  var stage = row['Workflow Stage'];
+  if (stage === SW_ARTIFACT_STAGES.ERROR || stage === SW_ARTIFACT_STAGES.REVIEW_PENDING ||
+      stage === SW_ARTIFACT_STAGES.APPROVED || stage === SW_ARTIFACT_STAGES.JOC_HANDOFF) return false;
+  if (!swArtifactNeedsTranscription_(row['Artifact Type'])) return false;
+  var due = swTrim_(row['Next Poll At']);
+  if (!due) return true;
+  var d = new Date(due);
+  return isNaN(d.getTime()) || d.getTime() <= now.getTime();
+}
+
+function swProcessAppointmentArtifact_(ss, row, now) {
+  var stage = row['Workflow Stage'];
+  if (stage === SW_ARTIFACT_STAGES.UPLOADED || stage === SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED) {
+    swStartAssemblyTranscription_(ss, row, now);
+    return { refreshTasks: false };
+  }
+  if (stage === SW_ARTIFACT_STAGES.TRANSCRIBING) {
+    return swPollAssemblyTranscription_(ss, row, now);
+  }
+  if (stage === SW_ARTIFACT_STAGES.TRANSCRIPT_READY) {
+    swPatchAppointmentArtifactRow_(ss, row, {
+      'Workflow Stage': SW_ARTIFACT_STAGES.SUMMARY_QUEUED,
+      'Next Poll At': swIso_(now),
+      'Updated At': swIso_(now)
+    });
+    return { refreshTasks: false };
+  }
+  if (stage === SW_ARTIFACT_STAGES.SUMMARY_QUEUED) {
+    swGenerateAppointmentSummary_(ss, row, now);
+    return { refreshTasks: true };
+  }
+  if (stage === SW_ARTIFACT_STAGES.SUMMARY_READY) {
+    swPatchAppointmentArtifactRow_(ss, row, {
+      'Workflow Stage': SW_ARTIFACT_STAGES.REVIEW_PENDING,
+      'Updated At': swIso_(now)
+    });
+    return { refreshTasks: true };
+  }
+  return { refreshTasks: false };
+}
+
+function swStartAssemblyTranscription_(ss, row, now) {
+  var file = DriveApp.getFileById(row['Drive File ID']);
+  var uploadOne = swAssemblyUploadDriveFile_(file);
+  var transcriptOne = swAssemblySubmitTranscript_(uploadOne.upload_url || uploadOne.uploadUrl || '');
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Workflow Stage': SW_ARTIFACT_STAGES.TRANSCRIBING,
+    'Assembly Upload URL': uploadOne.upload_url || uploadOne.uploadUrl || '',
+    'Assembly Transcript ID': transcriptOne.id || '',
+    'Assembly Status': transcriptOne.status || 'queued',
+    'Attempts': 0,
+    'Next Poll At': swIso_(swDateAddHours_(now, 5 / 60)),
+    'Last Error': '',
+    'Updated At': swIso_(now)
+  });
+}
+
+function swPollAssemblyTranscription_(ss, row, now) {
+  var id = swTrim_(row['Assembly Transcript ID']);
+  if (!id) throw new Error('Missing AssemblyAI transcript job ID.');
+  var transcript = swAssemblyGetTranscript_(id);
+  var status = swNorm_(transcript.status);
+  if (status === 'completed') {
+    var text = swAssemblyTranscriptText_(transcript);
+    swSaveTranscriptAndQueueSummary_(ss, row, text, now);
+    return { refreshTasks: false };
+  }
+  if (status === 'error') {
+    var err = new Error(transcript.error || 'AssemblyAI transcription failed.');
+    err.terminal = true;
+    throw err;
+  }
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Assembly Status': transcript.status || 'processing',
+    'Next Poll At': swIso_(swDateAddHours_(now, 5 / 60)),
+    'Updated At': swIso_(now)
+  });
+  return { refreshTasks: false };
+}
+
+function swSaveTranscriptAndQueueSummary_(ss, row, transcriptText, now) {
+  if (!swTrim_(transcriptText)) throw new Error('AssemblyAI returned an empty transcript.');
+  var folders = swEnsureAppointmentFolderForRoot_(ss, row['RootApptID']);
+  var doc = swCreateGoogleDocInFolder_(
+    folders.transcripts,
+    swTrim_(row['RootApptID']) + '__transcript__' + Utilities.formatDate(now, swTimezone_(), 'yyyyMMdd-HHmmss'),
+    'Appointment Transcript',
+    [
+      'RootApptID: ' + row['RootApptID'],
+      'Artifact: ' + swArtifactTypeLabel_(row['Artifact Type']),
+      'Source file: ' + row['Canonical Filename']
+    ],
+    transcriptText
+  );
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Workflow Stage': SW_ARTIFACT_STAGES.SUMMARY_QUEUED,
+    'Assembly Status': 'completed',
+    'Transcript Doc ID': doc.id,
+    'Transcript Doc URL': doc.url,
+    'Attempts': 0,
+    'Next Poll At': swIso_(now),
+    'Last Error': '',
+    'Updated At': swIso_(now)
+  });
+}
+
+function swGenerateAppointmentSummary_(ss, row, now) {
+  var transcriptText = swReadGoogleDocText_(row['Transcript Doc ID']);
+  if (!swTrim_(transcriptText)) throw new Error('Transcript document is empty.');
+  var appointment = swAppointmentRecordForRoot_(ss, row['RootApptID']) || {};
+  var result = swOpenAIAppointmentSummary_(transcriptText, row, appointment);
+  var normalized = swNormalizeAppointmentSummary_(result);
+  var folders = swEnsureAppointmentFolderForRoot_(ss, row['RootApptID']);
+  var baseName = row['RootApptID'] + '__appointment_summary__' + Utilities.formatDate(now, swTimezone_(), 'yyyyMMdd-HHmmss');
+  var jsonFile = folders.summaries.createFile(baseName + '.json', JSON.stringify(normalized, null, 2), 'application/json');
+  var summaryDoc = swCreateGoogleDocInFolder_(
+    folders.summaries,
+    baseName,
+    'AI Appointment Summary',
+    [
+      'RootApptID: ' + row['RootApptID'],
+      'Customer: ' + (appointment.name || ''),
+      'Client Advisor: ' + (appointment.assignedRep || '')
+    ],
+    swReadableAppointmentSummary_(normalized)
+  );
+  swMirrorAppointmentSummaryToSYSConsults_(ss, row, normalized, jsonFile.getUrl(), appointment);
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Workflow Stage': SW_ARTIFACT_STAGES.SUMMARY_READY,
+    'Summary JSON File ID': jsonFile.getId(),
+    'Summary JSON URL': jsonFile.getUrl(),
+    'Summary Doc ID': summaryDoc.id,
+    'Summary Doc URL': summaryDoc.url,
+    'Internal Summary': normalized.internal_appointment_summary,
+    'Customer Insights': swInsightsToText_(normalized.key_customer_insights),
+    'Recommended Next Steps': swNextStepsToText_(normalized.recommended_next_steps),
+    'Client Follow-Up Draft': normalized.client_follow_up_message_draft,
+    'Confidence Flags': (normalized.confidence_warning_flags || []).join('\n'),
+    'Summary Snapshot JSON': JSON.stringify(normalized),
+    'Attempts': 0,
+    'Next Poll At': swIso_(now),
+    'Last Error': '',
+    'Updated At': swIso_(now)
+  });
+}
+
+function swMirrorAppointmentSummaryToSYSConsults_(ss, row, summary, summaryJsonUrl, appointment) {
+  if (typeof upsertSYSConsults_ !== 'function') return;
+  try {
+    var insights = summary.key_customer_insights || {};
+    var consultId = row['RootApptID'] + '|' + (appointment.visitDate || row['Uploaded At'] || swIso_(new Date()));
+    var scribe = {
+      customer_profile: {
+        customer_name: appointment.name || '',
+        phone: appointment.phone || '',
+        email: appointment.email || '',
+        decision_makers: insights.decision_makers || [],
+        comm_prefs: []
+      },
+      budget: (insights.budget_signals || []).join(' | '),
+      timeline: (summary.recommended_next_steps || []).map(function (step) { return step.timing; }).filter(Boolean).join(' | '),
+      design_specs: {
+        design_notes: (insights.style_notes || []).join(' | ')
+      },
+      diamond_specs: {},
+      rapport_notes: [summary.internal_appointment_summary].filter(Boolean),
+      next_steps: (summary.recommended_next_steps || []).map(function (step) {
+        return {
+          owner: step.owner || '',
+          task: step.action || '',
+          due_iso: step.timing || '',
+          notes: step.notes || ''
+        };
+      }),
+      design_refs: [],
+      conf: {}
+    };
+    upsertSYSConsults_(ss, consultId, row['RootApptID'], scribe, summaryJsonUrl);
+  } catch (err) {
+    Logger.log('SYS_Consults mirror skipped: ' + (err && (err.stack || err.message) || err));
+  }
+}
+
+function swAssemblyApiKey_() {
+  var key = swTrim_(PropertiesService.getScriptProperties().getProperty('ASSEMBLYAI_API_KEY'));
+  if (!key) {
+    var err = new Error('Missing ASSEMBLYAI_API_KEY in Script Properties.');
+    err.terminal = true;
+    throw err;
+  }
+  return key;
+}
+
+function swAssemblyBaseUrl_() {
+  return swTrim_(PropertiesService.getScriptProperties().getProperty('ASSEMBLYAI_BASE_URL')) || 'https://api.assemblyai.com';
+}
+
+function swAssemblyUploadDriveFile_(file) {
+  var response = UrlFetchApp.fetch(swAssemblyBaseUrl_() + '/v2/upload', {
+    method: 'post',
+    headers: {
+      Authorization: swAssemblyApiKey_(),
+      'Content-Type': 'application/octet-stream'
+    },
+    payload: file.getBlob().getBytes(),
+    muteHttpExceptions: true
+  });
+  return swFetchJsonOrThrow_(response, 'AssemblyAI upload');
+}
+
+function swAssemblySubmitTranscript_(uploadUrl) {
+  if (!uploadUrl) throw new Error('AssemblyAI upload did not return upload_url.');
+  var body = {
+    audio_url: uploadUrl,
+    speech_models: ['universal-3-pro', 'universal-2'],
+    language_detection: true,
+    speaker_labels: true,
+    format_text: true,
+    punctuate: true
+  };
+  var response = UrlFetchApp.fetch(swAssemblyBaseUrl_() + '/v2/transcript', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: swAssemblyApiKey_() },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  return swFetchJsonOrThrow_(response, 'AssemblyAI transcript submit');
+}
+
+function swAssemblyGetTranscript_(transcriptId) {
+  var response = UrlFetchApp.fetch(swAssemblyBaseUrl_() + '/v2/transcript/' + encodeURIComponent(transcriptId), {
+    method: 'get',
+    headers: { Authorization: swAssemblyApiKey_() },
+    muteHttpExceptions: true
+  });
+  return swFetchJsonOrThrow_(response, 'AssemblyAI transcript poll');
+}
+
+function swAssemblyTranscriptText_(transcript) {
+  if (transcript && transcript.utterances && transcript.utterances.length) {
+    return transcript.utterances.map(function (u) {
+      return 'Speaker ' + (u.speaker || '') + ': ' + swTrim_(u.text || '');
+    }).join('\n\n');
+  }
+  return swTrim_(transcript && transcript.text || '');
+}
+
+function swFetchJsonOrThrow_(response, label) {
+  var code = response.getResponseCode();
+  var text = response.getContentText() || '';
+  var body = {};
+  try { body = JSON.parse(text); } catch (_) {}
+  if (code >= 200 && code < 300) return body;
+  var err = new Error(label + ' failed (' + code + '): ' + (body.error || body.message || text).toString().slice(0, 500));
+  err.terminal = code >= 400 && code < 500 && code !== 429;
+  throw err;
+}
+
+function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
+  var key = swTrim_(PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY'));
+  if (!key) {
+    var err = new Error('Missing OPENAI_API_KEY in Script Properties.');
+    err.terminal = true;
+    throw err;
+  }
+  var model = swTrim_(PropertiesService.getScriptProperties().getProperty('OPENAI_APPOINTMENT_SUMMARY_MODEL')) ||
+    (typeof OPENAI_MODEL_ === 'function' ? OPENAI_MODEL_() : '') ||
+    'gpt-5-mini';
+  var body = {
+    model: model,
+    input: [
+      {
+        role: 'system',
+        content: 'You summarize jewelry sales appointments for internal Client Advisor and JOC workflow. Extract only information supported by the transcript. Use concise, operational language.'
+      },
+      {
+        role: 'user',
+        content: [
+          'Appointment context JSON:',
+          JSON.stringify({
+            rootApptId: artifact['RootApptID'] || '',
+            customerName: appointment.name || '',
+            brand: appointment.brand || '',
+            visitDate: appointment.visitDate || '',
+            visitTime: appointment.visitTime || '',
+            visitType: appointment.visitType || '',
+            clientAdvisor: appointment.assignedRep || '',
+            joc: appointment.assistedRep || '',
+            existingNextSteps: appointment.nextSteps || '',
+            designRequest: appointment.designRequest || '',
+            diamondRequirements: appointment.dvCustomerLookingFor || appointment.dvCustomerRequirementsJson || ''
+          }, null, 2),
+          '',
+          'Transcript:',
+          transcriptText
+        ].join('\n')
+      }
+    ],
+    max_output_tokens: 4000,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'appointment_completion_summary',
+        strict: true,
+        schema: swAppointmentSummarySchema_()
+      }
+    }
+  };
+  var response = UrlFetchApp.fetch('https://api.openai.com/v1/responses', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + key },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  var parsed = swFetchJsonOrThrow_(response, 'OpenAI appointment summary');
+  if (parsed.status === 'incomplete') throw new Error('OpenAI response incomplete: ' + swStringify_(parsed.incomplete_details || {}));
+  var json = swExtractOpenAIJson_(parsed);
+  if (!json) throw new Error('OpenAI did not return valid structured summary JSON.');
+  return json;
+}
+
+function swAppointmentSummarySchema_() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      internal_appointment_summary: { type: 'string' },
+      key_customer_insights: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          preferences: { type: 'array', items: { type: 'string' } },
+          budget_signals: { type: 'array', items: { type: 'string' } },
+          concerns: { type: 'array', items: { type: 'string' } },
+          decision_makers: { type: 'array', items: { type: 'string' } },
+          style_notes: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['preferences', 'budget_signals', 'concerns', 'decision_makers', 'style_notes']
+      },
+      recommended_next_steps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            owner: { type: 'string' },
+            action: { type: 'string' },
+            timing: { type: 'string' },
+            notes: { type: 'string' }
+          },
+          required: ['owner', 'action', 'timing', 'notes']
+        }
+      },
+      client_follow_up_message_draft: { type: 'string' },
+      confidence_warning_flags: { type: 'array', items: { type: 'string' } }
+    },
+    required: [
+      'internal_appointment_summary',
+      'key_customer_insights',
+      'recommended_next_steps',
+      'client_follow_up_message_draft',
+      'confidence_warning_flags'
+    ]
+  };
+}
+
+function swExtractOpenAIJson_(body) {
+  if (typeof __extractJsonFromResponsesBody__ === 'function') {
+    var extracted = __extractJsonFromResponsesBody__(body);
+    if (extracted) return extracted;
+  }
+  if (body && typeof body.output_text === 'string') {
+    try { return JSON.parse(body.output_text); } catch (_) {}
+  }
+  try {
+    var output = body.output || [];
+    for (var i = 0; i < output.length; i++) {
+      var content = output[i].content || [];
+      for (var j = 0; j < content.length; j++) {
+        if (content[j].json) return content[j].json;
+        if (content[j].text) {
+          try { return JSON.parse(content[j].text); } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function swNormalizeAppointmentSummary_(result) {
+  result = result || {};
+  var insights = result.key_customer_insights || {};
+  ['preferences', 'budget_signals', 'concerns', 'decision_makers', 'style_notes'].forEach(function (key) {
+    if (!Array.isArray(insights[key])) insights[key] = insights[key] ? [String(insights[key])] : [];
+  });
+  if (!Array.isArray(result.recommended_next_steps)) result.recommended_next_steps = [];
+  if (!Array.isArray(result.confidence_warning_flags)) result.confidence_warning_flags = [];
+  return {
+    internal_appointment_summary: swTrim_(result.internal_appointment_summary),
+    key_customer_insights: insights,
+    recommended_next_steps: result.recommended_next_steps.map(function (step) {
+      step = step || {};
+      return {
+        owner: swTrim_(step.owner),
+        action: swTrim_(step.action),
+        timing: swTrim_(step.timing),
+        notes: swTrim_(step.notes)
+      };
+    }),
+    client_follow_up_message_draft: swTrim_(result.client_follow_up_message_draft),
+    confidence_warning_flags: result.confidence_warning_flags.map(swTrim_).filter(Boolean)
+  };
+}
+
+function swReadableAppointmentSummary_(summary) {
+  return [
+    'Internal Appointment Summary',
+    summary.internal_appointment_summary || '',
+    '',
+    'Key Customer Insights',
+    swInsightsToText_(summary.key_customer_insights),
+    '',
+    'Recommended Next Steps',
+    swNextStepsToText_(summary.recommended_next_steps),
+    '',
+    'Client-Facing Follow-Up Draft',
+    summary.client_follow_up_message_draft || '',
+    '',
+    'Confidence / Warning Flags',
+    (summary.confidence_warning_flags || []).join('\n') || 'None flagged.'
+  ].join('\n');
+}
+
+function swInsightsToText_(insights) {
+  insights = insights || {};
+  var labels = [
+    ['preferences', 'Preferences'],
+    ['budget_signals', 'Budget Signals'],
+    ['concerns', 'Concerns'],
+    ['decision_makers', 'Decision Makers'],
+    ['style_notes', 'Style Notes']
+  ];
+  return labels.map(function (pair) {
+    var values = insights[pair[0]] || [];
+    if (!values.length) return pair[1] + ': Not captured.';
+    return pair[1] + ':\n- ' + values.join('\n- ');
+  }).join('\n\n');
+}
+
+function swNextStepsToText_(steps) {
+  steps = steps || [];
+  if (!steps.length) return 'No next steps generated.';
+  return steps.map(function (step, i) {
+    return (i + 1) + '. [' + (step.owner || 'Owner TBD') + '] ' + (step.action || '') +
+      (step.timing ? ' - ' + step.timing : '') +
+      (step.notes ? '\n   ' + step.notes : '');
+  }).join('\n');
+}
+
+function swCreateGoogleDocInFolder_(folder, title, heading, metadataLines, bodyText) {
+  var doc = DocumentApp.create(title);
+  var body = doc.getBody();
+  body.clear();
+  body.appendParagraph(heading || title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  (metadataLines || []).filter(Boolean).forEach(function (line) {
+    body.appendParagraph(line).setHeading(DocumentApp.ParagraphHeading.NORMAL);
+  });
+  body.appendParagraph('');
+  String(bodyText || '').split('\n').forEach(function (line) {
+    body.appendParagraph(line);
+  });
+  doc.saveAndClose();
+  var file = DriveApp.getFileById(doc.getId());
+  folder.addFile(file);
+  try { DriveApp.getRootFolder().removeFile(file); } catch (_) {}
+  return { id: doc.getId(), url: doc.getUrl() };
+}
+
+function swReadGoogleDocText_(docId) {
+  if (!docId) return '';
+  return DocumentApp.openById(docId).getBody().getText();
+}
+
+function swHandleArtifactWorkerError_(ss, row, err) {
+  var now = new Date();
+  var attempts = Number(row['Attempts'] || 0) + 1;
+  var terminal = !!(err && err.terminal) || attempts >= 3;
+  swPatchAppointmentArtifactRow_(ss, row, {
+    'Workflow Stage': terminal ? SW_ARTIFACT_STAGES.ERROR : row['Workflow Stage'],
+    'Attempts': attempts,
+    'Next Poll At': terminal ? '' : swIso_(swDateAddHours_(now, Math.min(30, Math.pow(2, attempts) * 5) / 60)),
+    'Last Error': swTrim_(err && err.message || err).slice(0, 1000),
+    'Updated At': swIso_(now)
+  });
+}
+
+function sw_installAppointmentAutomationTriggers() {
+  var remove = {
+    processUploadQueue: true,
+    processSummariesWorker: true,
+    sw_processAppointmentAutomation: true
+  };
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (remove[trigger.getHandlerFunction()]) ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger('sw_processAppointmentAutomation').timeBased().everyMinutes(5).create();
+  return {
+    ok: true,
+    message: 'Installed 5-minute appointment automation worker and removed old upload/summary workers.'
+  };
+}
+
+function sw_setAppointmentAutomationScriptProperties(assemblyAiApiKey, openAiApiKey, options) {
+  options = options || {};
+  var props = {};
+  var assemblyKey = swTrim_(assemblyAiApiKey);
+  var openAiKey = swTrim_(openAiApiKey);
+  if (!assemblyKey) throw new Error('ASSEMBLYAI_API_KEY is required.');
+  if (!openAiKey) throw new Error('OPENAI_API_KEY is required.');
+
+  props.ASSEMBLYAI_API_KEY = assemblyKey;
+  props.OPENAI_API_KEY = openAiKey;
+  props.ASSEMBLYAI_BASE_URL = swTrim_(options.assemblyAiBaseUrl) || 'https://api.assemblyai.com';
+
+  var model = swTrim_(options.openAiAppointmentSummaryModel || options.openAiModel || '');
+  if (model) props.OPENAI_APPOINTMENT_SUMMARY_MODEL = model;
+
+  PropertiesService.getScriptProperties().setProperties(props, false);
+  return {
+    ok: true,
+    updated: Object.keys(props),
+    message: 'Appointment automation Script Properties updated.'
+  };
+}
+
+function sw_promptSetAppointmentAutomationScriptProperties() {
+  var ui = SpreadsheetApp.getUi();
+  var assemblyPrompt = ui.prompt(
+    'Set AssemblyAI API Key',
+    'Paste the AssemblyAI API key. It will be stored in Script Properties, not in the spreadsheet.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (assemblyPrompt.getSelectedButton() !== ui.Button.OK) {
+    return { ok: false, cancelled: true, message: 'Cancelled before setting AssemblyAI API key.' };
+  }
+
+  var openAiPrompt = ui.prompt(
+    'Set OpenAI API Key',
+    'Paste the OpenAI API key. It will be stored in Script Properties, not in the spreadsheet.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (openAiPrompt.getSelectedButton() !== ui.Button.OK) {
+    return { ok: false, cancelled: true, message: 'Cancelled before setting OpenAI API key.' };
+  }
+
+  var result = sw_setAppointmentAutomationScriptProperties(
+    assemblyPrompt.getResponseText(),
+    openAiPrompt.getResponseText(),
+    { assemblyAiBaseUrl: 'https://api.assemblyai.com' }
+  );
+  ui.alert('Appointment automation properties updated.');
+  return result;
+}
+
+/**
+ * Local-only helper. Paste keys into this function in the Apps Script editor,
+ * run it once, then remove the pasted keys before saving/pushing code.
+ */
+function sw_setAppointmentAutomationScriptPropertiesLocalExample() {
+  return sw_setAppointmentAutomationScriptProperties(
+    'PASTE_ASSEMBLYAI_API_KEY_HERE',
+    'PASTE_OPENAI_API_KEY_HERE',
+    {
+      assemblyAiBaseUrl: 'https://api.assemblyai.com'
+    }
+  );
+}

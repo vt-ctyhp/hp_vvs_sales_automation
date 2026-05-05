@@ -1222,6 +1222,7 @@
       <div class="tabs">
         <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
         <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
+        <button id="tab-cleanup" type="button" data-view="cleanup" style="display:none">Cleanup</button>
         <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">In-Stock Diamonds</button>
         <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
         <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
@@ -1231,6 +1232,7 @@
       </div>
       <div>
         <button id="manageUsersButton" type="button" style="display:none">Manage Users</button>
+        <button id="syncDiamondsButton" type="button" style="display:none">Sync Diamonds</button>
         <button id="logoutButton" type="button">Sign Out</button>
         <button id="refreshOwnersButton" type="button">Refresh Owners</button>
         <button id="generateTasksButton" class="primary" type="button">Generate Tasks</button>
@@ -1282,6 +1284,7 @@
       },
       bulkReturnRows: [],
       bulkReturnSource: null,
+      diamondSyncPreview: null,
       adminDashboard: null,
       adminDashboardFilters: null,
       adminDashboardMode: 'health',
@@ -1316,8 +1319,10 @@
 
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
+      var syncDiamondsButton = document.getElementById('syncDiamondsButton');
+      if (syncDiamondsButton) syncDiamondsButton.addEventListener('click', openLoupe360SyncPanel);
 
-      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
@@ -1412,6 +1417,12 @@
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
           var copyStockButton = closestMatch_(event.target, '.js-copy-stock-diamond');
           if (copyStockButton) return copyStockDiamondDetails(copyStockButton.getAttribute('data-row-index') || '');
+          var assignStockButton = closestMatch_(event.target, '.js-assign-stock-diamond');
+          if (assignStockButton) return assignInStockDiamond(assignStockButton);
+          var previewSyncButton = closestMatch_(event.target, '.js-preview-loupe360-sync');
+          if (previewSyncButton) return previewLoupe360DiamondSync(previewSyncButton);
+          var applySyncButton = closestMatch_(event.target, '.js-apply-loupe360-sync');
+          if (applySyncButton) return applyLoupe360DiamondSync(applySyncButton);
           var bulkReturnButton = closestMatch_(event.target, '.js-submit-bulk-return');
           if (bulkReturnButton) return submitBulkReturn(bulkReturnButton);
           var addProposalButton = closestMatch_(event.target, '.js-add-proposal-row');
@@ -1624,6 +1635,7 @@
       return {
         mine: true,
         calendar: true,
+        cleanup: false,
         inStockDiamonds: true,
         diamondTracking: !!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant),
         bulkReturns: !!(user.isAdmin || user.isDiamondOrderAdmin),
@@ -1651,6 +1663,7 @@
       if (user.isDiamondOrderAdmin) parts.push('Diamond Order Admin');
       if (user.isDiamondOrderAssistant) parts.push('Diamond Order Assistant');
       document.getElementById('userLine').innerHTML = parts.join('<br>');
+      document.getElementById('tab-cleanup').style.display = res.views && res.views.cleanup ? '' : 'none';
       document.getElementById('tab-inStockDiamonds').style.display = res.views && res.views.inStockDiamonds !== false ? '' : 'none';
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
       document.getElementById('tab-bulkReturns').style.display = res.views && res.views.bulkReturns ? '' : 'none';
@@ -1658,6 +1671,126 @@
       document.getElementById('tab-adminDashboard').style.display = res.views && res.views.adminDashboard ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
+      document.getElementById('syncDiamondsButton').style.display = (user.isAdmin || user.isDiamondOrderAdmin) ? '' : 'none';
+    }
+
+    function openLoupe360SyncPanel() {
+      appState.selectedTaskId = '';
+      appState.diamondSyncPreview = null;
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Diamond Sync</div>',
+          '<h2>Sync Loupe360 Spreadsheet</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Upload</label>',
+            '<form id="loupe360SyncForm" class="upload-grid">',
+              '<input id="loupe360SyncToken" name="swAuthToken" type="hidden" value="">',
+              '<div><label for="loupe360DiamondFile">Spreadsheet</label><input id="loupe360DiamondFile" name="loupe360DiamondFile" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"></div>',
+            '</form>',
+            '<div class="actions"><button class="primary js-preview-loupe360-sync" type="button">Preview Sync</button></div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Rules</label>',
+            '<div class="template-box">Preview first. The sync matches by Certificate No, preserves customer/advisor/JOC and purchase/return decisions, and updates active shipment/spec facts only.</div>',
+          '</div>',
+          '<div id="loupe360SyncPreview"></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function previewLoupe360DiamondSync(sourceButton) {
+      var form = document.getElementById('loupe360SyncForm');
+      if (!form) return;
+      var input = document.getElementById('loupe360DiamondFile');
+      if (!input || !input.files || !input.files.length) {
+        setStatus('Choose a Loupe360 spreadsheet file.', true);
+        return;
+      }
+      var token = document.getElementById('loupe360SyncToken');
+      if (token) token.value = appState.token || '';
+      var loadingButton = lockLoadingButton(sourceButton);
+      setBusy(true, 'Previewing diamond sync');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          appState.diamondSyncPreview = res || {};
+          renderLoupe360SyncPreview(res || {});
+          setStatus('Preview ready. Review counts before applying.');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          setStatus((err && err.message) ? err.message : String(err), true);
+        })
+        .sw_previewLoupe360DiamondSync(form);
+    }
+
+    function renderLoupe360SyncPreview(res) {
+      var stats = res.stats || {};
+      var samples = res.samples || {};
+      var tracker = res.spreadsheetUrl ? '<a href="' + escapeHref(res.spreadsheetUrl) + '" target="_blank">Open 200_ tracker</a>' : '';
+      var html = [
+        '<div class="detail-section">',
+          '<label>Preview</label>',
+          '<div class="stat-grid">',
+            statCardHtml('Source Rows', stats.sourceRows || res.sourceRows || 0),
+            statCardHtml('Matched', stats.matched || 0),
+            statCardHtml('Will Update', stats.updated || 0),
+            statCardHtml('Will Append', stats.appended || 0),
+            statCardHtml('Needs Assignment', res.assignmentMissing || 0),
+          '</div>',
+          '<div class="meta">' + escapeHtml(res.tab || '') + '</div>',
+          tracker ? '<div class="actions">' + tracker + '</div>' : '',
+        '</div>'
+      ];
+      if ((stats.protectedConflicts || 0) || (stats.duplicateSourceCerts || 0) || (stats.duplicateTrackerCerts || 0)) {
+        html.push([
+          '<div class="detail-section">',
+            '<label>Review Flags</label>',
+            '<div class="template-box">',
+              'Protected conflicts: ' + escapeHtml(stats.protectedConflicts || 0) + '<br>',
+              'Duplicate source certificates: ' + escapeHtml(stats.duplicateSourceCerts || 0) + '<br>',
+              'Duplicate tracker certificates: ' + escapeHtml(stats.duplicateTrackerCerts || 0),
+            '</div>',
+          '</div>'
+        ].join(''));
+      }
+      html.push(renderLoupe360SampleList('Rows To Append', samples.appends || []));
+      html.push(renderLoupe360SampleList('Rows To Update', samples.updates || []));
+      html.push(renderLoupe360SampleList('Skipped / Conflicts', (samples.conflicts || []).concat(samples.skipped || [])));
+      html.push('<div class="actions"><button class="primary js-apply-loupe360-sync" type="button">Apply Sync</button></div>');
+      var el = document.getElementById('loupe360SyncPreview');
+      if (el) el.innerHTML = html.join('');
+    }
+
+    function renderLoupe360SampleList(title, rows) {
+      if (!rows || !rows.length) return '';
+      return [
+        '<div class="detail-section">',
+          '<label>' + escapeHtml(title) + '</label>',
+          '<div class="tracking-list">',
+            rows.map(function (row) {
+              return '<div class="tracking-row"><div class="task-top"><div><div class="task-title">' + escapeHtml(row.diamond || row.certNo || ('Row ' + (row.rowIndex || ''))) + '</div><div class="meta">' + escapeHtml([row.certNo ? 'Cert ' + row.certNo : '', row.status || '', row.reason || '', row.changeCount ? row.changeCount + ' field(s)' : ''].filter(Boolean).join(' | ')) + '</div></div></div></div>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function applyLoupe360DiamondSync(sourceButton) {
+      var preview = appState.diamondSyncPreview || {};
+      if (!preview.syncId) {
+        setStatus('Preview the spreadsheet before applying.', true);
+        return;
+      }
+      serverCall('sw_applyLoupe360DiamondSync', [preview.syncId], function (res) {
+        appState.diamondSyncPreview = null;
+        setStatus('Diamond sync applied: ' + (res.updated || 0) + ' updated, ' + (res.appended || 0) + ' appended.');
+        openLoupe360SyncPanel();
+      }, 'Applying diamond sync', sourceButton);
     }
 
     function loadTasks(view) {
@@ -1693,7 +1826,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -1716,6 +1849,10 @@
       if (view === 'calendar') {
         title = 'Upcoming appointments by month';
         eyebrow = 'Calendar';
+      }
+      if (view === 'cleanup') {
+        title = 'One-time stale customer cleanup';
+        eyebrow = 'Cleanup Campaign';
       }
       if (view === 'inStockDiamonds') {
         title = 'Currently in-stock diamonds';
@@ -2425,6 +2562,7 @@
           statCardHtml('Available > ' + (stats.warningDays || 7) + 'd', stats.available || 0),
           statCardHtml('Return Soon', stats.returnSoon || 0),
           statCardHtml('Overdue', stats.returnOverdue || 0),
+          statCardHtml('Needs Assignment', stats.assignmentMissing || 0),
         '</div>',
         renderInStockDiamondFilters(rows, filteredRows.length),
         '<div class="tracking-list">',
@@ -2546,14 +2684,15 @@
     }
 
     function renderInStockDiamondRow(row) {
-      var issue = row.issue ? '<span class="badge">' + escapeHtml(row.issue) + '</span>' : '<span class="badge">In Stock</span>';
+      var issueText = row.issue || (row.assignmentMissing ? 'Needs Assignment' : 'In Stock');
+      var issue = '<span class="badge">' + escapeHtml(issueText) + '</span>';
       var availability = [
         row.returnDueDate ? 'Return ' + row.returnDueDate : 'No return date',
         row.daysUntilReturn !== '' ? row.daysUntilReturn + 'd left' : '',
         row.company
       ].filter(Boolean).join(' | ');
       return [
-        '<button class="tracking-row js-instock-diamond-row ' + (row.issue ? 'issue' : '') + '" type="button" data-row-index="' + escapeAttrValue(row.rowIndex) + '">',
+        '<button class="tracking-row js-instock-diamond-row ' + (row.issue || row.assignmentMissing ? 'issue' : '') + '" type="button" data-row-index="' + escapeAttrValue(row.rowIndex) + '">',
           '<div class="task-top">',
             '<div>',
               '<div class="task-title">' + escapeHtml(row.diamond || ('Row ' + row.rowIndex)) + '</div>',
@@ -2563,7 +2702,7 @@
             '<div>' + issue + '</div>',
           '</div>',
           '<div class="meta">' + escapeHtml(availability) + '</div>',
-          '<div class="meta">' + escapeHtml([row.stoneStatus, row.orderStatus, row.customerName ? 'Held for ' + row.customerName : ''].filter(Boolean).join(' | ')) + '</div>',
+          '<div class="meta">' + escapeHtml([row.stoneStatus, row.orderStatus, row.customerName ? 'Held for ' + row.customerName : '', row.assignedRep ? 'Advisor ' + row.assignedRep : '', row.joc ? 'JOC ' + row.joc : ''].filter(Boolean).join(' | ')) + '</div>',
         '</button>'
       ].join('');
     }
@@ -2615,11 +2754,52 @@
           '<div class="detail-section">',
             '<label>Context</label>',
             '<div class="meta">' + escapeHtml(row.customerName ? 'Currently tied to ' + row.customerName : 'No customer context listed') + '</div>',
+            '<div class="meta">RootApptID: ' + escapeHtml(row.root || '') + '</div>',
             '<div class="meta">Client Advisor: ' + escapeHtml(row.assignedRep || '') + '</div>',
+            '<div class="meta">JOC: ' + escapeHtml(row.joc || '') + '</div>',
             '<div class="meta">Row ' + escapeHtml(row.rowIndex || '') + '</div>',
           '</div>',
+          canAssignInStockDiamond() ? renderInStockDiamondAssignmentForm(row) : '',
         '</div>'
       ].join('');
+    }
+
+    function canAssignInStockDiamond() {
+      var user = appState.user || {};
+      return !!(user.isAdmin || user.isRep || user.isJoc || user.isDiamondOrderAdmin);
+    }
+
+    function renderInStockDiamondAssignmentForm(row) {
+      return [
+        '<div class="detail-section">',
+          '<label>Assign This Diamond</label>',
+          '<div class="template-box">Use this only when this in-stock diamond is being held for a known customer or appointment.</div>',
+          '<div class="upload-grid">',
+            '<div><label for="stockAssignCustomer">Customer</label><input id="stockAssignCustomer" value="' + escapeAttrValue(row.customerName || '') + '"></div>',
+            '<div><label for="stockAssignRoot">RootApptID</label><input id="stockAssignRoot" value="' + escapeAttrValue(row.root || '') + '"></div>',
+            '<div><label for="stockAssignAdvisor">Client Advisor</label><input id="stockAssignAdvisor" value="' + escapeAttrValue(row.assignedRep || '') + '"></div>',
+            '<div><label for="stockAssignJoc">JOC</label><input id="stockAssignJoc" value="' + escapeAttrValue(row.joc || '') + '"></div>',
+          '</div>',
+          '<div class="actions"><button class="primary js-assign-stock-diamond" type="button" data-row-index="' + escapeAttrValue(row.rowIndex) + '" data-cert-no="' + escapeAttrValue(row.certNo || '') + '">Save Assignment</button></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function assignInStockDiamond(sourceButton) {
+      var rowIndex = sourceButton.getAttribute('data-row-index') || '';
+      var certNo = sourceButton.getAttribute('data-cert-no') || '';
+      var payload = {
+        rowIndex: rowIndex,
+        certNo: certNo,
+        customerName: valueOf('stockAssignCustomer'),
+        root: valueOf('stockAssignRoot'),
+        assignedRep: valueOf('stockAssignAdvisor'),
+        joc: valueOf('stockAssignJoc')
+      };
+      serverCall('sw_assignInStockDiamond', [payload], function () {
+        setStatus('Diamond assignment saved');
+        loadInStockDiamonds();
+      }, 'Saving diamond assignment', sourceButton);
     }
 
     function findInStockDiamondRow(rowIndex) {
@@ -3078,6 +3258,9 @@
       } else if (appState.view === 'mine' && user.isDiamondOrderAssistant) {
         title = 'No diamond assistant tasks';
         message = 'Tracking and return tasks appear when diamonds are On the Way or have return decisions due soon. Run Generate Tasks after tracker updates.';
+      } else if (appState.view === 'cleanup') {
+        title = 'No cleanup cases';
+        message = 'The temporary cleanup tab stays clear once all campaign cases assigned to you are resolved.';
       }
       return '<div class="empty"><h3>' + escapeHtml(title) + '</h3><p>' + escapeHtml(message) + '</p></div>';
     }
@@ -3115,6 +3298,7 @@
       var checklist = renderChecklist(res.checklist || []);
       var diamondControls = renderDiamondControls(task, res);
       var postConsultControls = renderPostConsultControls(task, res);
+      var dataCleanupControls = renderDataCleanupControls(task, res);
       var textArea = renderCompletionTextArea(task, res);
       var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
       var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete') + '</button>' : '';
@@ -3139,6 +3323,7 @@
           messageBlocks,
           diamondControls,
           postConsultControls,
+          dataCleanupControls,
           checklist,
           textArea,
           snooze,
@@ -3374,6 +3559,86 @@
       }
 
       return '';
+    }
+
+    function renderDataCleanupControls(task, res) {
+      if (!isDataCleanupTaskType(task.taskType)) return '';
+      var payload = res.payload || {};
+      var appt = payload.appointment || {};
+      var extra = payload.extra || {};
+      var cleanupCase = extra.cleanupCase || {};
+      var proposal = cleanupCase.proposal || {};
+      var opts = res.formOptions || {};
+      var currentSummary = [
+        'Current Sales Stage: ' + (appt.salesStage || cleanupCase.currentSalesStage || 'Blank'),
+        'Conversion: ' + (appt.convStatus || cleanupCase.currentConvStatus || 'Blank'),
+        'Custom Order: ' + (appt.customOrder || cleanupCase.currentCustomOrder || 'Blank'),
+        'In Production: ' + (appt.inProduction || cleanupCase.currentInProduction || 'Blank'),
+        'Last touch: ' + (cleanupCase.lastTouchAt || 'Unknown'),
+        'Stale days: ' + (cleanupCase.staleDays || '')
+      ].join('\n');
+
+      if (task.taskType === 'CUSTOMER_DATA_CLEANUP_CONFIRM') {
+        return [
+          '<div class="detail-section">',
+            '<label>Cleanup Confirmation</label>',
+            '<div class="template-box">' + escapeHtml(currentSummary) + '</div>',
+            '<div class="template-box">' + escapeHtml('Proposed by: ' + (cleanupCase.proposedBy || 'Unknown') + '\n\n' + cleanupProposalSummary(proposal)) + '</div>',
+            '<div class="field-grid">',
+              selectFieldHtml('cleanupDecision', 'Decision', ['', 'Approve', 'Return'], '', true),
+              '<div class="wide"><label for="cleanupReturnReason">Return Reason</label><textarea id="cleanupReturnReason" placeholder="Required only when returning">' + escapeHtml(cleanupCase.returnReason || '') + '</textarea></div>',
+            '</div>',
+          '</div>'
+        ].join('');
+      }
+
+      var verification = proposal.verification || {};
+      return [
+        '<div class="detail-section">',
+          '<label>Customer Cleanup Proposal</label>',
+          '<div class="template-box">' + escapeHtml(currentSummary) + '</div>',
+          cleanupCase.returnReason ? '<div class="error">Returned: ' + escapeHtml(cleanupCase.returnReason) + '</div>' : '',
+          '<div class="field-grid">',
+            selectFieldHtml('cleanupSalesStage', 'Sales Stage', opts.salesStages || [], proposal.salesStage || appt.salesStage || cleanupCase.currentSalesStage || '', true),
+            selectFieldHtml('cleanupConvStatus', 'Conversion Status', opts.convStatuses || [], proposal.convStatus || appt.convStatus || cleanupCase.currentConvStatus || '', true),
+            selectFieldHtml('cleanupCustomOrder', 'Custom Order Status', opts.customOrderStatuses || [], proposal.customOrder || appt.customOrder || cleanupCase.currentCustomOrder || '', false),
+            selectFieldHtml('cleanupCenterStone', 'Center Stone Order Status', opts.centerStoneStatuses || [], proposal.centerStone || appt.centerStoneStatus || '', false),
+            selectFieldHtml('cleanupInProduction', 'In Production Status', opts.inProductionStatuses || [], proposal.inProduction || appt.inProduction || cleanupCase.currentInProduction || '', false),
+            '<div><label for="cleanupOrderDate">Order Date</label><input id="cleanupOrderDate" type="date" value="' + escapeAttrValue(dateInputValue(proposal.orderDate || appt.orderDate || '')) + '"></div>',
+            '<div><label for="cleanupDeadline3d">3D Deadline</label><input id="cleanupDeadline3d" type="date" value="' + escapeAttrValue(dateInputValue(proposal.deadline3d || appt.deadline3d || '')) + '"></div>',
+            '<div><label for="cleanupProdDeadline">Production Deadline</label><input id="cleanupProdDeadline" type="date" value="' + escapeAttrValue(dateInputValue(proposal.prodDeadline || appt.productionDeadline || '')) + '"></div>',
+            selectFieldHtml('cleanupLostLeadReason', 'Lost Lead Reason', opts.lostLeadReasons || [], proposal.lostLeadReason || '', false),
+            '<div class="wide"><label for="cleanupLostLeadNotes">Lost Lead Reason Notes</label><textarea id="cleanupLostLeadNotes">' + escapeHtml(proposal.lostLeadNotes || '') + '</textarea></div>',
+            '<div class="wide"><label for="cleanupNextSteps">Next Steps / Current Status Notes</label><textarea id="cleanupNextSteps">' + escapeHtml(proposal.nextSteps || appt.nextSteps || '') + '</textarea></div>',
+            '<div class="wide"><label for="cleanupNotes">Cleanup Notes</label><textarea id="cleanupNotes">' + escapeHtml(proposal.cleanupNotes || '') + '</textarea></div>',
+          '</div>',
+          '<div class="checklist">',
+            cleanupCheckHtml('cleanupOwnersVerified', 'Client Advisor and JOC ownership are correct or noted', verification.ownersVerified),
+            cleanupCheckHtml('cleanupContactVerified', 'Customer contact information was reviewed', verification.contactVerified),
+            cleanupCheckHtml('cleanupOpsStatusReviewed', 'SO, payment, 3D, wax, and diamond status were reviewed', verification.opsStatusReviewed),
+            cleanupCheckHtml('cleanupNextStepsCurrent', 'Next steps/status notes are current', verification.nextStepsCurrent),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function cleanupCheckHtml(id, label, checked) {
+      return '<label class="check-row"><input id="' + escapeAttrValue(id) + '" type="checkbox"' + (checked ? ' checked' : '') + '><span>' + escapeHtml(label) + ' *</span></label>';
+    }
+
+    function cleanupProposalSummary(proposal) {
+      proposal = proposal || {};
+      return [
+        proposal.salesStage ? 'Sales Stage: ' + proposal.salesStage : '',
+        proposal.convStatus ? 'Conversion: ' + proposal.convStatus : '',
+        proposal.customOrder ? 'Custom Order: ' + proposal.customOrder : '',
+        proposal.inProduction ? 'In Production: ' + proposal.inProduction : '',
+        proposal.centerStone ? 'Center Stone: ' + proposal.centerStone : '',
+        proposal.lostLeadReason ? 'Lost reason: ' + proposal.lostLeadReason : '',
+        proposal.lostLeadNotes ? 'Lost notes: ' + proposal.lostLeadNotes : '',
+        proposal.nextSteps ? 'Next steps: ' + proposal.nextSteps : '',
+        proposal.cleanupNotes ? 'Cleanup notes: ' + proposal.cleanupNotes : ''
+      ].filter(Boolean).join('\n') || 'No proposal captured yet.';
     }
 
     function renderSnoozeControls(task) {
@@ -3729,6 +3994,14 @@
       ].indexOf(taskType) >= 0;
     }
 
+    function isDataCleanupTaskType(taskType) {
+      return [
+        'CUSTOMER_DATA_CLEANUP_REVIEW',
+        'CUSTOMER_DATA_CLEANUP_CONFIRM',
+        'CUSTOMER_DATA_CLEANUP_REVISE'
+      ].indexOf(taskType) >= 0;
+    }
+
     function norm(value) {
       return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
     }
@@ -3949,6 +4222,14 @@
         payload.waxNeededBy = valueOf('pcWaxNeededBy');
         payload.waxPriority = valueOf('pcWaxPriority');
       }
+      if (isDataCleanupTaskType(task.taskType)) {
+        if (task.taskType === 'CUSTOMER_DATA_CLEANUP_CONFIRM') {
+          payload.cleanupDecision = norm(valueOf('cleanupDecision')) === 'return' ? 'return' : (norm(valueOf('cleanupDecision')) === 'approve' ? 'approve' : '');
+          payload.cleanupReturnReason = valueOf('cleanupReturnReason');
+        } else {
+          payload.cleanupProposal = collectDataCleanupProposal();
+        }
+      }
       if (task.taskType === 'START_3D_DESIGN') {
         payload.start3dMode = checkedOf('s3dNo3d') ? 'no3d' : 'start';
         payload.no3d = checkedOf('s3dNo3d');
@@ -4012,6 +4293,29 @@
       return requirements;
     }
 
+    function collectDataCleanupProposal() {
+      return {
+        salesStage: valueOf('cleanupSalesStage'),
+        convStatus: valueOf('cleanupConvStatus'),
+        customOrder: valueOf('cleanupCustomOrder'),
+        inProduction: valueOf('cleanupInProduction'),
+        centerStone: valueOf('cleanupCenterStone'),
+        orderDate: valueOf('cleanupOrderDate'),
+        deadline3d: valueOf('cleanupDeadline3d'),
+        prodDeadline: valueOf('cleanupProdDeadline'),
+        nextSteps: valueOf('cleanupNextSteps'),
+        lostLeadReason: valueOf('cleanupLostLeadReason'),
+        lostLeadNotes: valueOf('cleanupLostLeadNotes'),
+        cleanupNotes: valueOf('cleanupNotes'),
+        verification: {
+          ownersVerified: checkedOf('cleanupOwnersVerified'),
+          contactVerified: checkedOf('cleanupContactVerified'),
+          opsStatusReviewed: checkedOf('cleanupOpsStatusReviewed'),
+          nextStepsCurrent: checkedOf('cleanupNextStepsCurrent')
+        }
+      };
+    }
+
     function missingCustomerDiamondRequirements(requirements) {
       requirements = requirements || {};
       var missing = [];
@@ -4061,6 +4365,18 @@
         if (!valueOf('pcSalesStage') || !valueOf('pcConvStatus') || !valueOf('pcThreeDNeeded')) disabled = true;
         if (norm(valueOf('pcThreeDNeeded')) === 'no' && !valueOf('pcNo3dReason')) disabled = true;
       }
+      if (isDataCleanupTaskType(task.taskType)) {
+        if (task.taskType === 'CUSTOMER_DATA_CLEANUP_CONFIRM') {
+          var decision = norm(valueOf('cleanupDecision'));
+          if (decision !== 'approve' && decision !== 'return') disabled = true;
+          if (decision === 'return' && !valueOf('cleanupReturnReason')) disabled = true;
+        } else {
+          var proposal = collectDataCleanupProposal();
+          if (!proposal.salesStage || !proposal.convStatus) disabled = true;
+          if (!proposal.verification.ownersVerified || !proposal.verification.contactVerified || !proposal.verification.opsStatusReviewed || !proposal.verification.nextStepsCurrent) disabled = true;
+          if (cleanupProposalIsLost(proposal) && (!proposal.lostLeadReason || !proposal.lostLeadNotes)) disabled = true;
+        }
+      }
       if (task.taskType === 'START_3D_DESIGN') {
         if (checkedOf('s3dNo3d')) {
           if (!valueOf('s3dNo3dReason')) disabled = true;
@@ -4071,7 +4387,12 @@
       if (task.taskType === 'RECORD_3D_DEADLINE' && !valueOf('deadline3dTask')) disabled = true;
       if (task.taskType === 'REQUEST_WAX_PRINT' && (!valueOf('waxSoMo') || !valueOf('waxNeededBy') || !valueOf('waxPriority'))) disabled = true;
       button.disabled = disabled;
-      button.title = disabled ? 'Complete required fields, uploads, customer requirements, and decisions first.' : '';
+      button.title = disabled ? 'Complete required fields, uploads, customer requirements, cleanup checks, and decisions first.' : '';
+    }
+
+    function cleanupProposalIsLost(proposal) {
+      proposal = proposal || {};
+      return norm(proposal.salesStage).indexOf('lost') >= 0 || norm(proposal.convStatus).indexOf('lost') >= 0;
     }
 
     function hasPrimaryAppointmentRecording(artifacts) {

@@ -12,13 +12,26 @@ function swValidateCompletion_(ss, task, data) {
   }
 
   var checklist = swParseJson_(template.checklistJson, []);
-  if (checklist && checklist.length) {
+  var isNoShowChecklist = task.taskType === SW_TASKS.CHECKLIST &&
+    typeof swIsNoShowOutcome_ === 'function' &&
+    swIsNoShowOutcome_(data.appointmentOutcome || '');
+  if (checklist && checklist.length && !isNoShowChecklist) {
     var checked = data.checklist || {};
     var missing = [];
     checklist.forEach(function (item) {
       if (item.required !== false && !checked[item.id]) missing.push(item.label || item.id);
     });
     if (missing.length) throw new Error('Complete required checklist items: ' + missing.join(', '));
+  }
+  if (task.taskType === SW_TASKS.CHECKLIST) {
+    var outcome = swTrim_(data.appointmentOutcome || '');
+    if (outcome !== 'Completed' && outcome !== 'No Show') {
+      throw new Error('Select Completed or No Show before completing the appointment.');
+    }
+    if (outcome === 'Completed' && typeof swAppointmentHasPrimaryRecording_ === 'function' &&
+        !swAppointmentHasPrimaryRecording_(ss, task.root || task.appt || '')) {
+      throw new Error('Upload the appointment recording before completing a completed appointment.');
+    }
   }
   if (task.taskType === SW_TASKS.PROCESS && !swTrim_(data.recapText)) {
     throw new Error('Enter the recap draft before completing this task.');
@@ -55,6 +68,9 @@ function swValidateCompletion_(ss, task, data) {
   if (typeof swValidatePostConsultCompletion_ === 'function') {
     swValidatePostConsultCompletion_(task, data);
   }
+  if (typeof swValidateDataCleanupCompletion_ === 'function') {
+    swValidateDataCleanupCompletion_(task, data);
+  }
 }
 
 function swRenderDataForTask_(task, payload) {
@@ -86,6 +102,7 @@ function swRenderDataForTask_(task, payload) {
     tracker3dUrl: extra.tracker3dUrl || appt.tracker3dUrl || '',
     soNumber: extra.soNumber || appt.so || 'Not assigned yet',
     salesStage: extra.salesStage || appt.salesStage || '',
+    conversionStatus: extra.convStatus || appt.convStatus || '',
     convStatus: extra.convStatus || appt.convStatus || '',
     customOrder: extra.customOrder || appt.customOrder || '',
     nextSteps: extra.nextSteps || appt.nextSteps || 'Not captured yet',
@@ -110,7 +127,22 @@ function swRenderDataForTask_(task, payload) {
     hybridMessage: hybridMessage,
     welcomeImageUrl: extra.welcomeImageUrl || '',
     recapDraft: extra.recapDraft || completion.recapText || '',
-    approvedText: extra.approvedText || completion.approvedText || extra.recapDraft || ''
+    approvedText: extra.approvedText || completion.approvedText || extra.recapDraft || '',
+    artifactId: extra.artifactId || '',
+    workflowStage: extra.workflowStage || '',
+    transcriptDocUrl: extra.transcriptDocUrl || '',
+    summaryDocUrl: extra.summaryDocUrl || '',
+    summaryJsonUrl: extra.summaryJsonUrl || '',
+    internalSummary: extra.internalSummary || '',
+    customerInsights: extra.customerInsights || '',
+    recommendedNextSteps: extra.recommendedNextSteps || '',
+    confidenceFlags: extra.confidenceFlags || '',
+    clientFollowUpDraft: extra.clientFollowUpDraft || extra.recapDraft || '',
+    cleanupProposedBy: swDeepValue_(extra, ['cleanupCase', 'proposedBy']) || '',
+    cleanupReturnReason: swDeepValue_(extra, ['cleanupCase', 'returnReason']) || '',
+    cleanupProposalSummary: typeof swDataCleanupProposalSummary_ === 'function'
+      ? swDataCleanupProposalSummary_(swDeepValue_(extra, ['cleanupCase', 'proposal']) || {})
+      : ''
   };
 }
 
@@ -224,6 +256,13 @@ function swAttachmentsForTask_(task, template, data) {
     swPushAttachment_(out, 'Quotation Sheet', data.quotationUrl || '');
     swPushAttachment_(out, '3D Tracker', data.tracker3dUrl || '');
     swPushAttachment_(out, '200_ Diamond Tracker', data.diamondTrackerUrl || '');
+  }
+  if (task.taskType === SW_TASKS.APPROVE) {
+    swPushAttachment_(out, 'AI Summary Doc', data.summaryDocUrl || '');
+    swPushAttachment_(out, 'Transcript Doc', data.transcriptDocUrl || '');
+  }
+  if (task.taskType === SW_TASKS.FINAL) {
+    swPushAttachment_(out, 'AI Summary Doc', data.summaryDocUrl || '');
   }
   return out;
 }

@@ -34,17 +34,25 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
   swGeneratePostConsultTasks_(ss, state, ctx, rec, now, summary);
 
   var checklistId = swTaskId_(rec, SW_TASKS.CHECKLIST);
-  var processId = swTaskId_(rec, SW_TASKS.PROCESS);
   var approveId = swTaskId_(rec, SW_TASKS.APPROVE);
+  var appointmentOutcome = typeof swAppointmentOutcomeForRoot_ === 'function' ? swAppointmentOutcomeForRoot_(state, rec) : '';
+  var isNoShow = typeof swIsNoShowOutcome_ === 'function' ? swIsNoShowOutcome_(appointmentOutcome) : false;
+  var aiSummary = (ctx.appointmentSummaryByRoot && ctx.appointmentSummaryByRoot[rec.root || rec.appt || '']) ||
+    (typeof swSummaryExtraForRoot_ === 'function' ? swSummaryExtraForRoot_(ss, rec.root || rec.appt || '') : { ready: false });
 
-  if (swTaskCompleted_(state, checklistId)) {
-    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.PROCESS, 'JOC', dueNow, checklistId, now, {}), summary);
-  }
-
-  if (swTaskCompleted_(state, processId)) {
-    var processPayload = swTaskPayload_(state, processId);
-    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.APPROVE, SW_OWNER_ROLES.SALES_REP, dueNow, processId, now, {
-      recapDraft: swDeepValue_(processPayload, ['completion', 'recapText']) || ''
+  if (swTaskCompleted_(state, checklistId) && !isNoShow && aiSummary.ready) {
+    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.APPROVE, SW_OWNER_ROLES.SALES_REP, dueNow, checklistId, now, {
+      artifactId: aiSummary.artifactId || '',
+      workflowStage: aiSummary.workflowStage || '',
+      transcriptDocUrl: aiSummary.transcriptDocUrl || '',
+      summaryDocUrl: aiSummary.summaryDocUrl || '',
+      summaryJsonUrl: aiSummary.summaryJsonUrl || '',
+      internalSummary: aiSummary.internalSummary || '',
+      customerInsights: aiSummary.customerInsights || '',
+      recommendedNextSteps: aiSummary.recommendedNextSteps || '',
+      confidenceFlags: aiSummary.confidenceFlags || '',
+      clientFollowUpDraft: aiSummary.clientFollowUpDraft || '',
+      recapDraft: aiSummary.recapDraft || ''
     }), summary);
   }
 
@@ -52,7 +60,14 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
     var approvePayload = swTaskPayload_(state, approveId);
     swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.FINAL, 'JOC', dueNow, approveId, now, {
       approvedText: swDeepValue_(approvePayload, ['completion', 'approvedText']) ||
-        swDeepValue_(approvePayload, ['completion', 'recapText']) || ''
+        swDeepValue_(approvePayload, ['completion', 'recapText']) || '',
+      artifactId: swDeepValue_(approvePayload, ['extra', 'artifactId']) || '',
+      summaryDocUrl: swDeepValue_(approvePayload, ['extra', 'summaryDocUrl']) || '',
+      summaryJsonUrl: swDeepValue_(approvePayload, ['extra', 'summaryJsonUrl']) || '',
+      internalSummary: swDeepValue_(approvePayload, ['extra', 'internalSummary']) || '',
+      customerInsights: swDeepValue_(approvePayload, ['extra', 'customerInsights']) || '',
+      recommendedNextSteps: swDeepValue_(approvePayload, ['extra', 'recommendedNextSteps']) || '',
+      confidenceFlags: swDeepValue_(approvePayload, ['extra', 'confidenceFlags']) || ''
     }), summary);
   }
 }
@@ -450,5 +465,8 @@ function swLifecycleForTask_(taskType) {
   map[SW_TASKS.DIAMOND_ORDER_ACK_JOC] = 'Diamond Ordered';
   map[SW_TASKS.DIAMOND_ETA_REP] = 'Diamond ETA Risk';
   map[SW_TASKS.DIAMOND_ETA_JOC] = 'Diamond ETA Risk';
+  map[SW_TASKS.DATA_CLEANUP_REVIEW] = 'Data Cleanup';
+  map[SW_TASKS.DATA_CLEANUP_CONFIRM] = 'Data Cleanup';
+  map[SW_TASKS.DATA_CLEANUP_REVISE] = 'Data Cleanup';
   return map[taskType] || '';
 }

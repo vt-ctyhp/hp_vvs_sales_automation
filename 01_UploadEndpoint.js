@@ -1,12 +1,10 @@
-/***** Upload Endpoint — v1.0 (ACK + Stage + Enqueue) *****
+/***** Legacy Upload Endpoint (delegates to appointment artifact tracker) *****
  * Expects a raw binary body (audio) with URL params for metadata:
  *   .../exec?token=...&root_appt_id=AP-YYYYMMDD-###&brand=VVS|HPUSA&rep_email=...&filename=...
  *
- * Script Properties required:
- *   STAGING_FOLDER_ID  -> your [SYS] Upload Staging folder
- *   UPLOAD_TOKEN       -> shared secret from Shortcut (e.g., consult_upload_1063)
- *
- * Writes a row to _upload_queue (PENDING) for a worker to process later.
+ * New uploads are written directly to _AppointmentArtifacts by
+ * sw_ingestRawAppointmentUpload_(). The old _upload_queue functions remain
+ * below only for compatibility with historical scripts and diagnostics.
  */
 
 // === script props ===
@@ -49,6 +47,10 @@ function _bad_(why)    { return ContentService.createTextOutput('BAD: ' + String
 
 
 function doPost_UPLOAD_(e) {
+  if (typeof sw_ingestRawAppointmentUpload_ === 'function') {
+    return sw_ingestRawAppointmentUpload_(e);
+  }
+
   const SP = PropertiesService.getScriptProperties();
   const tz = Session.getScriptTimeZone() || 'America/Los_Angeles';
 
@@ -2096,6 +2098,4 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
-
 
