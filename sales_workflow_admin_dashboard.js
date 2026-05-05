@@ -991,6 +991,9 @@ function swAdminDashboardHealthReceivables_(receivableRows) {
 }
 
 function swAdminDashboardReadRootIndex_(ss, warnings) {
+  var cached = swAdminDashboardCachedRootIndex_(ss);
+  if (cached) return cached;
+
   var out = { available: false, byRoot: {} };
   var sh = ss.getSheetByName('07_Root_Index');
   if (!sh || sh.getLastRow() < 2) {
@@ -1015,10 +1018,14 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
     if (!out.byRoot[root] || when.getTime() > out.byRoot[root].getTime()) out.byRoot[root] = when;
   }
   out.available = true;
+  swAdminDashboardCacheRootIndex_(ss, out);
   return out;
 }
 
-function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
+function swAdminDashboardReadStatusLog_(ss, appointments, warnings, rootScope) {
+  var cached = swAdminDashboardCachedStatusLog_(ss);
+  if (cached) return cached;
+
   var out = { available: false, threeDByRoot: {}, productionByRoot: {} };
   var sh = ss.getSheetByName('03_Client_Status_Log');
   if (!sh || sh.getLastRow() < 2) {
@@ -1029,6 +1036,12 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
   (appointments || []).forEach(function (rec) {
     if (rec.appt && rec.root) apptToRoot[rec.appt] = rec.root;
   });
+  var targetRoots = {};
+  Object.keys(rootScope || {}).forEach(function (root) {
+    root = swAdminDashboardCleanId_(root);
+    if (root) targetRoots[root] = true;
+  });
+  var hasTargetRoots = Object.keys(targetRoots).length > 0;
   var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(headers);
   var C = {
@@ -1048,6 +1061,7 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
     var appt = swAdminDashboardCleanId_(swCell_(display[i], C.appt));
     root = root || apptToRoot[appt] || '';
     if (!root) continue;
+    if (hasTargetRoots && !targetRoots[root]) continue;
     var when = swAdminDashboardDateTimeValue_(swCell_(display[i], C.updatedAt), swCell_(display[i], C.updatedAt));
     if (!when) continue;
     var custom = swNorm_(swCell_(display[i], C.custom));
@@ -1075,7 +1089,101 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
     }
   }
   out.available = true;
+  swAdminDashboardCacheStatusLog_(ss, out);
   return out;
+}
+
+function swAdminDashboardCachedRootIndex_(ss) {
+  try {
+    var cached = CacheService.getScriptCache().get(swAdminDashboardAuxCacheKey_(ss, 'rootIndex'));
+    var parsed = cached ? swParseJson_(cached, null) : null;
+    if (!parsed || !parsed.byRoot) return null;
+    var out = { available: !!parsed.available, byRoot: {} };
+    Object.keys(parsed.byRoot || {}).forEach(function (root) {
+      var ms = Number(parsed.byRoot[root]);
+      if (isFinite(ms) && ms > 0) out.byRoot[root] = new Date(ms);
+    });
+    return out.available ? out : null;
+  } catch (_) {}
+  return null;
+}
+
+function swAdminDashboardCacheRootIndex_(ss, rootIndex) {
+  try {
+    var byRoot = {};
+    Object.keys((rootIndex && rootIndex.byRoot) || {}).forEach(function (root) {
+      byRoot[root] = swAdminDashboardDateMs_(rootIndex.byRoot[root]);
+    });
+    swAdminDashboardPutAuxCache_(ss, 'rootIndex', { available: !!(rootIndex && rootIndex.available), byRoot: byRoot });
+  } catch (_) {}
+}
+
+function swAdminDashboardCachedStatusLog_(ss) {
+  try {
+    var cached = CacheService.getScriptCache().get(swAdminDashboardAuxCacheKey_(ss, 'statusLog'));
+    var parsed = cached ? swParseJson_(cached, null) : null;
+    if (!parsed || !parsed.available) return null;
+    var out = { available: true, threeDByRoot: {}, productionByRoot: {} };
+    Object.keys(parsed.threeDByRoot || {}).forEach(function (root) {
+      var item = parsed.threeDByRoot[root] || {};
+      out.threeDByRoot[root] = {
+        requestDate: item.requestDate ? new Date(Number(item.requestDate)) : null,
+        resolveDate: item.resolveDate ? new Date(Number(item.resolveDate)) : null,
+        pending: !!item.pending
+      };
+    });
+    Object.keys(parsed.productionByRoot || {}).forEach(function (root) {
+      var item = parsed.productionByRoot[root] || {};
+      out.productionByRoot[root] = {
+        status: item.status || '',
+        updatedAt: item.updatedAt ? new Date(Number(item.updatedAt)) : null
+      };
+    });
+    return out;
+  } catch (_) {}
+  return null;
+}
+
+function swAdminDashboardCacheStatusLog_(ss, statusLog) {
+  try {
+    var threeDByRoot = {};
+    Object.keys((statusLog && statusLog.threeDByRoot) || {}).forEach(function (root) {
+      var item = statusLog.threeDByRoot[root] || {};
+      threeDByRoot[root] = {
+        requestDate: swAdminDashboardDateMs_(item.requestDate),
+        resolveDate: swAdminDashboardDateMs_(item.resolveDate),
+        pending: !!item.pending
+      };
+    });
+    var productionByRoot = {};
+    Object.keys((statusLog && statusLog.productionByRoot) || {}).forEach(function (root) {
+      var item = statusLog.productionByRoot[root] || {};
+      productionByRoot[root] = {
+        status: item.status || '',
+        updatedAt: swAdminDashboardDateMs_(item.updatedAt)
+      };
+    });
+    swAdminDashboardPutAuxCache_(ss, 'statusLog', {
+      available: !!(statusLog && statusLog.available),
+      threeDByRoot: threeDByRoot,
+      productionByRoot: productionByRoot
+    });
+  } catch (_) {}
+}
+
+function swAdminDashboardPutAuxCache_(ss, name, payload) {
+  try {
+    var text = swStringify_(payload);
+    if (text.length < 90000) CacheService.getScriptCache().put(swAdminDashboardAuxCacheKey_(ss, name), text, SW_ADMIN_DASHBOARD_AUX_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAdminDashboardAuxCacheKey_(ss, name) {
+  return 'sw:adminDashboardAux:v2:' + ss.getId() + ':' + name;
+}
+
+function swAdminDashboardDateMs_(value) {
+  return value instanceof Date && !isNaN(value.getTime()) ? value.getTime() : 0;
 }
 
 function swAdminDashboardStageWeights_(ss) {
