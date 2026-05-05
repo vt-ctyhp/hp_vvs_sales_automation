@@ -1848,6 +1848,7 @@
       lastActionButton: null,
       appointmentDriveSyncTimer: null,
       appointmentDriveSyncUntil: 0,
+      appointmentDriveSyncTaskId: '',
       loginBusy: false,
       busy: false
     };
@@ -2149,62 +2150,9 @@
       runner[fnName].apply(runner, callArgs);
     }
 
-    function uploadAppointmentArtifacts(sourceButton) {
-      var form = document.getElementById('appointmentUploadForm');
-      if (!form || !appState.selectedTaskId) return;
-      var fileInputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
-      var hasFile = fileInputs.some(function (input) {
-        return input.files && input.files.length;
-      });
-      var hasDriveLink = [].slice.call(form.querySelectorAll('.js-appointment-drive-url')).some(function (input) {
-        return String(input.value || '').trim();
-      });
-      var oversized = [];
-      fileInputs.forEach(function (input) {
-        var clearInput = false;
-        [].slice.call(input.files || []).forEach(function (file) {
-          if (file.size > APPOINTMENT_BROWSER_UPLOAD_MAX_BYTES) {
-            oversized.push(file.name + ' (' + formatBytes(file.size) + ')');
-            clearInput = true;
-          }
-        });
-        if (clearInput) input.value = '';
-      });
-      if (oversized.length) {
-        setStatus('This recording is too large for dashboard upload: ' + oversized.join(', ') + '. I cleared the file picker. Upload it to Drive, paste the Drive file link below the slot, then click Upload Files again.', true);
-        return;
-      }
-      if (!hasFile && !hasDriveLink) {
-        setStatus('Choose at least one appointment file or paste a Drive file link.', true);
-        return;
-      }
-      var token = document.getElementById('appointmentUploadToken');
-      var taskId = document.getElementById('appointmentUploadTaskId');
-      var root = document.getElementById('appointmentUploadRoot');
-      if (token) token.value = appState.token || '';
-      if (taskId) taskId.value = appState.selectedTaskId || '';
-      if (root && !root.value && appState.detail && appState.detail.task) {
-        root.value = appState.detail.task.root || appState.detail.task.appt || '';
-      }
-      var loadingButton = lockLoadingButton(sourceButton);
-      setBusy(true, 'Uploading appointment files');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setBusy(false, '');
-          releaseLoadingButton(loadingButton);
-          setStatus('Uploaded ' + ((res && res.uploaded) || 0) + ' file(s).');
-          openTask(appState.selectedTaskId);
-        })
-        .withFailureHandler(function (err) {
-          setBusy(false, '');
-          releaseLoadingButton(loadingButton);
-          setStatus((err && err.message) ? err.message : String(err), true);
-        })
-        .sw_uploadAppointmentArtifacts(form);
-    }
-
     function openAppointmentUploadFolder(sourceButton) {
       if (!appState.selectedTaskId) return;
+      var artifactType = valueOf('appointmentDriveArtifactType') || 'APPOINTMENT_RECORDING';
       var popup = window.open('', 'appointmentDriveUpload', 'width=1100,height=760,resizable=yes,scrollbars=yes');
       if (popup) {
         popup.document.write('<!doctype html><title>Opening Drive</title><body style="background:#F7F1EB;color:#2A2725;font-family:Inter,system-ui,sans-serif;padding:32px"><div style="color:#8A8178;font-size:11px;letter-spacing:.14em;text-transform:uppercase">Opening Drive Folder</div></body>');
@@ -2226,7 +2174,8 @@
           } else {
             window.open(res.url, '_blank');
           }
-          setStatus('Drive folder opened. After the recording uploads, copy its Drive file link, paste it in the appointment recording field, and click Upload Files.');
+          setStatus('Drive folder opened. This card will sync and rename new files automatically.');
+          startAppointmentDriveUploadSync();
         })
         .withFailureHandler(function (err) {
           setBusy(false, '');
@@ -2234,15 +2183,45 @@
           if (popup && !popup.closed) popup.close();
           setStatus((err && err.message) ? err.message : String(err), true);
         })
-        .sw_getAppointmentUploadFolder(appState.token, appState.selectedTaskId, 'APPOINTMENT_RECORDING');
+        .sw_getAppointmentUploadFolder(appState.token, appState.selectedTaskId, artifactType);
     }
 
-    function formatBytes(bytes) {
-      bytes = Number(bytes) || 0;
-      if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
-      if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-      if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
-      return bytes + ' B';
+    function startAppointmentDriveUploadSync() {
+      stopAppointmentDriveUploadSync();
+      appState.appointmentDriveSyncTaskId = appState.selectedTaskId || '';
+      appState.appointmentDriveSyncUntil = Date.now() + (10 * 60 * 1000);
+      window.setTimeout(syncAppointmentDriveUploads, 8000);
+      appState.appointmentDriveSyncTimer = window.setInterval(syncAppointmentDriveUploads, 20000);
+    }
+
+    function stopAppointmentDriveUploadSync() {
+      if (appState.appointmentDriveSyncTimer) {
+        window.clearInterval(appState.appointmentDriveSyncTimer);
+        appState.appointmentDriveSyncTimer = null;
+      }
+      appState.appointmentDriveSyncUntil = 0;
+      appState.appointmentDriveSyncTaskId = '';
+    }
+
+    function syncAppointmentDriveUploads() {
+      var taskId = appState.appointmentDriveSyncTaskId;
+      if (!taskId || appState.selectedTaskId !== taskId || Date.now() > appState.appointmentDriveSyncUntil) {
+        stopAppointmentDriveUploadSync();
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (appState.selectedTaskId !== taskId) return;
+          if (res && res.registered) {
+            setStatus('Registered ' + res.registered + ' Drive file(s).');
+            openTask(taskId);
+          }
+        })
+        .withFailureHandler(function (err) {
+          stopAppointmentDriveUploadSync();
+          setStatus((err && err.message) ? err.message : String(err), true);
+        })
+        .sw_syncAppointmentDriveUploads(appState.token, taskId);
     }
 
     function beginMainRequest(view) {
