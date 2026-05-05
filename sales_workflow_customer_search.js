@@ -1686,6 +1686,10 @@ function swPrewarmCustomerSearchDetailCaches_(ss) {
   try {
     var formOptions = swTaskFormOptions_(ss, { taskType: SW_TASKS.POST_CONSULT_STATUS });
     out.formOptionGroups = formOptions ? Object.keys(formOptions).length : 0;
+    if (typeof swIsDataCleanupTaskType_ === 'function' && SW_TASKS && SW_TASKS.DATA_CLEANUP_REVIEW) {
+      var cleanupOptions = swTaskFormOptions_(ss, { taskType: SW_TASKS.DATA_CLEANUP_REVIEW });
+      out.formOptionGroups += cleanupOptions ? Object.keys(cleanupOptions).length : 0;
+    }
   } catch (formErr) {
     out.ok = false;
     if (!out.error) out.error = formErr && formErr.message ? formErr.message : String(formErr);

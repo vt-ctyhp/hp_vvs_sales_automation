@@ -259,14 +259,25 @@ function swMasterRowForTask_(ss, task) {
   return 0;
 }
 
+var SW_TASK_FORM_OPTIONS_MEMORY_CACHE_ = {};
+
 function swTaskFormOptions_(ss, task) {
   var taskType = task && task.taskType ? task.taskType : '';
   var cacheKey = '';
   if (taskType) {
     try {
       cacheKey = 'sw:formOptions:v1:' + ss.getId() + ':' + taskType;
+      var memory = SW_TASK_FORM_OPTIONS_MEMORY_CACHE_[cacheKey];
+      if (memory && memory.expiresAt > new Date().getTime()) return memory.value || {};
       var cached = CacheService.getScriptCache().get(cacheKey);
-      if (cached) return swParseJson_(cached, {});
+      if (cached) {
+        var cachedValue = swParseJson_(cached, {});
+        SW_TASK_FORM_OPTIONS_MEMORY_CACHE_[cacheKey] = {
+          expiresAt: new Date().getTime() + 10 * 60 * 1000,
+          value: cachedValue
+        };
+        return cachedValue;
+      }
     } catch (_) {}
   }
   var out;
@@ -304,6 +315,12 @@ function swTaskFormOptions_(ss, task) {
 
 function swCacheTaskFormOptions_(cacheKey, out) {
   if (!cacheKey) return;
+  try {
+    SW_TASK_FORM_OPTIONS_MEMORY_CACHE_[cacheKey] = {
+      expiresAt: new Date().getTime() + 10 * 60 * 1000,
+      value: out || {}
+    };
+  } catch (_) {}
   try {
     var json = JSON.stringify(out || {});
     if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 10 * 60);

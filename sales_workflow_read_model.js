@@ -231,7 +231,7 @@ function swRebuildWorkflowReadModelsUnlocked_(ss, options) {
 function swBuildTaskReadModel_(ss, builtAt) {
   var started = new Date().getTime();
   try {
-    var state = swReadTaskListState_(ss, false);
+    var state = swReadTaskState_(ss, false);
     var nowMs = builtAt.getTime();
     var rows = (state.tasks || []).map(function (task) {
       return swTaskReadModelRow_(task, nowMs);
@@ -241,6 +241,23 @@ function swBuildTaskReadModel_(ss, builtAt) {
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
     try { swCacheTaskListState_(ss, state); } catch (_) {}
+    var detailCacheStarted = new Date().getTime();
+    try {
+      var detailCache = typeof swCacheTaskDetailRows_ === 'function'
+        ? swCacheTaskDetailRows_(ss, state)
+        : {};
+      write.cacheOk = detailCache.ok !== false;
+      write.cacheSource = 'taskDetailRowsCache';
+      write.cacheMs = new Date().getTime() - detailCacheStarted;
+      write.cacheChunks = detailCache.chunks || 0;
+      write.cacheBytes = detailCache.bytes || 0;
+      if (detailCache.reason) write.cacheError = detailCache.reason;
+    } catch (detailErr) {
+      write.cacheOk = false;
+      write.cacheSource = 'taskDetailRowsCache';
+      write.cacheMs = new Date().getTime() - detailCacheStarted;
+      write.cacheError = detailErr && detailErr.message ? detailErr.message : String(detailErr);
+    }
     var projections = swBuildTaskDashboardProjections_(ss, state, builtAt);
     write.projectionUsers = projections.users || 0;
     write.projectionKeys = projections.keys || 0;

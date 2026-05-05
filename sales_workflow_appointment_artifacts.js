@@ -73,9 +73,13 @@ var SW_ARTIFACT_UPLOAD_FIELDS = [
   { field: 'intakeMaterial', driveUrlField: 'intakeMaterialDriveUrl', type: SW_ARTIFACT_TYPES.CLIENT_INTAKE }
 ];
 var SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS = 2 * 60;
+var SW_APPOINTMENT_AI_BRIEF_CACHE_SECONDS = 10 * 60;
+var SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_CACHE_SECONDS = 10 * 60;
 var SW_APPOINTMENT_FOLDER_ID_CACHE_SECONDS = 60 * 60;
 var SW_APPOINTMENT_UPLOAD_FOLDER_CACHE_SECONDS = 60 * 60;
 var SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_ = {};
+var SW_APPOINTMENT_AI_BRIEF_MEMORY_CACHE_ = {};
+var SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_MEMORY_CACHE_ = {};
 var SW_APPOINTMENT_ROOT_FOLDER_MEMORY_CACHE_ = {};
 var SW_APPOINTMENT_UPLOAD_FOLDER_MEMORY_CACHE_ = {};
 
@@ -241,6 +245,8 @@ function swInvalidateAppointmentArtifactRowsForRoot_(ss, root) {
   var key = swAppointmentArtifactRootCacheKey_(ss, root);
   try { delete SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_[key]; } catch (_) {}
   try { CacheService.getScriptCache().remove(key); } catch (_) {}
+  try { swInvalidateAppointmentAiBriefCache_(ss, root); } catch (_) {}
+  try { swInvalidatePublicAppointmentArtifactsIndex_(ss); } catch (_) {}
 }
 
 function swAppointmentArtifactRootCacheKey_(ss, root) {
@@ -248,33 +254,105 @@ function swAppointmentArtifactRootCacheKey_(ss, root) {
 }
 
 function swPublicAppointmentArtifacts_(ss, rootApptId) {
-  return swAppointmentArtifactRowsForRoot_(ss, rootApptId).map(function (row) {
-    return {
-      artifactId: row['ArtifactID'] || '',
-      rootApptId: row['RootApptID'] || '',
-      apptId: row['APPT_ID'] || '',
-      artifactType: row['Artifact Type'] || '',
-      typeLabel: swArtifactTypeLabel_(row['Artifact Type']),
-      workflowStage: row['Workflow Stage'] || '',
-      stageLabel: swArtifactStageLabel_(row['Workflow Stage']),
-      originalFilename: row['Original Filename'] || '',
-      canonicalFilename: row['Canonical Filename'] || '',
-      mimeType: row['Mime Type'] || '',
-      sizeBytes: row['Size Bytes'] || '',
-      driveUrl: row['Drive URL'] || '',
-      transcriptDocUrl: row['Transcript Doc URL'] || '',
-      summaryDocUrl: row['Summary Doc URL'] || '',
-      summaryJsonUrl: row['Summary JSON URL'] || '',
-      uploadedBy: row['Uploaded By'] || '',
-      uploadedAt: row['Uploaded At'] || '',
-      assemblySource: row['Assembly Source'] || '',
-      assemblyStatus: row['Assembly Status'] || '',
-      lastError: row['Last Error'] || '',
-      updatedAt: row['Updated At'] || ''
-    };
-  }).sort(function (a, b) {
+  var root = swTrim_(rootApptId);
+  var cached = swCachedPublicAppointmentArtifactsForRoot_(ss, root);
+  if (cached !== null) return cached;
+  var out = swAppointmentArtifactRowsForRoot_(ss, root).map(swPublicAppointmentArtifactFromRow_).sort(swPublicAppointmentArtifactSort_);
+  return out;
+}
+
+function swPublicAppointmentArtifactFromRow_(row) {
+  row = row || {};
+  return {
+    artifactId: row['ArtifactID'] || '',
+    rootApptId: row['RootApptID'] || '',
+    apptId: row['APPT_ID'] || '',
+    artifactType: row['Artifact Type'] || '',
+    typeLabel: swArtifactTypeLabel_(row['Artifact Type']),
+    workflowStage: row['Workflow Stage'] || '',
+    stageLabel: swArtifactStageLabel_(row['Workflow Stage']),
+    originalFilename: row['Original Filename'] || '',
+    canonicalFilename: row['Canonical Filename'] || '',
+    mimeType: row['Mime Type'] || '',
+    sizeBytes: row['Size Bytes'] || '',
+    driveUrl: row['Drive URL'] || '',
+    transcriptDocUrl: row['Transcript Doc URL'] || '',
+    summaryDocUrl: row['Summary Doc URL'] || '',
+    summaryJsonUrl: row['Summary JSON URL'] || '',
+    uploadedBy: row['Uploaded By'] || '',
+    uploadedAt: row['Uploaded At'] || '',
+    assemblySource: row['Assembly Source'] || '',
+    assemblyStatus: row['Assembly Status'] || '',
+    lastError: row['Last Error'] || '',
+    updatedAt: row['Updated At'] || ''
+  };
+}
+
+function swPublicAppointmentArtifactSort_(a, b) {
     return String(b.uploadedAt || b.updatedAt || '').localeCompare(String(a.uploadedAt || a.updatedAt || ''));
+}
+
+function swPublicAppointmentArtifactsIndexKey_(ss) {
+  return 'sw:publicAppointmentArtifacts:v1:' + ss.getId();
+}
+
+function swCachePublicAppointmentArtifactsIndex_(ss) {
+  return swCachePublicAppointmentArtifactsIndexFromRows_(ss, swReadAppointmentArtifactRows_(ss));
+}
+
+function swCachePublicAppointmentArtifactsIndexFromRows_(ss, rows) {
+  var key = swPublicAppointmentArtifactsIndexKey_(ss);
+  var byRoot = {};
+  (rows || []).forEach(function (row) {
+    var root = swTrim_(row['RootApptID']);
+    if (!root) return;
+    if (!byRoot[root]) byRoot[root] = [];
+    byRoot[root].push(swPublicAppointmentArtifactFromRow_(row));
   });
+  Object.keys(byRoot).forEach(function (root) {
+    byRoot[root].sort(swPublicAppointmentArtifactSort_);
+  });
+  var payload = {
+    cachedAt: swIso_(new Date()),
+    byRoot: byRoot
+  };
+  try {
+    SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_CACHE_SECONDS * 1000,
+      byRoot: byRoot
+    };
+  } catch (_) {}
+  if (typeof swTaskListCachePut_ === 'function') return swTaskListCachePut_(key, payload);
+  return { ok: false, reason: 'chunkCacheUnavailable', chunks: 0, bytes: 0 };
+}
+
+function swCachedPublicAppointmentArtifactsForRoot_(ss, root) {
+  root = swTrim_(root);
+  if (!root) return [];
+  var key = swPublicAppointmentArtifactsIndexKey_(ss);
+  var now = new Date().getTime();
+  try {
+    var memory = SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > now && memory.byRoot) {
+      return memory.byRoot[root] || [];
+    }
+  } catch (_) {}
+  try {
+    var payload = typeof swTaskListCacheGet_ === 'function' ? swTaskListCacheGet_(key) : null;
+    if (!payload || !payload.byRoot) return null;
+    SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_MEMORY_CACHE_[key] = {
+      expiresAt: now + SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_CACHE_SECONDS * 1000,
+      byRoot: payload.byRoot || {}
+    };
+    return payload.byRoot[root] || [];
+  } catch (_) {}
+  return null;
+}
+
+function swInvalidatePublicAppointmentArtifactsIndex_(ss) {
+  var key = swPublicAppointmentArtifactsIndexKey_(ss);
+  try { delete SW_PUBLIC_APPOINTMENT_ARTIFACT_INDEX_MEMORY_CACHE_[key]; } catch (_) {}
+  try { if (typeof swTaskListCacheRemove_ === 'function') swTaskListCacheRemove_(key); } catch (_) {}
 }
 
 function swArtifactTypeLabel_(type) {
@@ -345,14 +423,20 @@ function swSummaryExtraForRoot_(ss, rootApptId) {
 }
 
 function swAppointmentAiBriefForRoot_(ss, rootApptId) {
+  var cached = swCachedAppointmentAiBrief_(ss, rootApptId);
+  if (cached) return cached.hasAiBrief ? cached : null;
   var summary = swSummaryExtraForRoot_(ss, rootApptId);
-  return summary && summary.ready ? swAppointmentAiBriefFull_(summary) : null;
+  var brief = summary && summary.ready ? swAppointmentAiBriefFull_(summary) : null;
+  swCacheAppointmentAiBrief_(ss, rootApptId, brief);
+  return brief;
 }
 
 function swAppointmentSummaryIndex_(ss) {
   var readyRank = swArtifactStageRank_(SW_ARTIFACT_STAGES.SUMMARY_READY);
   var byRoot = {};
-  swReadAppointmentArtifactRows_(ss).forEach(function (row) {
+  var rows = swReadAppointmentArtifactRows_(ss);
+  try { swCachePublicAppointmentArtifactsIndexFromRows_(ss, rows); } catch (_) {}
+  rows.forEach(function (row) {
     if (row['Artifact Type'] !== SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING) return;
     if (swArtifactStageRank_(row['Workflow Stage']) < readyRank) return;
     if (!swTrim_(row['Client Follow-Up Draft'])) return;
@@ -372,9 +456,62 @@ function swAppointmentAiBriefIndex_(ss) {
   var out = {};
   Object.keys(summaries || {}).forEach(function (root) {
     var brief = swAppointmentAiBriefFull_(summaries[root]);
-    if (brief && brief.hasAiBrief) out[root] = brief;
+    if (brief && brief.hasAiBrief) {
+      out[root] = brief;
+      swCacheAppointmentAiBrief_(ss, root, brief);
+    }
   });
   return out;
+}
+
+function swAppointmentAiBriefCacheKey_(ss, root) {
+  return 'sw:appointmentAiBrief:v1:' + ss.getId() + ':' + encodeURIComponent(swTrim_(root));
+}
+
+function swCachedAppointmentAiBrief_(ss, root) {
+  root = swTrim_(root);
+  if (!root) return null;
+  var key = swAppointmentAiBriefCacheKey_(ss, root);
+  try {
+    var memory = SW_APPOINTMENT_AI_BRIEF_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.value || { hasAiBrief: false };
+  } catch (_) {}
+  try {
+    var cached = CacheService.getScriptCache().get(key);
+    if (!cached) return null;
+    var value = swParseJson_(cached, { hasAiBrief: false });
+    SW_APPOINTMENT_AI_BRIEF_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_AI_BRIEF_CACHE_SECONDS * 1000,
+      value: value || { hasAiBrief: false }
+    };
+    return value || { hasAiBrief: false };
+  } catch (_) {}
+  return null;
+}
+
+function swCacheAppointmentAiBrief_(ss, root, brief) {
+  root = swTrim_(root);
+  if (!root) return;
+  var key = swAppointmentAiBriefCacheKey_(ss, root);
+  var value = brief && brief.hasAiBrief ? brief : { hasAiBrief: false };
+  try {
+    SW_APPOINTMENT_AI_BRIEF_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_AI_BRIEF_CACHE_SECONDS * 1000,
+      value: value
+    };
+  } catch (_) {}
+  try {
+    var text = swStringify_(value);
+    if (text.length <= 90000) CacheService.getScriptCache().put(key, text, SW_APPOINTMENT_AI_BRIEF_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swInvalidateAppointmentAiBriefCache_(ss, root) {
+  root = swTrim_(root);
+  if (!root) return;
+  var key = swAppointmentAiBriefCacheKey_(ss, root);
+  try { delete SW_APPOINTMENT_AI_BRIEF_MEMORY_CACHE_[key]; } catch (_) {}
+  try { CacheService.getScriptCache().remove(key); } catch (_) {}
 }
 
 function swAppointmentAiBriefFull_(summary) {

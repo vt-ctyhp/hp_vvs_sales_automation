@@ -1227,9 +1227,11 @@ function sw_getTaskDetail(authToken, taskId) {
     var canAct = swCanActOnTask_(task, user);
 
     var payload = swParseJson_(task.payloadJson, {});
-    var appointmentAiBrief = swTaskDetailAppointmentAiBrief_(ss, task, payload);
-    payload = swTaskDetailHydrateAiBriefPayload_(task, payload, appointmentAiBrief);
     mark('payloadParse');
+    var appointmentAiBrief = swTaskDetailAppointmentAiBrief_(ss, task, payload);
+    mark('aiBrief', { hasAiBrief: !!(appointmentAiBrief && appointmentAiBrief.hasAiBrief) });
+    payload = swTaskDetailHydrateAiBriefPayload_(task, payload, appointmentAiBrief);
+    mark('payloadHydrate');
     var template = ctx.templates[task.taskType] || swDefaultTemplate_(task.taskType);
     var renderData = swRenderDataForTask_(task, payload);
     var renderedTemplate = swRenderedCopyableTemplateForTask_(task, template, renderData);
