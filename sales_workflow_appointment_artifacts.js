@@ -838,8 +838,11 @@ function swArtifactCanRetryDriveSharingError_(row) {
   if (!swArtifactNeedsTranscription_(row['Artifact Type'])) return false;
   if (swTrim_(row['Assembly Transcript ID'])) return false;
   if (!swTrim_(row['Drive File ID'])) return false;
-  if (String(row['Last Error'] || '').indexOf('Drive link sharing was denied') < 0 &&
-      String(row['Last Error'] || '').indexOf('Large recording cannot be shared') < 0) return false;
+  var lastError = String(row['Last Error'] || '');
+  var oldSharingError = lastError.indexOf('Large recording cannot be shared') >= 0;
+  var newSharingError = lastError.indexOf('Drive link sharing was denied') >= 0;
+  if (!oldSharingError && !newSharingError) return false;
+  if (oldSharingError) return true;
   var size = swBytesNumber_(row['Size Bytes']);
   return !size || size <= swAssemblyAppsScriptUploadMaxBytes_();
 }
