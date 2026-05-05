@@ -30,6 +30,8 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'DATA_CLEANUP_STALE_DAYS', '30', '', '', '', 'Y', '', 'Open Lead / Hot Lead / Follow-Up customers become cleanup candidates after this many days without a meaningful touch.'],
     ['SYSTEM', 'DATA_CLEANUP_CAMPAIGN_ID', 'ONE_TIME_2026_05', '', '', '', 'Y', '', 'Identifier for the one-time cleanup campaign.'],
     ['SYSTEM', 'DATA_CLEANUP_CAMPAIGN_TAB_ENABLED', 'Y', '', '', '', 'Y', '', 'Show the temporary Cleanup dashboard tab for unresolved one-time campaign cases. The generator disables this after the campaign is resolved.'],
+    ['SYSTEM', 'READ_MODEL_ENABLED', 'N', '', '', '', 'Y', '', 'Shadow read-model flag. Phase 1 builds generated _SW_* tabs but does not serve app reads from them.'],
+    ['SYSTEM', 'READ_MODEL_TTL_SECONDS', '300', '', '', '', 'Y', '', 'Freshness target for generated workflow read models. Default is 5 minutes.'],
     ['USER', 'ADMIN_1', '', 'Admin', '', '', 'Y', '1', 'Optional admin row.'],
     ['USER', 'DIAMOND_ORDER_ADMIN_1', '', 'DIAMOND_ORDER_ADMIN', '', '', 'Y', '1', 'Legacy config row only; dashboard access now comes from _SalesWorkflowUsers role DIAMOND_ORDER_ADMIN.'],
     ['USER', 'DIAMOND_ORDER_ASSISTANT_1', '', 'DIAMOND_ORDER_ASSISTANT', '', '', 'Y', '1', 'Legacy config row only; dashboard access now comes from _SalesWorkflowUsers role DIAMOND_ORDER_ASSISTANT.'],

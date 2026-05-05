@@ -2004,6 +2004,7 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
       startupOnly: options.startupOnly,
       includeStartup: options.includeStartup,
       bootstrapRepeats: options.bootstrapRepeats,
+      includeReadModelStatus: options.includeReadModelStatus,
       includeLoginBootstrap: !!(options.loginEmail && options.loginPassword),
       detailLimit: options.detailLimit,
       includeTaskDetails: options.includeTaskDetails,
@@ -2021,6 +2022,12 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
   if (options.includeStartup) {
     swBenchmarkSalesWorkflowStep_(out, 'webApp:taskQueueHtml', function () {
       return swBenchmarkSalesWorkflowHtmlSummary_();
+    });
+  }
+
+  if (options.includeReadModelStatus && typeof sw_getWorkflowReadModelStatus === 'function') {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getWorkflowReadModelStatus', function () {
+      return swBenchmarkSalesWorkflowReadModelSummary_(sw_getWorkflowReadModelStatus());
     });
   }
 
@@ -2432,6 +2439,7 @@ function swBenchmarkSalesWorkflowOptions_(options) {
     startupOnly: !!options.startupOnly,
     includeStartup: options.includeStartup !== false,
     bootstrapRepeats: bootstrapRepeats,
+    includeReadModelStatus: options.includeReadModelStatus !== false,
     loginEmail: swNormEmail_(options.loginEmail || options.email || ''),
     loginPassword: String(options.loginPassword || options.password || ''),
     detailLimit: detailLimit,
