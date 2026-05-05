@@ -5725,19 +5725,17 @@
       if (task.taskType !== 'APPROVE_RECAP_MESSAGE' && task.taskType !== 'SEND_FINAL_RECAP') return '';
       var extra = ((res.payload || {}).extra || {});
       var rows = [
-        extra.internalSummary ? ['Internal Summary', extra.internalSummary] : null,
-        meaningfulAiReviewText(extra.customerInsights) ? ['Customer Insights', extra.customerInsights] : null,
-        meaningfulAiReviewText(extra.recommendedNextSteps) ? ['Recommended Next Steps', extra.recommendedNextSteps] : null,
-        extra.confidenceFlags ? ['Confidence / Warning Flags', extra.confidenceFlags] : null
+        extra.salesBrief ? ['Sales Brief', extra.salesBrief] : null,
+        extra.reviewFlags ? ['Review Flags', extra.reviewFlags] : null
       ].filter(Boolean);
       var links = [
         extra.summaryDocUrl ? '<a href="' + escapeHref(extra.summaryDocUrl) + '" target="_blank">AI Follow-Up Doc</a>' : '',
-        task.taskType === 'APPROVE_RECAP_MESSAGE' && extra.transcriptDocUrl ? '<a href="' + escapeHref(extra.transcriptDocUrl) + '" target="_blank">Transcript Doc</a>' : ''
+        extra.transcriptDocUrl ? '<a href="' + escapeHref(extra.transcriptDocUrl) + '" target="_blank">Transcript Doc</a>' : ''
       ].filter(Boolean).join('');
       if (!rows.length && !links) return '';
       return [
         '<div class="detail-section">',
-          '<label>' + (task.taskType === 'SEND_FINAL_RECAP' ? 'JOC Handoff Context' : 'AI Follow-Up Review') + '</label>',
+          '<label>AI Follow-Up Review</label>',
           '<div class="review-context">',
             rows.map(function (row) {
               return '<div><div class="meta">' + escapeHtml(row[0]) + '</div><div class="template-box">' + escapeHtml(row[1]) + '</div></div>';
@@ -5746,19 +5744,6 @@
           '</div>',
         '</div>'
       ].join('');
-    }
-
-    function meaningfulAiReviewText(value) {
-      var text = String(value || '').trim();
-      if (!text) return false;
-      var compact = text.toLowerCase().replace(/\s+/g, ' ');
-      if (compact === 'no next steps generated.') return false;
-      if (compact.indexOf('preferences: not captured.') >= 0 &&
-          compact.indexOf('budget signals: not captured.') >= 0 &&
-          compact.indexOf('concerns: not captured.') >= 0 &&
-          compact.indexOf('decision makers: not captured.') >= 0 &&
-          compact.indexOf('style notes: not captured.') >= 0) return false;
-      return true;
     }
 
     function renderChecklist(items) {

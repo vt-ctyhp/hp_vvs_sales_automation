@@ -31,11 +31,9 @@ var SW_APPOINTMENT_ARTIFACT_HEADERS = [
   'Summary JSON URL',
   'Summary Doc ID',
   'Summary Doc URL',
-  'Internal Summary',
-  'Customer Insights',
-  'Recommended Next Steps',
+  'Sales Brief',
   'Client Follow-Up Draft',
-  'Confidence Flags',
+  'Review Flags',
   'Summary Snapshot JSON',
   'Attempts',
   'Next Poll At',
@@ -78,9 +76,68 @@ var SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS = 2 * 60;
 var SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_ = {};
 
 function swEnsureAppointmentArtifactsSheet_(ss) {
-  var sh = swEnsureSheet_(ss, SW_APPOINTMENT_ARTIFACT_SHEET, SW_APPOINTMENT_ARTIFACT_HEADERS);
-  swStyleSheet_(sh);
+  var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
+  if (!sh) sh = ss.insertSheet(SW_APPOINTMENT_ARTIFACT_SHEET);
+  var changed = false;
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, SW_APPOINTMENT_ARTIFACT_HEADERS.length).setValues([SW_APPOINTMENT_ARTIFACT_HEADERS]);
+    changed = true;
+  } else if (swAppointmentArtifactsSheetNeedsMigration_(sh)) {
+    swMigrateAppointmentArtifactsSheet_(sh);
+    changed = true;
+  }
+  if (changed) swStyleSheet_(sh);
   return sh;
+}
+
+function swAppointmentArtifactsSheetNeedsMigration_(sh) {
+  if (sh.getLastColumn() !== SW_APPOINTMENT_ARTIFACT_HEADERS.length) return true;
+  var headers = sh.getRange(1, 1, 1, SW_APPOINTMENT_ARTIFACT_HEADERS.length).getDisplayValues()[0];
+  for (var i = 0; i < SW_APPOINTMENT_ARTIFACT_HEADERS.length; i++) {
+    if (swHeaderKey_(headers[i]) !== swHeaderKey_(SW_APPOINTMENT_ARTIFACT_HEADERS[i])) return true;
+  }
+  return false;
+}
+
+function swMigrateAppointmentArtifactsSheet_(sh) {
+  var lastRow = Math.max(sh.getLastRow(), 1);
+  var lastCol = Math.max(sh.getLastColumn(), 1);
+  var values = sh.getRange(1, 1, lastRow, lastCol).getValues();
+  var currentHeaders = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(currentHeaders);
+  var aliases = {
+    'Sales Brief': ['Sales Brief', 'Internal Summary', 'Customer Insights'],
+    'Review Flags': ['Review Flags', 'Confidence Flags']
+  };
+  var nextValues = values.map(function (_, rowIndex) {
+    return SW_APPOINTMENT_ARTIFACT_HEADERS.map(function (header) {
+      if (rowIndex === 0) return header;
+      var sourceHeaders = aliases[header] || [header];
+      for (var i = 0; i < sourceHeaders.length; i++) {
+        var idx = H[sourceHeaders[i]];
+        if (idx == null) idx = H[swHeaderKey_(sourceHeaders[i])];
+        if (idx != null && values[rowIndex][idx] !== '') return values[rowIndex][idx];
+      }
+      return '';
+    });
+  });
+  if (sh.getMaxColumns() < SW_APPOINTMENT_ARTIFACT_HEADERS.length) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), SW_APPOINTMENT_ARTIFACT_HEADERS.length - sh.getMaxColumns());
+  }
+  sh.getRange(1, 1, nextValues.length, SW_APPOINTMENT_ARTIFACT_HEADERS.length).setValues(nextValues);
+  var extraCols = sh.getLastColumn() - SW_APPOINTMENT_ARTIFACT_HEADERS.length;
+  if (extraCols > 0) sh.deleteColumns(SW_APPOINTMENT_ARTIFACT_HEADERS.length + 1, extraCols);
+}
+
+function sw_cleanupAppointmentArtifactsSchema() {
+  var ss = swSpreadsheet_();
+  var sh = swEnsureAppointmentArtifactsSheet_(ss);
+  return {
+    ok: true,
+    sheet: SW_APPOINTMENT_ARTIFACT_SHEET,
+    columns: sh.getLastColumn(),
+    headers: SW_APPOINTMENT_ARTIFACT_HEADERS
+  };
 }
 
 function swArtifactHeaderMap_(sh) {
@@ -95,7 +152,7 @@ function swArtifactHeaderMap_(sh) {
 }
 
 function swReadAppointmentArtifactRows_(ss) {
-  var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
+  var sh = swEnsureAppointmentArtifactsSheet_(ss);
   if (!sh || sh.getLastRow() < 2) return [];
   var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_APPOINTMENT_ARTIFACT_HEADERS);
   return rows.map(function (row) {
@@ -110,7 +167,7 @@ function swAppointmentArtifactRowsForRoot_(ss, rootApptId) {
   var cached = swCachedAppointmentArtifactRowsForRoot_(ss, root);
   if (cached !== null) return cached;
 
-  var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
+  var sh = swEnsureAppointmentArtifactsSheet_(ss);
   if (!sh || sh.getLastRow() < 2) return [];
   var rootCol = SW_APPOINTMENT_ARTIFACT_HEADERS.indexOf('RootApptID') + 1;
   if (swHeaderKey_(sh.getRange(1, rootCol).getDisplayValue()) !== swHeaderKey_('RootApptID')) {
@@ -319,10 +376,8 @@ function swSummaryExtraFromArtifactRow_(row) {
     transcriptDocUrl: row['Transcript Doc URL'] || '',
     summaryDocUrl: row['Summary Doc URL'] || '',
     summaryJsonUrl: row['Summary JSON URL'] || '',
-    internalSummary: row['Internal Summary'] || '',
-    customerInsights: row['Customer Insights'] || '',
-    recommendedNextSteps: row['Recommended Next Steps'] || '',
-    confidenceFlags: row['Confidence Flags'] || '',
+    salesBrief: row['Sales Brief'] || '',
+    reviewFlags: row['Review Flags'] || '',
     clientFollowUpDraft: row['Client Follow-Up Draft'] || '',
     recapDraft: row['Client Follow-Up Draft'] || '',
     approvedText: row['Client Follow-Up Draft'] || ''
@@ -1058,12 +1113,6 @@ function swGenerateAppointmentSummary_(ss, row, now) {
   var folders = swEnsureAppointmentFolderForRoot_(ss, row['RootApptID']);
   var baseName = row['RootApptID'] + '__client_follow_up_draft__' + Utilities.formatDate(now, swTimezone_(), 'yyyyMMdd-HHmmss');
   var jsonFile = folders.summaries.createFile(baseName + '.json', JSON.stringify(normalized, null, 2), 'application/json');
-  var customerInsightsText = swSummaryHasInsights_(normalized.key_customer_insights)
-    ? swInsightsToText_(normalized.key_customer_insights)
-    : '';
-  var nextStepsText = (normalized.recommended_next_steps || []).length
-    ? swNextStepsToText_(normalized.recommended_next_steps)
-    : '';
   var summaryDoc = swCreateGoogleDocInFolder_(
     folders.summaries,
     baseName,
@@ -1075,61 +1124,21 @@ function swGenerateAppointmentSummary_(ss, row, now) {
     ],
     swReadableAppointmentSummary_(normalized)
   );
-  swMirrorAppointmentSummaryToSYSConsults_(ss, row, normalized, jsonFile.getUrl(), appointment);
   swPatchAppointmentArtifactRow_(ss, row, {
     'Workflow Stage': SW_ARTIFACT_STAGES.SUMMARY_READY,
     'Summary JSON File ID': jsonFile.getId(),
     'Summary JSON URL': jsonFile.getUrl(),
     'Summary Doc ID': summaryDoc.id,
     'Summary Doc URL': summaryDoc.url,
-    'Internal Summary': normalized.internal_appointment_summary,
-    'Customer Insights': customerInsightsText,
-    'Recommended Next Steps': nextStepsText,
-    'Client Follow-Up Draft': normalized.client_follow_up_message_draft,
-    'Confidence Flags': (normalized.confidence_warning_flags || []).join('\n'),
+    'Sales Brief': normalized.salesBrief,
+    'Client Follow-Up Draft': normalized.clientFollowUpDraft,
+    'Review Flags': (normalized.reviewFlags || []).join('\n'),
     'Summary Snapshot JSON': JSON.stringify(normalized),
     'Attempts': 0,
     'Next Poll At': swIso_(now),
     'Last Error': '',
     'Updated At': swIso_(now)
   });
-}
-
-function swMirrorAppointmentSummaryToSYSConsults_(ss, row, summary, summaryJsonUrl, appointment) {
-  if (typeof upsertSYSConsults_ !== 'function') return;
-  try {
-    var insights = summary.key_customer_insights || {};
-    var consultId = row['RootApptID'] + '|' + (appointment.visitDate || row['Uploaded At'] || swIso_(new Date()));
-    var scribe = {
-      customer_profile: {
-        customer_name: appointment.name || '',
-        phone: appointment.phone || '',
-        email: appointment.email || '',
-        decision_makers: insights.decision_makers || [],
-        comm_prefs: []
-      },
-      budget: (insights.budget_signals || []).join(' | '),
-      timeline: (summary.recommended_next_steps || []).map(function (step) { return step.timing; }).filter(Boolean).join(' | '),
-      design_specs: {
-        design_notes: (insights.style_notes || []).join(' | ')
-      },
-      diamond_specs: {},
-      rapport_notes: [summary.internal_appointment_summary].filter(Boolean),
-      next_steps: (summary.recommended_next_steps || []).map(function (step) {
-        return {
-          owner: step.owner || '',
-          task: step.action || '',
-          due_iso: step.timing || '',
-          notes: step.notes || ''
-        };
-      }),
-      design_refs: [],
-      conf: {}
-    };
-    upsertSYSConsults_(ss, consultId, row['RootApptID'], scribe, summaryJsonUrl);
-  } catch (err) {
-    Logger.log('SYS_Consults mirror skipped: ' + (err && (err.stack || err.message) || err));
-  }
 }
 
 function swAssemblyApiKey_() {
@@ -1301,16 +1310,30 @@ function swOpenAIAppointmentFollowUpDraft_(transcriptText, artifact, appointment
   }
   var model = swTrim_(PropertiesService.getScriptProperties().getProperty('OPENAI_APPOINTMENT_SUMMARY_MODEL')) ||
     'gpt-5.4-mini';
+  var clientFollowUpPrompt = "You are a warm, caring jewelry consultant writing a follow-up text to a client after their engagement ring consultation. This is an emotional, exciting moment in their life — write like someone who genuinely shared in that excitement with them.\n\nUsing the transcript, write a text message that:\n- Opens with their name and a warm callback to a specific fun or meaningful moment from the visit\n- Recaps what resonated with them (styles, stones, details) in a way that shows you were truly listening\n- States next steps clearly but naturally — woven in, not listed\n- Leaves the door open for any changes with zero pressure\n- Feels like a text from a trusted friend who happens to be an expert, not a sales rep\n\nUnder 180 words. No bullet points in the output. No generic openers like \"It was so great meeting you.\" Make every sentence earn its place. Return only the message.";
+  var salesBriefPrompt = 'Write a compact internal Sales Brief for the Client Advisor and JOC. Focus only on sales-useful details supported by the transcript: the emotional callback, what resonated, specific style/stone/design preferences, stated timing or budget signals, concerns or open questions, and what the team should remember before the next touch. Keep it concise, practical, and non-repetitive. Do not write a transcript summary.';
+  var reviewFlagsPrompt = 'Return Review Flags only when a human should double-check something before sending or acting: unclear next step, possible contradiction, missing consultant/client name, unsupported inference, sensitive wording, or low-certainty detail. Use short actionable phrases. Return an empty array when there are no real flags.';
   var body = {
     model: model,
     input: [
       {
         role: 'system',
-        content: "You are a warm, caring jewelry consultant writing a follow-up text to a client after their engagement ring consultation. This is an emotional, exciting moment in their life — write like someone who genuinely shared in that excitement with them.\n\nUsing the transcript, write a text message that:\n- Opens with their name and a warm callback to a specific fun or meaningful moment from the visit\n- Recaps what resonated with them (styles, stones, details) in a way that shows you were truly listening\n- States next steps clearly but naturally — woven in, not listed\n- Leaves the door open for any changes with zero pressure\n- Feels like a text from a trusted friend who happens to be an expert, not a sales rep\n\nUnder 180 words. No bullet points in the output. No generic openers like \"It was so great meeting you.\" Make every sentence earn its place. Return only the message."
+        content: 'Generate one structured post-appointment AI review package for a jewelry sales workflow. Use only transcript-supported facts. Do not include markdown, labels, or bullets in clientFollowUpDraft.'
       },
       {
         role: 'user',
         content: [
+          'Return JSON with exactly these fields: clientFollowUpDraft, salesBrief, reviewFlags.',
+          '',
+          'clientFollowUpDraft prompt:',
+          clientFollowUpPrompt,
+          '',
+          'salesBrief prompt:',
+          salesBriefPrompt,
+          '',
+          'reviewFlags prompt:',
+          reviewFlagsPrompt,
+          '',
           'Appointment context:',
           JSON.stringify({
             rootApptId: artifact['RootApptID'] || '',
@@ -1332,7 +1355,14 @@ function swOpenAIAppointmentFollowUpDraft_(transcriptText, artifact, appointment
       }
     ],
     max_output_tokens: 1200,
-    text: { format: { type: 'text' } }
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'appointment_follow_up_review',
+        strict: true,
+        schema: swAppointmentSummarySchema_()
+      }
+    }
   };
   var response = UrlFetchApp.fetch('https://api.openai.com/v1/responses', {
     method: 'post',
@@ -1344,36 +1374,9 @@ function swOpenAIAppointmentFollowUpDraft_(transcriptText, artifact, appointment
   var parsed = swFetchJsonOrThrow_(response, 'OpenAI client follow-up draft');
   if (parsed.usage) Logger.log('SW_OPENAI_APPOINTMENT_FOLLOW_UP_USAGE ' + JSON.stringify(parsed.usage));
   if (parsed.status === 'incomplete') throw new Error('OpenAI response incomplete: ' + swStringify_(parsed.incomplete_details || {}));
-  var messageText = swExtractOpenAIText_(parsed);
-  if (!messageText) throw new Error('OpenAI did not return client follow-up message text.');
-  return {
-    internal_appointment_summary: '',
-    key_customer_insights: {},
-    recommended_next_steps: [],
-    client_follow_up_message_draft: messageText,
-    confidence_warning_flags: []
-  };
-}
-
-function swExtractOpenAIText_(body) {
-  if (typeof __extractTextFromResponsesBody__ === 'function') {
-    var extracted = __extractTextFromResponsesBody__(body);
-    if (swTrim_(extracted)) return swTrim_(extracted);
-  }
-  if (body && typeof body.output_text === 'string') return swTrim_(body.output_text);
-  try {
-    var texts = [];
-    var output = body.output || [];
-    for (var i = 0; i < output.length; i++) {
-      var content = output[i].content || [];
-      for (var j = 0; j < content.length; j++) {
-        if (typeof content[j].text === 'string') texts.push(content[j].text);
-        if (typeof content[j].content === 'string') texts.push(content[j].content);
-      }
-    }
-    return swTrim_(texts.join('\n'));
-  } catch (_) {}
-  return '';
+  var json = swExtractOpenAIJson_(parsed);
+  if (!json) throw new Error('OpenAI did not return valid follow-up review JSON.');
+  return json;
 }
 
 function swAppointmentSummarySchema_() {
@@ -1381,43 +1384,11 @@ function swAppointmentSummarySchema_() {
     type: 'object',
     additionalProperties: false,
     properties: {
-      internal_appointment_summary: { type: 'string' },
-      key_customer_insights: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          preferences: { type: 'array', items: { type: 'string' } },
-          budget_signals: { type: 'array', items: { type: 'string' } },
-          concerns: { type: 'array', items: { type: 'string' } },
-          decision_makers: { type: 'array', items: { type: 'string' } },
-          style_notes: { type: 'array', items: { type: 'string' } }
-        },
-        required: ['preferences', 'budget_signals', 'concerns', 'decision_makers', 'style_notes']
-      },
-      recommended_next_steps: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            owner: { type: 'string' },
-            action: { type: 'string' },
-            timing: { type: 'string' },
-            notes: { type: 'string' }
-          },
-          required: ['owner', 'action', 'timing', 'notes']
-        }
-      },
-      client_follow_up_message_draft: { type: 'string' },
-      confidence_warning_flags: { type: 'array', items: { type: 'string' } }
+      clientFollowUpDraft: { type: 'string' },
+      salesBrief: { type: 'string' },
+      reviewFlags: { type: 'array', items: { type: 'string' } }
     },
-    required: [
-      'internal_appointment_summary',
-      'key_customer_insights',
-      'recommended_next_steps',
-      'client_follow_up_message_draft',
-      'confidence_warning_flags'
-    ]
+    required: ['clientFollowUpDraft', 'salesBrief', 'reviewFlags']
   };
 }
 
@@ -1446,80 +1417,27 @@ function swExtractOpenAIJson_(body) {
 
 function swNormalizeAppointmentSummary_(result) {
   result = result || {};
-  var insights = result.key_customer_insights || {};
-  ['preferences', 'budget_signals', 'concerns', 'decision_makers', 'style_notes'].forEach(function (key) {
-    if (!Array.isArray(insights[key])) insights[key] = insights[key] ? [String(insights[key])] : [];
-  });
-  if (!Array.isArray(result.recommended_next_steps)) result.recommended_next_steps = [];
-  if (!Array.isArray(result.confidence_warning_flags)) result.confidence_warning_flags = [];
+  var reviewFlags = result.reviewFlags || [];
+  if (!Array.isArray(reviewFlags)) reviewFlags = reviewFlags ? [String(reviewFlags)] : [];
   return {
-    internal_appointment_summary: swTrim_(result.internal_appointment_summary),
-    key_customer_insights: insights,
-    recommended_next_steps: result.recommended_next_steps.map(function (step) {
-      step = step || {};
-      return {
-        owner: swTrim_(step.owner),
-        action: swTrim_(step.action),
-        timing: swTrim_(step.timing),
-        notes: swTrim_(step.notes)
-      };
-    }),
-    client_follow_up_message_draft: swTrim_(result.client_follow_up_message_draft),
-    confidence_warning_flags: result.confidence_warning_flags.map(swTrim_).filter(Boolean)
+    clientFollowUpDraft: swTrim_(result.clientFollowUpDraft),
+    salesBrief: swTrim_(result.salesBrief),
+    reviewFlags: reviewFlags.map(swTrim_).filter(Boolean)
   };
 }
 
 function swReadableAppointmentSummary_(summary) {
   var lines = [];
-  if (summary.internal_appointment_summary) {
-    lines.push('Appointment Summary', summary.internal_appointment_summary || '');
+  if (summary.clientFollowUpDraft) {
+    lines.push('Client-Facing Follow-Up Draft', summary.clientFollowUpDraft);
   }
-  if (swSummaryHasInsights_(summary.key_customer_insights)) {
-    lines.push('', 'Key Customer Insights', swInsightsToText_(summary.key_customer_insights));
+  if (summary.salesBrief) {
+    lines.push('', 'Sales Brief', summary.salesBrief);
   }
-  if ((summary.recommended_next_steps || []).length) {
-    lines.push('', 'Recommended Next Steps', swNextStepsToText_(summary.recommended_next_steps));
-  }
-  if (summary.client_follow_up_message_draft) {
-    lines.push('', 'Client-Facing Follow-Up Draft', summary.client_follow_up_message_draft);
-  }
-  if ((summary.confidence_warning_flags || []).length) {
-    lines.push('', 'Confidence / Warning Flags', (summary.confidence_warning_flags || []).join('\n'));
+  if ((summary.reviewFlags || []).length) {
+    lines.push('', 'Review Flags', (summary.reviewFlags || []).join('\n'));
   }
   return lines.join('\n').replace(/^\n+/, '');
-}
-
-function swSummaryHasInsights_(insights) {
-  insights = insights || {};
-  return ['preferences', 'budget_signals', 'concerns', 'decision_makers', 'style_notes'].some(function (key) {
-    return (insights[key] || []).length > 0;
-  });
-}
-
-function swInsightsToText_(insights) {
-  insights = insights || {};
-  var labels = [
-    ['preferences', 'Preferences'],
-    ['budget_signals', 'Budget Signals'],
-    ['concerns', 'Concerns'],
-    ['decision_makers', 'Decision Makers'],
-    ['style_notes', 'Style Notes']
-  ];
-  return labels.map(function (pair) {
-    var values = insights[pair[0]] || [];
-    if (!values.length) return pair[1] + ': Not captured.';
-    return pair[1] + ':\n- ' + values.join('\n- ');
-  }).join('\n\n');
-}
-
-function swNextStepsToText_(steps) {
-  steps = steps || [];
-  if (!steps.length) return 'No next steps generated.';
-  return steps.map(function (step, i) {
-    return (i + 1) + '. [' + (step.owner || 'Owner TBD') + '] ' + (step.action || '') +
-      (step.timing ? ' - ' + step.timing : '') +
-      (step.notes ? '\n   ' + step.notes : '');
-  }).join('\n');
 }
 
 function swCreateGoogleDocInFolder_(folder, title, heading, metadataLines, bodyText) {

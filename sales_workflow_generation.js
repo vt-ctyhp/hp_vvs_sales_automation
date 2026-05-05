@@ -47,10 +47,8 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
       transcriptDocUrl: aiSummary.transcriptDocUrl || '',
       summaryDocUrl: aiSummary.summaryDocUrl || '',
       summaryJsonUrl: aiSummary.summaryJsonUrl || '',
-      internalSummary: aiSummary.internalSummary || '',
-      customerInsights: aiSummary.customerInsights || '',
-      recommendedNextSteps: aiSummary.recommendedNextSteps || '',
-      confidenceFlags: aiSummary.confidenceFlags || '',
+      salesBrief: aiSummary.salesBrief || '',
+      reviewFlags: aiSummary.reviewFlags || '',
       clientFollowUpDraft: aiSummary.clientFollowUpDraft || '',
       recapDraft: aiSummary.recapDraft || ''
     }), summary);
@@ -62,12 +60,11 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
       approvedText: swDeepValue_(approvePayload, ['completion', 'approvedText']) ||
         swDeepValue_(approvePayload, ['completion', 'recapText']) || '',
       artifactId: swDeepValue_(approvePayload, ['extra', 'artifactId']) || '',
+      transcriptDocUrl: swDeepValue_(approvePayload, ['extra', 'transcriptDocUrl']) || '',
       summaryDocUrl: swDeepValue_(approvePayload, ['extra', 'summaryDocUrl']) || '',
       summaryJsonUrl: swDeepValue_(approvePayload, ['extra', 'summaryJsonUrl']) || '',
-      internalSummary: swDeepValue_(approvePayload, ['extra', 'internalSummary']) || '',
-      customerInsights: swDeepValue_(approvePayload, ['extra', 'customerInsights']) || '',
-      recommendedNextSteps: swDeepValue_(approvePayload, ['extra', 'recommendedNextSteps']) || '',
-      confidenceFlags: swDeepValue_(approvePayload, ['extra', 'confidenceFlags']) || ''
+      salesBrief: swDeepValue_(approvePayload, ['extra', 'salesBrief']) || '',
+      reviewFlags: swDeepValue_(approvePayload, ['extra', 'reviewFlags']) || ''
     }), summary);
   }
 }

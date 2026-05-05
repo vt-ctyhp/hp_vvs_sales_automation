@@ -133,10 +133,8 @@ function swRenderDataForTask_(task, payload) {
     transcriptDocUrl: extra.transcriptDocUrl || '',
     summaryDocUrl: extra.summaryDocUrl || '',
     summaryJsonUrl: extra.summaryJsonUrl || '',
-    internalSummary: extra.internalSummary || '',
-    customerInsights: extra.customerInsights || '',
-    recommendedNextSteps: extra.recommendedNextSteps || '',
-    confidenceFlags: extra.confidenceFlags || '',
+    salesBrief: extra.salesBrief || '',
+    reviewFlags: extra.reviewFlags || '',
     clientFollowUpDraft: extra.clientFollowUpDraft || extra.recapDraft || '',
     cleanupProposedBy: swDeepValue_(extra, ['cleanupCase', 'proposedBy']) || '',
     cleanupReturnReason: swDeepValue_(extra, ['cleanupCase', 'returnReason']) || '',
@@ -258,11 +256,12 @@ function swAttachmentsForTask_(task, template, data) {
     swPushAttachment_(out, '200_ Diamond Tracker', data.diamondTrackerUrl || '');
   }
   if (task.taskType === SW_TASKS.APPROVE) {
-    swPushAttachment_(out, 'AI Summary Doc', data.summaryDocUrl || '');
+    swPushAttachment_(out, 'AI Follow-Up Doc', data.summaryDocUrl || '');
     swPushAttachment_(out, 'Transcript Doc', data.transcriptDocUrl || '');
   }
   if (task.taskType === SW_TASKS.FINAL) {
-    swPushAttachment_(out, 'AI Summary Doc', data.summaryDocUrl || '');
+    swPushAttachment_(out, 'AI Follow-Up Doc', data.summaryDocUrl || '');
+    swPushAttachment_(out, 'Transcript Doc', data.transcriptDocUrl || '');
   }
   return out;
 }
