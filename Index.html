@@ -974,6 +974,14 @@
       display: none;
     }
 
+    .user-admin-wide .layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .user-admin-wide #detailPanel {
+      display: none;
+    }
+
     .schedule-shell {
       display: grid;
       gap: 24px;
@@ -1628,16 +1636,6 @@
     .admin-dashboard-shell {
       display: grid;
       gap: 18px;
-    }
-
-    .admin-dashboard-toolbar {
-      align-items: end;
-      border-bottom: 1px solid var(--rule);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: space-between;
-      padding-bottom: 16px;
     }
 
     .admin-health-section {
@@ -2926,6 +2924,8 @@
             clearAdminDashboardFilters();
             return;
           }
+          if (closestMatch_(event.target, '.js-admin-generate-password')) return fillGeneratedUserPassword();
+          if (closestMatch_(event.target, '.js-admin-save-user')) return saveWorkflowUser();
           var scheduleFilterButton = closestMatch_(event.target, '.js-schedule-filter');
           if (scheduleFilterButton) return setEmployeeScheduleFilter(scheduleFilterButton.getAttribute('data-filter') || 'all');
           var scheduleSaveButton = closestMatch_(event.target, '.js-schedule-save');
@@ -3720,6 +3720,10 @@
         loadEmployeeSchedules();
         return;
       }
+      if (view === 'userAdmin') {
+        openUserAdminPanel();
+        return;
+      }
       options = options || {};
       var viewName = view || 'mine';
       var reopenTaskId = options.reopenTaskId || '';
@@ -3747,6 +3751,8 @@
         var el = document.getElementById('tab-' + v);
         if (el) el.classList.toggle('active', v === view);
       });
+      var manageUsersButton = document.getElementById('manageUsersButton');
+      if (manageUsersButton) manageUsersButton.classList.toggle('active', view === 'userAdmin');
       updateNavigationGroups();
       updateAdminDashboardLayoutMode();
     }
@@ -3757,6 +3763,7 @@
       shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard');
       shell.classList.toggle('customer-search-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'customerSearch');
       shell.classList.toggle('employee-schedule-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'employeeSchedules');
+      shell.classList.toggle('user-admin-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'userAdmin');
     }
 
     function renderViewHeader(view) {
@@ -3797,6 +3804,10 @@
       if (view === 'employeeSchedules') {
         title = 'Employee schedules and coverage';
         eyebrow = 'Team Schedules';
+      }
+      if (view === 'userAdmin') {
+        title = 'Users, roles, and passwords';
+        eyebrow = 'Manage Users';
       }
       if (view === 'admin') {
         title = 'Open tasks across the workflow';
@@ -4313,13 +4324,6 @@
       updateAdminDashboardLayoutMode();
       document.getElementById('taskList').innerHTML = [
         '<div class="admin-dashboard-shell">',
-          '<div class="admin-dashboard-toolbar">',
-            '<div>',
-              '<div class="eyebrow">Customer Pipeline</div>',
-              '<h2>Business health</h2>',
-            '</div>',
-            '<div class="meta">' + escapeHtml(((res.filters || {}).windowLabel) || '') + '</div>',
-          '</div>',
           renderAdminDashboardFilters(res),
           warnings,
           renderAdminDashboardHealth(res.health || {}),
@@ -7752,8 +7756,16 @@
     }
 
     function openUserAdminPanel() {
-      document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING</div>';
+      var requestId = beginMainRequest('userAdmin');
+      appState.selectedTaskId = '';
+      appState.detail = null;
+      appState.detailRequestId += 1;
+      setActiveTab('userAdmin');
+      renderViewHeader('userAdmin');
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING USERS</div>';
+      renderTaskDetailPlaceholder('Admin', 'Manage Users', 'Use the main panel to add users, assign roles, and reset passwords.');
       serverCall('sw_adminListWorkflowUsers', [], function (res) {
+        if (!isCurrentMainRequest(requestId, 'userAdmin')) return;
         appState.userAdmin = res;
         renderUserAdminPanel(res);
       }, 'Loading users');
@@ -7762,11 +7774,7 @@
     function renderUserAdminPanel(res) {
       var roles = res.roleOptions || [];
       var users = res.users || [];
-      document.getElementById('detailPanel').innerHTML = [
-        '<div class="panel-header">',
-          '<div class="eyebrow">Admin</div>',
-          '<h2>Workflow Users</h2>',
-        '</div>',
+      document.getElementById('taskList').innerHTML = [
         '<div class="detail-body">',
           '<div class="detail-section">',
             '<label>Add or Update User</label>',
@@ -7824,6 +7832,7 @@
     function saveWorkflowUser() {
       var status = document.getElementById('userAdminStatus');
       if (status) status.textContent = '';
+      var requestId = appState.mainRequestId;
       var payload = {
         email: valueOf('userAdminEmail'),
         name: valueOf('userAdminName'),
@@ -7832,10 +7841,12 @@
         roles: [].slice.call(document.querySelectorAll('.user-role-option:checked')).map(function (el) { return el.value; })
       };
       serverCall('sw_adminUpsertWorkflowUser', [payload], function (res) {
+        if (!isCurrentMainRequest(requestId, 'userAdmin')) return;
         var message = 'Saved ' + (res.email || payload.email) + '. Password: ' + (res.password || payload.password || 'unchanged');
         if (status) status.textContent = message;
         setStatus('Workflow user saved');
         serverCall('sw_adminListWorkflowUsers', [], function (list) {
+          if (!isCurrentMainRequest(requestId, 'userAdmin')) return;
           appState.userAdmin = list;
           renderUserAdminPanel(list);
           var nextStatus = document.getElementById('userAdminStatus');
