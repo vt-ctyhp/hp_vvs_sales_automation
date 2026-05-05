@@ -65,11 +65,6 @@ function onOpen(e) {
     )
     .addSeparator()
     .addItem('Appointment summary', 'as_openAppointmentSummary')
-    .addSeparator()
-    .addSubMenu(
-      ui.createMenu('Stage Rollup')
-        .addItem('Refresh now', 'refreshClientStageRollup')
-    )
     .addToUi();
 
   // 🧹 Audit — data quality checks
@@ -85,7 +80,6 @@ function onOpen(e) {
     .addItem('Restore Properties from Backup Sheet', 'recovery_restoreScriptPropertiesFromBackupSheet')
     .addToUi();
 
-  addAutoAssignMenu();
   try {
     if (typeof resolver_onOpen_ === 'function') resolver_onOpen_();
   } catch (e) {

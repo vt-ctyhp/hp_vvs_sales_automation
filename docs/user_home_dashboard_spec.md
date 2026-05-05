@@ -203,7 +203,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 ### F. People Data Cleanup APIs
 - `sw_adminAuditWorkflowPeopleData(authToken)` compares `_SalesWorkflowUsers`, `10_Roster_Schedule`, `Schedule Changes`, `Dropdown`, and active appointment owners. It reports duplicate active emails, duplicate active Client Advisor/JOC names, orphan extension rows, Dropdown-only identities, and appointment owners that do not map to active canonical users.
 - `sw_adminMigrateWorkflowPeople(authToken, { dryRun, clearDropdownIdentityData })` defaults to `dryRun: true`. Mutating mode links extension rows by exact email first, then unique normalized name; migrates default JOC pairings from `Dropdown`; optionally backs up and clears legacy identity cells from `Dropdown`; then refreshes workflow tasks.
-- Temporary one-time cleanup functions retire the old `Rep Qualifications` tab by backing it up, deleting it, and moving current skill data into `10_Roster_Schedule`. Remove those temporary functions after the cleanup has been verified.
+- The old `Rep Qualifications` tab has been retired; current skill and routing data lives in `10_Roster_Schedule` and `_SalesWorkflowUsers`.
 
 ### G. Standard Task Execution
 - A user opens a task card to load task detail, rendered instructions, copyable message/template text, links/attachments, checklists, and task-specific controls.

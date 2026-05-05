@@ -812,6 +812,7 @@ const rowObj = {
     }
   }
 
+  try { if (typeof swInvalidatePaymentReadModelsAfterWrite_ === 'function') swInvalidatePaymentReadModelsAfterWrite_(null, 'Payment submitted'); } catch (_) {}
   return { ok:true, paymentId, basketId, row: nextRow };
   
 }
@@ -2770,6 +2771,7 @@ function rp_hardResetApptPayments({ rootApptId, masterRowIndex, deletePdfFiles =
   }
 
   Logger.log('[reset v2] DONE: %s', JSON.stringify(results));
+  try { if (typeof swInvalidatePaymentReadModelsAfterWrite_ === 'function') swInvalidatePaymentReadModelsAfterWrite_(null, 'Payment hard reset'); } catch (_) {}
   return results;
 }
 

@@ -350,6 +350,11 @@ function sw_getCalendarAppointments(authToken, monthKey) {
 
     var tz = swTimezone_();
     var month = swCalendarMonthRange_(monthKey);
+    var projected = typeof swTryGetCalendarAppointmentsFromReadModel_ === 'function'
+      ? swTryGetCalendarAppointmentsFromReadModel_(ss, month.key)
+      : null;
+    if (projected && projected.ok) return projected;
+
     var today = new Date();
     var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
     var rows = swReadAppointments_(ss).filter(function (rec) {
@@ -440,6 +445,14 @@ function sw_getDiamondTrackingDashboard(authToken) {
     if (!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant)) {
       throw new Error('Diamond order access required.');
     }
+
+    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
+      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
+      : [];
+    var projected = typeof swTryGetDiamondTrackingDashboardFromReadModel_ === 'function'
+      ? swTryGetDiamondTrackingDashboardFromReadModel_(ss, config)
+      : null;
+    if (projected && projected.ok) return projected;
 
     var target = swDiamond200Target_();
     if (!target || !target.sheet) {
@@ -578,6 +591,14 @@ function sw_getInStockDiamonds(authToken) {
     swRequireWorkflowReadSheets_(ss, { templates: false });
     swAuthUserForApi_(ss, authToken);
 
+    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
+      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
+      : [];
+    var projected = typeof swTryGetInStockDiamondsFromReadModel_ === 'function'
+      ? swTryGetInStockDiamondsFromReadModel_(ss, config)
+      : null;
+    if (projected && projected.ok) return projected;
+
     var target = swDiamond200Target_();
     if (!target || !target.sheet) {
       return { ok: true, available: false, rows: [], stats: {} };
@@ -590,9 +611,6 @@ function sw_getInStockDiamonds(authToken) {
       return { ok: true, available: true, spreadsheetUrl: target.ss.getUrl(), tab: target.tab, rows: [], stats: {} };
     }
 
-    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
-      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
-      : [];
     var returnWindow = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WINDOW_DAYS', '30')) || 30;
     var returnWarning = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WARNING_DAYS', '7')) || 7;
     var hm = swDiamond200HeaderMap_(sh);
@@ -736,6 +754,14 @@ function sw_getBulkReturnCandidates(authToken) {
     var user = swAuthUserForApi_(ss, authToken);
     swRequireDiamondBulkReturnUser_(user);
 
+    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
+      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
+      : [];
+    var projected = typeof swTryGetBulkReturnCandidatesFromReadModel_ === 'function'
+      ? swTryGetBulkReturnCandidatesFromReadModel_(ss, config)
+      : null;
+    if (projected && projected.ok) return projected;
+
     var target = swDiamond200Target_();
     if (!target || !target.sheet) {
       return { ok: true, available: false, rows: [], stats: {} };
@@ -748,9 +774,6 @@ function sw_getBulkReturnCandidates(authToken) {
       return { ok: true, available: true, spreadsheetUrl: target.ss.getUrl(), tab: target.tab, rows: [], stats: {} };
     }
 
-    var config = ss.getSheetByName(SW_SHEETS.CONFIG)
-      ? swReadSheetObjectsExpectedHeaders_(ss.getSheetByName(SW_SHEETS.CONFIG), SW_CONFIG_HEADERS)
-      : [];
     var returnWindow = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WINDOW_DAYS', '30')) || 30;
     var returnWarning = Number(swConfigValue_(config, 'SYSTEM', 'DIAMOND_RETURN_WARNING_DAYS', '7')) || 7;
     var hm = swDiamond200HeaderMap_(sh);
@@ -977,6 +1000,7 @@ function sw_bulkMarkDiamondsReturnInProgress(authToken, payload) {
         });
       } catch (_) {}
 
+      try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(ss, 'Bulk diamond return marked'); } catch (_) {}
       return {
         ok: true,
         status: 'Return in Progress',
@@ -1466,6 +1490,9 @@ function sw_completeTask(authToken, taskId, data) {
   swAppendTaskLog_(ss, 'COMPLETE', task, user, oldOwner, task.currentOwner, data);
 
   var generation = sw_generateSalesWorkflowTasks();
+  if (appointmentAction || approvalAction || jocHandoffAction) {
+    try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, 'Appointment task completion updated source data'); } catch (_) {}
+  }
   return {
     ok: true,
     task: swGetTaskById_(ss, taskId),
@@ -1729,6 +1756,7 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
   });
 
   var generation = sw_generateSalesWorkflowTasks();
+  try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, 'Appointment owners assigned'); } catch (_) {}
   return {
     ok: true,
     rowsUpdated: targetRows.length,
@@ -2166,6 +2194,7 @@ function swAuditIdentityIssue_(source, row, reason) {
 }
 
 function swAuditPushIdentityConflict_(out, source, row, match) {
+  if (source === 'roster' && row && row.active === false && match && match.inactive) return;
   var reasons = [];
   if (match.roleMismatch) reasons.push('ROLE_MISMATCH');
   if (match.inactive) reasons.push('INACTIVE_USER');
@@ -2706,7 +2735,9 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
       return {
         monthKey: res.monthKey || monthKey,
         monthLabel: res.monthLabel || '',
-        appointments: res.appointmentCount || (res.appointments ? res.appointments.length : 0)
+        appointments: res.appointmentCount || (res.appointments ? res.appointments.length : 0),
+        source: res.source || '',
+        readModelAgeSeconds: res.readModelAgeSeconds || 0
       };
     });
   });
@@ -3214,7 +3245,9 @@ function swBenchmarkSalesWorkflowRowsSummary_(res) {
     rows: res && res.rows ? res.rows.length : 0,
     stats: res && res.stats ? res.stats : {},
     missingColumns: res && res.missingColumns ? res.missingColumns : [],
-    tab: res && res.tab ? res.tab : ''
+    tab: res && res.tab ? res.tab : '',
+    source: res && res.source ? res.source : '',
+    readModelAgeSeconds: res && res.readModelAgeSeconds ? res.readModelAgeSeconds : 0
   };
 }
 
@@ -3233,7 +3266,9 @@ function swBenchmarkSalesWorkflowAdminDashboardSummary_(res) {
     adminOpenTasks: metrics.adminOpenTasks || 0,
     kanbanCards: cards,
     taskRows: res && res.taskCount != null ? res.taskCount : (res && res.tasks ? res.tasks.length : 0),
-    warnings: res && res.warnings ? res.warnings.length : 0
+    warnings: res && res.warnings ? res.warnings.length : 0,
+    source: res && res.source ? res.source : '',
+    readModelAgeSeconds: res && res.readModelAgeSeconds ? res.readModelAgeSeconds : 0
   };
 }
 

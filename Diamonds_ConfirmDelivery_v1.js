@@ -289,6 +289,7 @@ function dp_submitConfirmDelivery(payload) {
 
       results.push({ rootApptId: apptId, csos: csos, counts: counts, applied: applied });
     }
+    try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(null, 'Diamond delivery confirmed'); } catch (_) {}
 
     return {
       ok: true,

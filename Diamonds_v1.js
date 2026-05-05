@@ -236,6 +236,7 @@ function dp_submitProposals(payload) {
     dp_update100AfterPropose_(ctx, payload.stones, resultCounts);
 
     dp_onCsosChanged_(ctx.rootApptId, 'Diamond Memo – Proposed');
+    try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(null, 'Diamond proposals submitted'); } catch (_) {}
 
     // 🔹 RETURN precise target info for the UI
     return {
@@ -870,6 +871,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

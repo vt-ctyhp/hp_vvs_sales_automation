@@ -78,6 +78,7 @@ function sw_applyLoupe360DiamondSync(authToken, syncId) {
       try { generation = sw_generateSalesWorkflowTasks(); } catch (genErr) {
         generation = { ok: false, error: swTrim_(genErr && genErr.message || genErr) };
       }
+      try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(ss, 'Loupe360 diamond sync applied'); } catch (_) {}
       try { DriveApp.getFileById(syncId).setTrashed(true); } catch (_) {}
       return {
         ok: true,
@@ -185,6 +186,7 @@ function sw_assignInStockDiamond(authToken, payload) {
       try { generation = sw_generateSalesWorkflowTasks(); } catch (genErr) {
         generation = { ok: false, error: swTrim_(genErr && genErr.message || genErr) };
       }
+      try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(ss, 'In-stock diamond assignment updated'); } catch (_) {}
       return { ok: true, rowIndex: rowIndex, generation: generation };
     } finally {
       try { lock.releaseLock(); } catch (_) {}

@@ -529,6 +529,7 @@ function swDiamondCompleteProposals_(ss, task, data, user) {
   swDiamondWriteCustomerRequirements_(ctx, requirements);
   if (typeof dp_update100AfterPropose_ === 'function') dp_update100AfterPropose_(ctx, stones, counts);
   try { if (typeof dp_onCsosChanged_ === 'function') dp_onCsosChanged_(ctx.rootApptId, 'Diamond Memo – Proposed'); } catch (_) {}
+  try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(ss, 'Diamond task proposals completed'); } catch (_) {}
 
   return {
     ok: true,
@@ -678,6 +679,7 @@ function swDiamondCompleteTracking_(task, data, user) {
     sh.getRange(r, cNotes).setValue(data.trackingNotes || '');
     sh.getRange(r, cChecked).setValue(now + (user && user.email ? ' by ' + user.email : ''));
   });
+  try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(null, 'Diamond tracking updated'); } catch (_) {}
   return { ok: true, updatedRows: onTheWay.map(function (row) { return row.rowIndex; }) };
 }
 
@@ -731,6 +733,7 @@ function swDiamondCompleteReturn_(task, data, user) {
     sh.getRange(r, cNotes).setValue('Return in progress @ ' + now + (user && user.email ? ' by ' + user.email : ''));
     updatedRows.push(r);
   });
+  try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(null, 'Diamond returns marked'); } catch (_) {}
   return { ok: true, status: 'Return in Progress', updatedRows: updatedRows };
 }
 

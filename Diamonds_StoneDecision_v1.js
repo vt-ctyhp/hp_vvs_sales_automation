@@ -204,6 +204,7 @@ function dp_submitStoneDecisions(payload) {
       dp_refresh100QuickRef_(apptId, counts, sh200, hm200);
       results.push({ rootApptId: apptId, counts: counts });
     }
+    try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(null, 'Diamond decisions submitted'); } catch (_) {}
 
     return {
       ok: true,
@@ -339,6 +340,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

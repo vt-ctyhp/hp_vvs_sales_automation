@@ -202,6 +202,7 @@ function dp_submitOrderApprovals(payload) {
       resultsByAppt.push({rootApptId: apptId, csos: csos, counts: counts, applied: applied});
       try { dp_onCsosChanged_(apptId, csos); } catch (e) {} // reminders hook (safe)
     }
+    try { if (typeof swInvalidateDiamondReadModelsAfterWrite_ === 'function') swInvalidateDiamondReadModelsAfterWrite_(null, 'Diamond order approvals submitted'); } catch (_) {}
 
     return {
       ok: true,
@@ -396,6 +397,5 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 
 

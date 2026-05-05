@@ -63,6 +63,8 @@ var SW_LEGACY_APPOINTMENT_RETAINED_TABS_ = [
 
 var SW_LEGACY_SHEET_DASHBOARD_TABS_ = [
   '00_Dashboard',
+  '02_Client by Stage',
+  '02_Clients by Stage',
   '100_Metrics_View',
   '99_3D_Status_Map',
   'Drill_KPI',
@@ -77,6 +79,7 @@ var SW_LEGACY_SHEET_DASHBOARD_TRIGGER_HANDLERS_ = [
   'buildMetricsView_',
   'writeDashboard_',
   'snapshotKpisForHistory_',
+  'timedRefreshHandler',
   'buildUnifiedDrillDown_',
   'runBuildUnifiedDrillDown',
   'P15_alertOnHoldOrders'

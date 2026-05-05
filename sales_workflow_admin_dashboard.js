@@ -55,41 +55,60 @@ function sw_getAdminDashboard(authToken, filters) {
     var mark = swStepTimer_('sw_getAdminDashboard');
     filters = swAdminDashboardNormalizeFilters_(filters);
     mark('normalize');
-    var appointments = swReadAppointments_(ss);
-    mark('appointments', { rows: appointments.length });
-    var scope = swAdminDashboardBuildScope_(appointments, filters);
-    var warnings = [];
-    var payments = swAdminDashboardReadPayments_(scope, filters, warnings);
-    mark('payments', { receipts: payments.receipts ? payments.receipts.length : 0, cacheHit: !!payments.cacheHit });
-    var state = swReadTaskListState_(ss, true);
-    var tasks = swAdminDashboardOpenTasksFromState_(state);
-    mark('tasks', { rows: tasks.length });
-    var indexes = swAdminDashboardBuildIndexes_(appointments);
-    mark('indexes', { roots: Object.keys(indexes.currentByRoot || {}).length });
-    var currentByRoot = indexes.currentByRoot;
-    var metrics = swAdminDashboardMetrics_(appointments, tasks, currentByRoot, payments, filters);
-    mark('metrics');
-    var healthContext = swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings, indexes);
-    var health = swAdminDashboardHealth_(healthContext, metrics);
-    mark('health', { included: true });
-    var filterOptions = swAdminDashboardFilterOptions_(ss, appointments, filters);
-    mark('filterOptions', {
-      brands: filterOptions.brands ? filterOptions.brands.length : 0,
-      clientAdvisors: filterOptions.clientAdvisors ? filterOptions.clientAdvisors.length : 0,
-      jocs: filterOptions.jocs ? filterOptions.jocs.length : 0
-    });
+    var projected = typeof swTryReadAdminDashboardFromReadModel_ === 'function'
+      ? swTryReadAdminDashboardFromReadModel_(ss, filters)
+      : null;
+    if (projected && projected.ok) {
+      mark('readModel', { source: projected.source || 'adminDashboardReadModel', ageSeconds: projected.readModelAgeSeconds || 0 });
+      return projected;
+    }
 
-    return {
-      ok: true,
-      generatedAt: swIso_(new Date()),
-      filters: swAdminDashboardPublicFilters_(filters),
-      filterOptions: filterOptions,
-      metrics: metrics,
-      health: health,
-      taskCount: tasks.length,
-      warnings: warnings
-    };
+    return swAdminDashboardBuildPayload_(ss, filters, { mark: mark, source: 'live' });
   });
+}
+
+function swAdminDashboardBuildPayload_(ss, filters, options) {
+  options = options || {};
+  var mark = options.mark || function () {};
+  var appointments = options.appointments || swReadAppointments_(ss);
+  mark('appointments', { rows: appointments.length, source: options.appointments ? 'provided' : 'appointments' });
+  var scope = swAdminDashboardBuildScope_(appointments, filters);
+  var warnings = [];
+  var payments = swAdminDashboardReadPayments_(scope, filters, warnings);
+  mark('payments', {
+    receipts: payments.receipts ? payments.receipts.length : 0,
+    cacheHit: !!payments.cacheHit,
+    source: payments.source || ''
+  });
+  var state = options.taskState || swReadTaskListState_(ss, true);
+  var tasks = swAdminDashboardOpenTasksFromState_(state);
+  mark('tasks', { rows: tasks.length });
+  var indexes = swAdminDashboardBuildIndexes_(appointments);
+  mark('indexes', { roots: Object.keys(indexes.currentByRoot || {}).length });
+  var currentByRoot = indexes.currentByRoot;
+  var metrics = swAdminDashboardMetrics_(appointments, tasks, currentByRoot, payments, filters);
+  mark('metrics');
+  var healthContext = swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings, indexes);
+  var health = swAdminDashboardHealth_(healthContext, metrics);
+  mark('health', { included: true });
+  var filterOptions = swAdminDashboardFilterOptions_(ss, appointments, filters);
+  mark('filterOptions', {
+    brands: filterOptions.brands ? filterOptions.brands.length : 0,
+    clientAdvisors: filterOptions.clientAdvisors ? filterOptions.clientAdvisors.length : 0,
+    jocs: filterOptions.jocs ? filterOptions.jocs.length : 0
+  });
+
+  return {
+    ok: true,
+    source: options.source || 'live',
+    generatedAt: swIso_(new Date()),
+    filters: swAdminDashboardPublicFilters_(filters),
+    filterOptions: filterOptions,
+    metrics: metrics,
+    health: health,
+    taskCount: tasks.length,
+    warnings: warnings
+  };
 }
 
 function swAdminDashboardNormalizeFilters_(filters) {
@@ -434,6 +453,8 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
 
   var source = swAdminDashboardReadPaymentReceiptRows_(warnings);
   out.cacheHit = !!(source && source.cacheHit);
+  out.source = source && source.source ? source.source : (out.cacheHit ? 'paymentReceiptCache' : 'paymentsLedger');
+  out.ageSeconds = source && source.ageSeconds ? source.ageSeconds : 0;
   var values = source && source.rows ? source.rows : [];
   var receipts = [];
   for (var i = 0; i < values.length; i++) {
@@ -481,7 +502,13 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   return out;
 }
 
-function swAdminDashboardReadPaymentReceiptRows_(warnings) {
+function swAdminDashboardReadPaymentReceiptRows_(warnings, options) {
+  options = options || {};
+  if (!options.forceLive && typeof swReadPaymentReceiptRowsFromReadModel_ === 'function') {
+    var projected = swReadPaymentReceiptRowsFromReadModel_(swSpreadsheet_(), warnings || []);
+    if (projected && projected.rows) return projected;
+  }
+
   var target = null;
   try {
     target = swAdminDashboardPaymentsSheet_();
@@ -546,6 +573,7 @@ function swAdminDashboardReadPaymentReceiptRows_(warnings) {
       ? swAdminDashboardPaymentBlockCell_(row, C.amountNet, block.offset)
       : swAdminDashboardPaymentBlockCell_(row, C.amountGross, block.offset);
     rows.push({
+      sourceRow: i + 2,
       root: root,
       so: so,
       key: key,

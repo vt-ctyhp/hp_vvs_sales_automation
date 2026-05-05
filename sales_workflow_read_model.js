@@ -1,11 +1,11 @@
 /**
  * Sales workflow read models.
  *
- * Phase 1 is shadow-only: these generated tabs are built for benchmarking and
- * comparison, but the web app still serves from the existing source sheets.
+ * Generated tabs are built for fast dashboard serving. User-facing APIs use
+ * fresh read models first and fall back to source sheets when stale or missing.
  */
 
-var SW_READ_MODEL_VERSION = 'phase1-v1';
+var SW_READ_MODEL_VERSION = 'phase2-v1';
 var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 10 * 60;
 var SW_READ_MODEL_REFRESH_HANDLER = 'sw_rebuildWorkflowReadModels';
 var SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_ = {};
@@ -155,6 +155,48 @@ function swRebuildWorkflowReadModelsUnlocked_(ss, options) {
   meta.push(swReadModelMetaRow_('customers', SW_SHEETS.MASTER, customerResult, builtAtIso, expiresAtIso));
   out.models.customers = customerResult;
   if (!customerResult.ok) out.ok = false;
+
+  var diamondResult = typeof swBuildDiamondReadModels_ === 'function'
+    ? swBuildDiamondReadModels_(ss, builtAt)
+    : swReadModelErrorResult_(new Error('swBuildDiamondReadModels_ unavailable'), started, SW_SHEETS.READ_MODEL_DIAMONDS);
+  meta.push(swReadModelMetaRow_('diamonds', diamondResult.sourceSheet || '200_', diamondResult, builtAtIso, expiresAtIso));
+  meta.push(swReadModelMetaRow_('diamondRoots', diamondResult.sourceSheet || '200_', {
+    ok: diamondResult.ok !== false,
+    sourceRows: diamondResult.sourceRows || 0,
+    outputRows: diamondResult.rootRows || 0,
+    buildMs: diamondResult.rootBuildMs || 0,
+    error: diamondResult.error || ''
+  }, builtAtIso, expiresAtIso));
+  out.models.diamonds = diamondResult;
+  if (!diamondResult.ok) out.ok = false;
+
+  var appointmentResult = typeof swBuildAppointmentReadModels_ === 'function'
+    ? swBuildAppointmentReadModels_(ss, builtAt)
+    : swReadModelErrorResult_(new Error('swBuildAppointmentReadModels_ unavailable'), started, SW_SHEETS.READ_MODEL_APPOINTMENTS);
+  meta.push(swReadModelMetaRow_('appointments', SW_SHEETS.MASTER, appointmentResult, builtAtIso, expiresAtIso));
+  meta.push(swReadModelMetaRow_('calendarMonths', SW_SHEETS.MASTER, {
+    ok: appointmentResult.ok !== false,
+    sourceRows: appointmentResult.sourceRows || 0,
+    outputRows: appointmentResult.calendarMonths || 0,
+    buildMs: appointmentResult.calendarBuildMs || 0,
+    error: appointmentResult.error || ''
+  }, builtAtIso, expiresAtIso));
+  out.models.appointments = appointmentResult;
+  if (!appointmentResult.ok) out.ok = false;
+
+  var paymentResult = typeof swBuildPaymentReadModel_ === 'function'
+    ? swBuildPaymentReadModel_(ss, builtAt)
+    : swReadModelErrorResult_(new Error('swBuildPaymentReadModel_ unavailable'), started, SW_SHEETS.READ_MODEL_PAYMENTS);
+  meta.push(swReadModelMetaRow_('payments', 'Payments', paymentResult, builtAtIso, expiresAtIso));
+  out.models.payments = paymentResult;
+  if (!paymentResult.ok) out.ok = false;
+
+  var adminResult = typeof swBuildAdminDashboardReadModel_ === 'function'
+    ? swBuildAdminDashboardReadModel_(ss, builtAt)
+    : swReadModelErrorResult_(new Error('swBuildAdminDashboardReadModel_ unavailable'), started, SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD);
+  meta.push(swReadModelMetaRow_('adminDashboard', 'dashboard projections', adminResult, builtAtIso, expiresAtIso));
+  out.models.adminDashboard = adminResult;
+  if (!adminResult.ok) out.ok = false;
 
   var metaResult = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_META, SW_READ_MODEL_META_HEADERS, meta);
   out.models.meta = metaResult;
@@ -434,7 +476,13 @@ function swWorkflowReadModelStatus_(ss) {
 function swReadModelDefinitions_() {
   return [
     { model: 'tasks', sheet: SW_SHEETS.READ_MODEL_TASKS },
-    { model: 'customers', sheet: SW_SHEETS.READ_MODEL_CUSTOMERS }
+    { model: 'customers', sheet: SW_SHEETS.READ_MODEL_CUSTOMERS },
+    { model: 'diamonds', sheet: SW_SHEETS.READ_MODEL_DIAMONDS },
+    { model: 'diamondRoots', sheet: SW_SHEETS.READ_MODEL_DIAMOND_ROOTS },
+    { model: 'appointments', sheet: SW_SHEETS.READ_MODEL_APPOINTMENTS },
+    { model: 'calendarMonths', sheet: SW_SHEETS.READ_MODEL_CALENDAR_MONTHS },
+    { model: 'payments', sheet: SW_SHEETS.READ_MODEL_PAYMENTS },
+    { model: 'adminDashboard', sheet: SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD }
   ];
 }
 
@@ -533,6 +581,11 @@ function swWorkflowReadModelLogSummary_(result) {
       projectionUsers: model.projectionUsers || 0,
       projectionKeys: model.projectionKeys || 0,
       projectionMs: model.projectionMs || 0,
+      rootRows: model.rootRows || 0,
+      calendarMonths: model.calendarMonths || 0,
+      warnings: model.warnings || 0,
+      oversizedPayloads: model.oversizedPayloads || 0,
+      sourceSheet: model.sourceSheet || '',
       cacheRows: model.cacheRows || 0,
       cacheMs: model.cacheMs || 0,
       cacheOk: !!model.cacheOk,
