@@ -1221,10 +1221,14 @@ function sw_getTaskDetail(authToken, taskId) {
     var user = swAuthUserForApi_(ss, authToken);
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var task = swReadTaskRowById_(ss, taskId, true);
+    if (task && typeof swIsCleanupCampaignTask_ === 'function' && swIsCleanupCampaignTask_(task)) {
+      task = swReadTaskRowById_(ss, taskId, false) || task;
+    }
     mark('taskRowLookup');
     if (!task) throw new Error('Task not found: ' + taskId);
     if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
     var canAct = swCanActOnTask_(task, user);
+    var canComplete = canAct && swTaskPendingLike_(task, new Date().getTime());
 
     var payload = swParseJson_(task.payloadJson, {});
     mark('payloadParse');
@@ -1275,7 +1279,7 @@ function sw_getTaskDetail(authToken, taskId) {
       assignmentOptions: assignmentOptions,
       missingFields: missingFields,
       checklist: checklist,
-      canComplete: canAct,
+      canComplete: canComplete,
       canClaim: swCanClaimTask_(task, user),
       canAdmin: user.isAdmin
     };
@@ -1437,7 +1441,12 @@ function sw_completeTask(authToken, taskId, data) {
   var task = swGetTaskById_(ss, taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
-  if (!swTaskPendingLike_(task, new Date().getTime())) throw new Error('Only pending or due snoozed tasks can be completed.');
+  if (!swTaskPendingLike_(task, new Date().getTime())) {
+    var inactiveCleanupMessage = typeof swDataCleanupInactiveTaskMessage_ === 'function'
+      ? swDataCleanupInactiveTaskMessage_(ss, task)
+      : '';
+    throw new Error(inactiveCleanupMessage || 'Only pending or due snoozed tasks can be completed.');
+  }
 
   data = data || {};
   swValidateCompletion_(ss, task, data);

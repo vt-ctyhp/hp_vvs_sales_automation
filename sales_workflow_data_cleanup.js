@@ -783,6 +783,30 @@ function swDataCleanupShouldRestoreCampaignJocTask_(task, campaignId) {
   return swDataCleanupCampaignIdFromTask_(task) === campaignId;
 }
 
+function swDataCleanupInactiveTaskMessage_(ss, task) {
+  if (!task || !swIsCleanupCampaignTask_(task)) return '';
+  var cleanupCase = swReadDataCleanupCaseByTask_(ss, task);
+  if (cleanupCase && cleanupCase.status === SW_DATA_CLEANUP_STATUS.PENDING_CONFIRMATION) {
+    return 'This cleanup case already has a submitted proposal. Refresh Queue and open the confirmation task.';
+  }
+  if (cleanupCase && cleanupCase.status === SW_DATA_CLEANUP_STATUS.RETURNED) {
+    return 'This cleanup case was returned for revision. Refresh Queue and open the revision task.';
+  }
+  if (cleanupCase && cleanupCase.status === SW_DATA_CLEANUP_STATUS.APPLIED) {
+    return 'This cleanup case has already been applied. Refresh Queue to clear it from the list.';
+  }
+  if (task.status === SW_STATUSES.COMPLETED) {
+    return 'This cleanup task was already completed. Refresh Queue to load the current cleanup list.';
+  }
+  if (task.status === SW_STATUSES.BLOCKED) {
+    return 'This cleanup task is no longer active' + (task.coverageReason ? ' (' + task.coverageReason + ')' : '') + '. Refresh Queue to load the current cleanup task.';
+  }
+  if (task.status === SW_STATUSES.SNOOZED) {
+    return 'This cleanup task is snoozed until later. Refresh Queue to load currently due cleanup work.';
+  }
+  return 'This cleanup task is no longer active. Refresh Queue to load the current cleanup task.';
+}
+
 function swDataCleanupCampaignIdFromTask_(task) {
   var payload = swParseJson_(task && task.payloadJson, {});
   var campaignId = swDeepValue_(payload, ['extra', 'cleanupCase', 'campaignId']);

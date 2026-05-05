@@ -8260,6 +8260,7 @@
     }
 
     function completeTask() {
+      if (appState.busy) return;
       if (!appState.selectedTaskId) return;
       serverCall('sw_completeTask', [appState.selectedTaskId, completionPayload()], function () {
         setStatus('Task completed');
