@@ -482,22 +482,20 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   var rowCount = lr - 1;
   var indexes = swAdminDashboardPaymentColumnIndexes_(C);
   var values = swReadSelectedRows_(sh, 2, rowCount, indexes, 'values');
-  var display = swReadSelectedRows_(sh, 2, rowCount, indexes, 'display');
   var receipts = [];
-  for (var i = 0; i < display.length; i++) {
+  for (var i = 0; i < values.length; i++) {
     var row = values[i];
-    var drow = display[i];
-    var docType = swTrim_(swCell_(drow, C.docType));
+    var docType = swTrim_(swCell_(row, C.docType));
     if (!/receipt/i.test(docType)) continue;
-    var status = swNorm_(swCell_(drow, C.docStatus));
+    var status = swNorm_(swCell_(row, C.docStatus));
     if (/void|replaced|cancel|draft|deleted/.test(status)) continue;
 
-    var root = swAdminDashboardCleanId_(swCell_(drow, C.root));
-    var so = swAdminDashboardCleanId_(swCell_(drow, C.so));
-    var brand = swTrim_(swCell_(drow, C.brand));
+    var root = swAdminDashboardCleanId_(swCell_(row, C.root));
+    var so = swAdminDashboardCleanId_(swCell_(row, C.so));
+    var brand = swTrim_(swCell_(row, C.brand));
     if (!swAdminDashboardPaymentInScope_(root, so, brand, scope, filters)) continue;
 
-    var when = swAdminDashboardDateTimeValue_(swCell_(row, C.when), swCell_(drow, C.when));
+    var when = swAdminDashboardDateTimeValue_(swCell_(row, C.when), swCell_(row, C.when));
     if (!when) continue;
 
     var net = swAdminDashboardNumber_(C.amountNet >= 0 ? swCell_(row, C.amountNet) : swCell_(row, C.amountGross));

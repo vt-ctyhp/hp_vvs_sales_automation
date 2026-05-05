@@ -68,6 +68,7 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
     active: 'Y',
     temporary: 'Y'
   });
+  try { if (typeof swClearAssignmentOptionsMemoryCache_ === 'function') swClearAssignmentOptionsMemoryCache_(ss); } catch (_) {}
   try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
   return out;
 }
@@ -113,6 +114,7 @@ function sw_adminUpsertWorkflowUser(authToken, data) {
   });
   out.password = password;
   out.generatedPassword = generated;
+  try { if (typeof swClearAssignmentOptionsMemoryCache_ === 'function') swClearAssignmentOptionsMemoryCache_(ss); } catch (_) {}
   try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
   return out;
 }

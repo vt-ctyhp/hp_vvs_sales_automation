@@ -164,8 +164,8 @@ function swMigrateTemplateRows_(sh) {
       sh.getRange(rowIndex, 8).setValue('Legacy Submit');
     }
     if (taskType === SW_TASKS.APPROVE) {
-      sh.getRange(rowIndex, 2).setValue('Review AI Summary + Follow-Up Draft');
-      sh.getRange(rowIndex, 3).setValue('Review the AI-generated internal summary, insights, next steps, and editable client-facing follow-up message. Approving moves the final message to JOC.');
+      sh.getRange(rowIndex, 2).setValue('Review Client Follow-Up Draft');
+      sh.getRange(rowIndex, 3).setValue('Review and edit the AI-generated client-facing follow-up message. Approving moves the final message to JOC.');
       sh.getRange(rowIndex, 4).setValue('{{clientFollowUpDraft}}');
       sh.getRange(rowIndex, 8).setValue('Approve for JOC');
     }
@@ -220,7 +220,7 @@ function swDefaultTemplates_() {
     [SW_TASKS.REVIEW, 'Review Appointment Folder', 'Review the intake form, inspiration images, and customer folder before the appointment.', '', 'Client Folder', '{{clientFolder}}', '', 'Acknowledged & Reviewed'],
     [SW_TASKS.CHECKLIST, 'Complete Appointment', 'Select the appointment outcome, upload the appointment materials, and confirm the handoff context. Completed appointments require an appointment recording before this task can close.', '', '', '', '[{"id":"appointment_context_confirmed","label":"Appointment notes, next steps, and handoff context are captured","required":true},{"id":"client_materials_collected","label":"Relevant intake photos, recap notes, or viewing materials are ready for upload","required":false},{"id":"physical_handoff_complete","label":"Physical appointment wrap-up items are handled","required":false}]', 'Complete Appointment'],
     [SW_TASKS.PROCESS, 'Legacy Process Appointment Data', 'Retired for new appointments. New completed appointments use the AssemblyAI/OpenAI appointment artifact workflow.', '', 'Client Folder', '{{clientFolder}}', '', 'Legacy Submit'],
-    [SW_TASKS.APPROVE, 'Review AI Summary + Follow-Up Draft', 'Review the AI-generated internal summary, insights, next steps, and editable client-facing follow-up message. Approving moves the final message to JOC.', '{{clientFollowUpDraft}}', '', '', '', 'Approve for JOC'],
+    [SW_TASKS.APPROVE, 'Review Client Follow-Up Draft', 'Review and edit the AI-generated client-facing follow-up message. Approving moves the final message to JOC.', '{{clientFollowUpDraft}}', '', '', '', 'Approve for JOC'],
     [SW_TASKS.FINAL, 'Send Approved Follow-Up', 'Send the approved client-facing follow-up message. Use the concise handoff context only if needed; the transcript is not required for final sending.', '{{approvedText}}', '', '', '', 'Mark Sent'],
     [SW_TASKS.POST_CONSULT_STATUS, 'Post-Consult Client Status Update', 'JOC owns the first post-consult operational checkpoint. Update the client status, record next steps, and decide whether 3D or wax work is needed. If 3D is not needed, enter the reason in the task form.', 'Customer: {{customerName}}\nAppointment: {{appointmentDateTime}}\nClient Advisor: {{assignedRep}}\nCurrent SO: {{soNumber}}\n3D deadline: {{deadline3d}}\nWax status: {{waxStatus}}', 'Client Status Report', '{{reportUrl}}', '', 'Submit Client Status'],
     [SW_TASKS.START_3D, 'Start 3D Design', 'Start the 3D design from this dashboard task using the same Start 3D / Assign SO workflow. If 3D is not needed, mark No 3D Needed with a reason.', 'Customer: {{customerName}}\nBrand: {{brandRaw}}\nDesign request: {{designRequest}}\nNext steps: {{nextSteps}}\nClient folder: {{clientFolder}}', 'Client Folder', '{{clientFolder}}', '', 'Start 3D'],

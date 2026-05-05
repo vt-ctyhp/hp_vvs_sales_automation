@@ -955,7 +955,7 @@ function sw_getTaskDetail(authToken, taskId) {
     mark('render');
     var formOptions = typeof swTaskFormOptions_ === 'function' ? swTaskFormOptions_(ss, task) : {};
     mark('formOptions', { groups: formOptions ? Object.keys(formOptions).length : 0 });
-    var appointmentArtifacts = typeof swPublicAppointmentArtifacts_ === 'function'
+    var appointmentArtifacts = swTaskDetailShouldLoadAppointmentArtifacts_(task) && typeof swPublicAppointmentArtifacts_ === 'function'
       ? swPublicAppointmentArtifacts_(ss, task.root || task.appt || '')
       : [];
     mark('appointmentArtifacts', { artifacts: appointmentArtifacts.length });
@@ -986,6 +986,10 @@ function sw_getTaskDetail(authToken, taskId) {
       canAdmin: user.isAdmin
     };
   });
+}
+
+function swTaskDetailShouldLoadAppointmentArtifacts_(task) {
+  return task && task.taskType === SW_TASKS.CHECKLIST;
 }
 
 function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
@@ -1389,26 +1393,52 @@ function swEnsureMasterOwnerHeaders_(master) {
   };
 }
 
+var SW_ASSIGNMENT_OPTIONS_MEMORY_CACHE_ = {};
+
+function swClearAssignmentOptionsMemoryCache_(ss) {
+  try { delete SW_ASSIGNMENT_OPTIONS_MEMORY_CACHE_['sw:assignmentOptions:v1:' + ss.getId()]; } catch (_) {}
+}
+
 function swReadAssignmentOptions_(ss) {
   var cacheKey = '';
   try {
     cacheKey = 'sw:assignmentOptions:v1:' + ss.getId();
+    var memory = SW_ASSIGNMENT_OPTIONS_MEMORY_CACHE_[cacheKey];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.value;
     var cached = CacheService.getScriptCache().get(cacheKey);
-    if (cached) return swParseJson_(cached, { salesReps: [], jocReps: [] });
+    if (cached) {
+      var cachedValue = swParseJson_(cached, { salesReps: [], jocReps: [] });
+      SW_ASSIGNMENT_OPTIONS_MEMORY_CACHE_[cacheKey] = {
+        expiresAt: new Date().getTime() + 300000,
+        value: cachedValue
+      };
+      return cachedValue;
+    }
   } catch (_) {}
   var out = { salesReps: [], jocReps: [] };
   var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
   if (sh && sh.getLastRow() >= 2 && sh.getLastColumn() >= 1) {
-    var values = sh.getDataRange().getDisplayValues();
-    var H = swHeaderMapFromArray_(values[0].map(function (h) { return swTrim_(h); }));
-    swPushAssignmentOptionsFromColumns_(out.salesReps, values, swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email']));
-    swPushAssignmentOptionsFromColumns_(out.jocReps, values, swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']), swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']));
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+    var H = swHeaderMapFromArray_(headers);
+    var C = {
+      salesName: swPickIndex_(H, ['Client Advisor', 'Assigned Rep']),
+      salesEmail: swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email']),
+      jocName: swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']),
+      jocEmail: swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email'])
+    };
+    var rowCount = sh.getLastRow() - 1;
+    var values = swReadSelectedRows_(sh, 2, rowCount, [C.salesName, C.salesEmail, C.jocName, C.jocEmail], 'display');
+    swPushAssignmentOptionsFromColumns_(out.salesReps, values, C.salesName, C.salesEmail, 0);
+    swPushAssignmentOptionsFromColumns_(out.jocReps, values, C.jocName, C.jocEmail, 0);
   }
 
   try {
-    swAuthReadUserRows_(ss, false).forEach(function (row) {
-      var roles = swAuthRoles_(row['Roles']);
-      var item = { name: swTrim_(row['Name']) || swNormEmail_(row['Email']), email: swNormEmail_(row['Email']) };
+    swAuthReadPublicUserRowsCached_(ss).forEach(function (row) {
+      var roles = swAuthRoles_(row['Roles'] || row.roles);
+      var item = {
+        name: swTrim_(row['Name'] || row.name) || swNormEmail_(row['Email'] || row.email),
+        email: swNormEmail_(row['Email'] || row.email)
+      };
       if (swAuthHasRole_(roles, SW_OWNER_ROLES.SALES_REP)) swPushAssignmentOption_(out.salesReps, item);
       if (swAuthHasRole_(roles, 'JOC')) swPushAssignmentOption_(out.jocReps, item);
     });
@@ -1418,6 +1448,14 @@ function swReadAssignmentOptions_(ss) {
   out.jocReps.sort(swAssignmentOptionSort_);
   if (cacheKey) {
     try {
+      SW_ASSIGNMENT_OPTIONS_MEMORY_CACHE_[cacheKey] = {
+        expiresAt: new Date().getTime() + 300000,
+        value: out
+      };
+    } catch (_) {}
+  }
+  if (cacheKey) {
+    try {
       var json = JSON.stringify(out);
       if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 300);
     } catch (_) {}
@@ -1425,9 +1463,9 @@ function swReadAssignmentOptions_(ss) {
   return out;
 }
 
-function swPushAssignmentOptionsFromColumns_(target, values, nameCol, emailCol) {
+function swPushAssignmentOptionsFromColumns_(target, values, nameCol, emailCol, startIndex) {
   if (nameCol < 0) return;
-  for (var i = 1; i < values.length; i++) {
+  for (var i = Number(startIndex) || 0; i < values.length; i++) {
     swPushAssignmentOption_(target, {
       name: swTrim_(values[i][nameCol]),
       email: emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : ''

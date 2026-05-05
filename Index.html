@@ -4678,7 +4678,7 @@
       if (!rows.length && !links) return '';
       return [
         '<div class="detail-section">',
-          '<label>' + (task.taskType === 'SEND_FINAL_RECAP' ? 'JOC Handoff Context' : 'AI Appointment Review') + '</label>',
+          '<label>' + (task.taskType === 'SEND_FINAL_RECAP' ? 'JOC Handoff Context' : 'AI Follow-Up Review') + '</label>',
           '<div class="review-context">',
             rows.map(function (row) {
               return '<div><div class="meta">' + escapeHtml(row[0]) + '</div><div class="template-box">' + escapeHtml(row[1]) + '</div></div>';

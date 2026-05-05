@@ -122,12 +122,6 @@ function swAppointmentArtifactRowsForRoot_(ss, rootApptId) {
   }
   var rowCount = sh.getLastRow() - 1;
   var width = Math.min(sh.getLastColumn(), SW_APPOINTMENT_ARTIFACT_HEADERS.length);
-  var found = swFindAppointmentArtifactRowsByRoot_(sh, rootCol, root, rowCount, width);
-  if (found !== null) {
-    swCacheAppointmentArtifactRowsForRoot_(ss, root, found);
-    return found;
-  }
-
   var roots = sh.getRange(2, rootCol, rowCount, 1).getDisplayValues();
   var out = [];
   for (var i = 0; i < roots.length; i++) {
@@ -139,22 +133,6 @@ function swAppointmentArtifactRowsForRoot_(ss, rootApptId) {
   return out;
 }
 
-function swFindAppointmentArtifactRowsByRoot_(sh, rootCol, root, rowCount, width) {
-  try {
-    var range = sh.getRange(2, rootCol, rowCount, 1);
-    var pattern = '^\\s*' + swEscapeTextFinderRegex_(root) + '\\s*$';
-    var finder = range.createTextFinder(pattern);
-    if (finder.useRegularExpression) finder.useRegularExpression(true);
-    var matches = finder.findAll() || [];
-    var out = [];
-    for (var i = 0; i < matches.length; i++) {
-      out.push(swAppointmentArtifactRowAtNumber_(sh, matches[i].getRow(), width));
-    }
-    return out;
-  } catch (_) {}
-  return null;
-}
-
 function swAppointmentArtifactRowAtNumber_(sh, rowNumber, width) {
   var values = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
   var row = { __rowNumber: rowNumber, rowNumber: rowNumber };
@@ -162,10 +140,6 @@ function swAppointmentArtifactRowAtNumber_(sh, rowNumber, width) {
     row[SW_APPOINTMENT_ARTIFACT_HEADERS[j]] = j < values.length ? values[j] : '';
   }
   return row;
-}
-
-function swEscapeTextFinderRegex_(value) {
-  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function swCachedAppointmentArtifactRowsForRoot_(ss, root) {
@@ -1079,15 +1053,15 @@ function swGenerateAppointmentSummary_(ss, row, now) {
   var transcriptText = swReadGoogleDocText_(row['Transcript Doc ID']);
   if (!swTrim_(transcriptText)) throw new Error('Transcript document is empty.');
   var appointment = swAppointmentRecordForRoot_(ss, row['RootApptID']) || {};
-  var result = swOpenAIAppointmentSummary_(transcriptText, row, appointment);
+  var result = swOpenAIAppointmentFollowUpDraft_(transcriptText, row, appointment);
   var normalized = swNormalizeAppointmentSummary_(result);
   var folders = swEnsureAppointmentFolderForRoot_(ss, row['RootApptID']);
-  var baseName = row['RootApptID'] + '__appointment_summary__' + Utilities.formatDate(now, swTimezone_(), 'yyyyMMdd-HHmmss');
+  var baseName = row['RootApptID'] + '__client_follow_up_draft__' + Utilities.formatDate(now, swTimezone_(), 'yyyyMMdd-HHmmss');
   var jsonFile = folders.summaries.createFile(baseName + '.json', JSON.stringify(normalized, null, 2), 'application/json');
   var summaryDoc = swCreateGoogleDocInFolder_(
     folders.summaries,
     baseName,
-    'AI Appointment Summary',
+    'AI Client Follow-Up Draft',
     [
       'RootApptID: ' + row['RootApptID'],
       'Customer: ' + (appointment.name || ''),
@@ -1312,7 +1286,7 @@ function swFetchJsonOrThrow_(response, label) {
   throw err;
 }
 
-function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
+function swOpenAIAppointmentFollowUpDraft_(transcriptText, artifact, appointment) {
   var key = swTrim_(PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY'));
   if (!key) {
     var err = new Error('Missing OPENAI_API_KEY in Script Properties.');
@@ -1326,7 +1300,7 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
     input: [
       {
         role: 'system',
-        content: 'You write concise internal appointment summaries for a jewelry sales team. Use only facts from the transcript and appointment context. Do not produce analytics, scoring, JSON, or a client-facing message.'
+        content: 'You write warm, concise client-facing post-appointment text messages for a jewelry sales team. Use only facts from the transcript and appointment context. Do not include internal notes, analytics, scoring, JSON, markdown, or labels.'
       },
       {
         role: 'user',
@@ -1346,9 +1320,10 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
             diamondRequirements: appointment.dvCustomerLookingFor || appointment.dvCustomerRequirementsJson || ''
           }, null, 2),
           '',
-          'Write one plain-text appointment summary for internal use.',
-          'Keep it under 500 words.',
-          'Focus on what happened, what the customer wanted, what was discussed or shown, any decisions, and any stated next steps.',
+          'Write one ready-to-send plain-text message to the client after their appointment.',
+          'Keep it natural and text-message friendly, ideally 80-160 words.',
+          'Include: thank you, a brief recap of what we went over, what our team is doing next, and an invitation to send anything they want to add or change.',
+          'Do not overpromise timing unless it is explicitly stated in the transcript or context.',
           'If a detail is not in the transcript, do not infer it.',
           '',
           'Transcript:',
@@ -1366,16 +1341,16 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
     payload: JSON.stringify(body),
     muteHttpExceptions: true
   });
-  var parsed = swFetchJsonOrThrow_(response, 'OpenAI appointment summary');
-  if (parsed.usage) Logger.log('SW_OPENAI_APPOINTMENT_SUMMARY_USAGE ' + JSON.stringify(parsed.usage));
+  var parsed = swFetchJsonOrThrow_(response, 'OpenAI client follow-up draft');
+  if (parsed.usage) Logger.log('SW_OPENAI_APPOINTMENT_FOLLOW_UP_USAGE ' + JSON.stringify(parsed.usage));
   if (parsed.status === 'incomplete') throw new Error('OpenAI response incomplete: ' + swStringify_(parsed.incomplete_details || {}));
-  var summaryText = swExtractOpenAIText_(parsed);
-  if (!summaryText) throw new Error('OpenAI did not return appointment summary text.');
+  var messageText = swExtractOpenAIText_(parsed);
+  if (!messageText) throw new Error('OpenAI did not return client follow-up message text.');
   return {
-    internal_appointment_summary: summaryText,
+    internal_appointment_summary: '',
     key_customer_insights: {},
     recommended_next_steps: [],
-    client_follow_up_message_draft: '',
+    client_follow_up_message_draft: messageText,
     confidence_warning_flags: []
   };
 }
@@ -1495,10 +1470,10 @@ function swNormalizeAppointmentSummary_(result) {
 }
 
 function swReadableAppointmentSummary_(summary) {
-  var lines = [
-    'Appointment Summary',
-    summary.internal_appointment_summary || ''
-  ];
+  var lines = [];
+  if (summary.internal_appointment_summary) {
+    lines.push('Appointment Summary', summary.internal_appointment_summary || '');
+  }
   if (swSummaryHasInsights_(summary.key_customer_insights)) {
     lines.push('', 'Key Customer Insights', swInsightsToText_(summary.key_customer_insights));
   }
@@ -1511,7 +1486,7 @@ function swReadableAppointmentSummary_(summary) {
   if ((summary.confidence_warning_flags || []).length) {
     lines.push('', 'Confidence / Warning Flags', (summary.confidence_warning_flags || []).join('\n'));
   }
-  return lines.join('\n');
+  return lines.join('\n').replace(/^\n+/, '');
 }
 
 function swSummaryHasInsights_(insights) {
