@@ -140,7 +140,7 @@ function swPublicAppointmentArtifacts_(ss, rootApptId) {
 
 function swArtifactTypeLabel_(type) {
   var map = {};
-  map[SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING] = 'Appointment Recording';
+  map[SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING] = 'Initial Consult Recording';
   map[SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP] = 'Client Advisor Recap';
   map[SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING] = 'Diamond Viewing Recording';
   map[SW_ARTIFACT_TYPES.CLIENT_INTAKE] = 'Client Intake / Photo';
@@ -447,6 +447,96 @@ function swGetOrCreateSubfolder_(folder, name) {
 function swArtifactTargetFolder_(folders, artifactType) {
   if (swArtifactNeedsTranscription_(artifactType)) return folders.audio;
   return folders.materials;
+}
+
+function swArtifactDriveDropFolder_(folders, artifactType) {
+  if (artifactType === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING) {
+    return swGetOrCreateSubfolder_(folders.audio, 'Initial Consult Recordings');
+  }
+  if (artifactType === SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING) {
+    return swGetOrCreateSubfolder_(folders.audio, 'Diamond Viewing Recordings');
+  }
+  if (artifactType === SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP) {
+    return swGetOrCreateSubfolder_(folders.materials, 'Client Advisor Recaps');
+  }
+  return swArtifactTargetFolder_(folders, artifactType);
+}
+
+function swDriveUploadArtifactTypes_() {
+  return [
+    SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING,
+    SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING,
+    SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP
+  ];
+}
+
+function swSyncAppointmentDriveUploads_(ss, rootApptId, taskId, user) {
+  var root = swTrim_(rootApptId);
+  if (!root) throw new Error('Missing RootApptID for Drive upload sync.');
+  var folders = swEnsureAppointmentFolderForRoot_(ss, root);
+  var existing = {};
+  swAppointmentArtifactRowsForRoot_(ss, root).forEach(function (row) {
+    var fileId = swTrim_(row['Drive File ID']);
+    if (fileId) existing[fileId] = true;
+  });
+
+  var created = [];
+  swDriveUploadArtifactTypes_().forEach(function (artifactType) {
+    var folder = swArtifactDriveDropFolder_(folders, artifactType);
+    var files = folder.getFiles();
+    while (files.hasNext()) {
+      var file = files.next();
+      if (!file || (file.isTrashed && file.isTrashed())) continue;
+      if (existing[file.getId()]) continue;
+      created.push(swRegisterAppointmentDriveFile_(ss, root, taskId, artifactType, file, user, { rename: true }));
+      existing[file.getId()] = true;
+    }
+  });
+  return created;
+}
+
+function swRegisterAppointmentDriveFile_(ss, rootApptId, taskId, artifactType, file, user, options) {
+  options = options || {};
+  var now = new Date();
+  var originalName = swTrim_(options.originalName || file.getName() || 'drive-file');
+  var canonicalName = swIsCanonicalArtifactFilename_(rootApptId, artifactType, originalName)
+    ? originalName
+    : swArtifactCanonicalName_(rootApptId, artifactType, originalName, now);
+  if (options.rename !== false && canonicalName !== originalName) {
+    file.setName(canonicalName);
+  }
+  var appt = swAppointmentRecordForRoot_(ss, rootApptId);
+  var needsTranscription = swArtifactNeedsTranscription_(artifactType);
+  var stage = needsTranscription ? SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED : SW_ARTIFACT_STAGES.UPLOADED;
+  var record = {
+    'ArtifactID': 'ART-' + Utilities.getUuid(),
+    'RootApptID': rootApptId,
+    'APPT_ID': appt && appt.appt ? appt.appt : '',
+    'TaskID': taskId || '',
+    'Artifact Type': artifactType,
+    'Workflow Stage': stage,
+    'Original Filename': originalName,
+    'Canonical Filename': canonicalName,
+    'Mime Type': file.getMimeType ? file.getMimeType() : '',
+    'Size Bytes': file.getSize ? file.getSize() : '',
+    'Drive File ID': file.getId(),
+    'Drive URL': file.getUrl(),
+    'Folder ID': file.getParents && file.getParents().hasNext() ? file.getParents().next().getId() : '',
+    'Uploaded By': user.name || user.email || 'System',
+    'Uploaded By Email': user.email || '',
+    'Uploaded At': swIso_(now),
+    'Attempts': 0,
+    'Next Poll At': needsTranscription ? swIso_(now) : '',
+    'Last Error': '',
+    'Updated At': swIso_(now)
+  };
+  swAppendAppointmentArtifactRow_(ss, record);
+  return record;
+}
+
+function swIsCanonicalArtifactFilename_(rootApptId, artifactType, filename) {
+  var prefix = swSafeFilePart_(rootApptId) + '__' + swSafeFilePart_(artifactType.toLowerCase()) + '__';
+  return String(filename || '').indexOf(prefix) === 0;
 }
 
 function swArtifactCanonicalName_(rootApptId, artifactType, originalName, date) {

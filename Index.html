@@ -1805,8 +1805,7 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'appointment-drive-popup-upload-2026-05-05';
-    var APPOINTMENT_BROWSER_UPLOAD_MAX_BYTES = 45 * 1024 * 1024;
+    var SW_DASHBOARD_BUILD = 'appointment-drive-only-upload-2026-05-05';
 
     var appState = {
       token: '',
@@ -1847,6 +1846,8 @@
       mainRequestId: 0,
       detailRequestId: 0,
       lastActionButton: null,
+      appointmentDriveSyncTimer: null,
+      appointmentDriveSyncUntil: 0,
       loginBusy: false,
       busy: false
     };
@@ -1985,8 +1986,6 @@
         detailPanel.addEventListener('click', function (event) {
           if (closestMatch_(event.target, '.js-copy-template')) return copyTemplate();
           if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
-          var appointmentUploadButton = closestMatch_(event.target, '.js-upload-appointment-artifacts');
-          if (appointmentUploadButton) return uploadAppointmentArtifacts(appointmentUploadButton);
           var appointmentDriveButton = closestMatch_(event.target, '.js-open-appointment-upload-folder');
           if (appointmentDriveButton) return openAppointmentUploadFolder(appointmentDriveButton);
           if (closestMatch_(event.target, '.js-snooze-task')) return snoozeTask();

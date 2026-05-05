@@ -990,19 +990,43 @@ function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
     var root = swTrim_(task.root || task.appt || (payload.appointment && (payload.appointment.root || payload.appointment.appt)) || '');
     if (!root) throw new Error('Missing RootApptID for appointment upload folder.');
     if (typeof swEnsureAppointmentFolderForRoot_ !== 'function' ||
-        typeof swArtifactTargetFolder_ !== 'function') {
+        typeof swArtifactDriveDropFolder_ !== 'function') {
       throw new Error('Appointment artifact folder helpers are not available.');
     }
 
     var type = swTrim_(artifactType) || (typeof SW_ARTIFACT_TYPES !== 'undefined' ? SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING : 'APPOINTMENT_RECORDING');
     var folders = swEnsureAppointmentFolderForRoot_(ss, root);
-    var folder = swArtifactTargetFolder_(folders, type);
+    var folder = swArtifactDriveDropFolder_(folders, type);
     return {
       ok: true,
       rootApptId: root,
       artifactType: type,
       folderId: folder.getId(),
       url: folder.getUrl()
+    };
+  });
+}
+
+function sw_syncAppointmentDriveUploads(authToken, taskId) {
+  return swTimed_('sw_syncAppointmentDriveUploads', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss);
+    var user = swAuthUserForApi_(ss, authToken);
+    var task = swReadTaskRowById_(ss, taskId, true);
+    if (!task) throw new Error('Task not found: ' + taskId);
+    if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this appointment task.');
+
+    var payload = swParseJson_(task.payloadJson, {});
+    var root = swTrim_(task.root || task.appt || (payload.appointment && (payload.appointment.root || payload.appointment.appt)) || '');
+    if (!root) throw new Error('Missing RootApptID for appointment upload sync.');
+    if (typeof swSyncAppointmentDriveUploads_ !== 'function') throw new Error('Appointment Drive upload sync is not available.');
+
+    var created = swSyncAppointmentDriveUploads_(ss, root, task.taskId || taskId, user);
+    return {
+      ok: true,
+      rootApptId: root,
+      registered: created.length,
+      artifacts: typeof swPublicAppointmentArtifacts_ === 'function' ? swPublicAppointmentArtifacts_(ss, root) : []
     };
   });
 }
@@ -1574,24 +1598,41 @@ function sw_reviewDiamondWorkflowSetup() {
 }
 
 /**
- * Read-only diagnostic: logs server-side speed for initial queue load paths.
+ * Read-only diagnostic: logs server-side speed for the major dashboard load
+ * paths. Mutating actions are intentionally not executed.
+ *
+ * Optional second argument:
+ *   { detailLimit: 8, customerSearchQueries: [''], calendarMonths: ['2026-05'] }
  */
-function sw_measureSalesWorkflowSpeed() {
+function sw_measureSalesWorkflowSpeed(authToken, options) {
+  if (authToken && typeof authToken === 'object' && options == null) {
+    options = authToken;
+    authToken = '';
+  }
+  authToken = swTrim_(authToken);
+  options = swBenchmarkSalesWorkflowOptions_(options);
+
   var started = new Date().getTime();
   var out = {
     ok: true,
     generatedAt: swIso_(new Date()),
     readOnly: true,
-    note: 'Measures Apps Script server time only. Browser/network rendering time is not included.',
+    note: 'Measures Apps Script server time only. Browser/network rendering time is not included. Mutating workflow actions are skipped.',
+    options: {
+      detailLimit: options.detailLimit,
+      includeTaskDetails: options.includeTaskDetails,
+      customerSearchQueries: options.customerSearchQueries,
+      calendarMonths: options.calendarMonths,
+      adminDashboardFilters: options.adminDashboardFilters
+    },
     steps: []
   };
   var bootstrap = null;
-  var mine = null;
-  var coverage = null;
-  var admin = null;
+  var queueResponses = [];
+  var customerSearchResponses = [];
 
   swBenchmarkSalesWorkflowStep_(out, 'sw_getBootstrap', function () {
-    bootstrap = sw_getBootstrap();
+    bootstrap = sw_getBootstrap(authToken);
     return {
       counts: bootstrap.counts || {},
       views: bootstrap.views || {},
@@ -1599,45 +1640,125 @@ function sw_measureSalesWorkflowSpeed() {
     };
   });
 
-  swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:mine', function () {
-    mine = sw_getMyTasks('mine');
-    return swBenchmarkSalesWorkflowListSummary_(mine);
+  swBenchmarkSalesWorkflowQueueStep_(out, queueResponses, authToken, 'mine');
+  ['cleanup', 'coverage', 'admin'].forEach(function (viewName) {
+    if (bootstrap && bootstrap.views && bootstrap.views[viewName]) {
+      swBenchmarkSalesWorkflowQueueStep_(out, queueResponses, authToken, viewName);
+    } else {
+      swBenchmarkSalesWorkflowSkip_(out, 'sw_getMyTasks:' + viewName, 'View not visible for this user.');
+    }
   });
 
-  if (bootstrap && bootstrap.views && bootstrap.views.coverage) {
-    swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:coverage', function () {
-      coverage = sw_getMyTasks('coverage');
-      return swBenchmarkSalesWorkflowListSummary_(coverage);
+  if (options.includeTaskDetails) {
+    var detailTasks = swBenchmarkSalesWorkflowDetailSamples_(queueResponses, options.detailLimit);
+    if (detailTasks.length) {
+      detailTasks.forEach(function (sample) {
+        swBenchmarkSalesWorkflowStep_(out, 'sw_getTaskDetail:' + swBenchmarkSalesWorkflowLabel_(sample.taskType), function () {
+          var detail = sw_getTaskDetail(authToken, sample.taskId);
+          return swBenchmarkSalesWorkflowTaskDetailSummary_(detail, sample);
+        });
+      });
+    } else {
+      swBenchmarkSalesWorkflowSkip_(out, 'sw_getTaskDetail', 'No visible task was available for detail timing.');
+    }
+  } else {
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_getTaskDetail', 'Task detail timing disabled by options.');
+  }
+
+  if (bootstrap && bootstrap.views && bootstrap.views.customerSearch) {
+    options.customerSearchQueries.forEach(function (query) {
+      swBenchmarkSalesWorkflowStep_(out, 'sw_searchCustomers:' + swBenchmarkSalesWorkflowLabel_(query || 'initial'), function () {
+        var filters = {
+          query: query,
+          activeOnly: true
+        };
+        var res = sw_searchCustomers(authToken, query, filters);
+        customerSearchResponses.push(res);
+        return swBenchmarkSalesWorkflowCustomerSearchSummary_(res);
+      });
     });
+    var customerRoot = swBenchmarkSalesWorkflowFirstCustomerRoot_(customerSearchResponses);
+    if (customerRoot && options.includeCustomerDetail) {
+      swBenchmarkSalesWorkflowStep_(out, 'sw_getCustomerSearchDetail', function () {
+        var detail = sw_getCustomerSearchDetail(authToken, customerRoot);
+        return swBenchmarkSalesWorkflowCustomerDetailSummary_(detail);
+      });
+    } else {
+      swBenchmarkSalesWorkflowSkip_(out, 'sw_getCustomerSearchDetail', customerRoot ? 'Customer detail timing disabled by options.' : 'No customer card was available for detail timing.');
+    }
+  } else {
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_searchCustomers', 'Customer Search is not visible for this user.');
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_getCustomerSearchDetail', 'Customer Search is not visible for this user.');
+  }
+
+  options.calendarMonths.forEach(function (monthKey) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getCalendarAppointments:' + monthKey, function () {
+      var res = sw_getCalendarAppointments(authToken, monthKey);
+      return {
+        monthKey: res.monthKey || monthKey,
+        monthLabel: res.monthLabel || '',
+        appointments: res.appointmentCount || (res.appointments ? res.appointments.length : 0)
+      };
+    });
+  });
+
+  if (bootstrap && bootstrap.views && bootstrap.views.inStockDiamonds) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getInStockDiamonds', function () {
+      return swBenchmarkSalesWorkflowRowsSummary_(sw_getInStockDiamonds(authToken));
+    });
+  } else {
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_getInStockDiamonds', 'In-Stock Diamonds is not visible for this user.');
+  }
+
+  if (bootstrap && bootstrap.views && bootstrap.views.diamondTracking) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getDiamondTrackingDashboard', function () {
+      return swBenchmarkSalesWorkflowRowsSummary_(sw_getDiamondTrackingDashboard(authToken));
+    });
+  } else {
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_getDiamondTrackingDashboard', 'Diamond Tracking is not visible for this user.');
+  }
+
+  if (bootstrap && bootstrap.views && bootstrap.views.bulkReturns) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getBulkReturnCandidates', function () {
+      return swBenchmarkSalesWorkflowRowsSummary_(sw_getBulkReturnCandidates(authToken));
+    });
+  } else {
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_getBulkReturnCandidates', 'Bulk Returns is not visible for this user.');
+  }
+
+  if (bootstrap && bootstrap.views && bootstrap.views.adminDashboard) {
+    options.adminDashboardFilters.forEach(function (filters, index) {
+      swBenchmarkSalesWorkflowStep_(out, 'sw_getAdminDashboard:' + (filters.windowPreset || ('filters' + (index + 1))), function () {
+        return swBenchmarkSalesWorkflowAdminDashboardSummary_(sw_getAdminDashboard(authToken, filters));
+      });
+    });
+  } else {
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_getAdminDashboard', 'Admin Dashboard is not visible for this user.');
   }
 
   if (bootstrap && bootstrap.views && bootstrap.views.admin) {
-    swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:admin', function () {
-      admin = sw_getMyTasks('admin');
-      return swBenchmarkSalesWorkflowListSummary_(admin);
+    swBenchmarkSalesWorkflowStep_(out, 'sw_adminGetTasks:pending', function () {
+      return swBenchmarkSalesWorkflowListSummary_(sw_adminGetTasks(authToken, { status: SW_STATUSES.PENDING }));
     });
-  }
-
-  var detailTaskId = swBenchmarkSalesWorkflowFirstTaskId_([mine, coverage, admin]);
-  if (detailTaskId) {
-    swBenchmarkSalesWorkflowStep_(out, 'sw_getTaskDetail', function () {
-      var detail = sw_getTaskDetail(detailTaskId);
-      return {
-        taskId: detailTaskId,
-        taskType: detail.task ? detail.task.taskType : '',
-        attachments: detail.attachments ? detail.attachments.length : 0,
-        missingFields: detail.missingFields ? detail.missingFields.length : 0
-      };
-    });
+    if (swSpreadsheet_().getSheetByName(SW_SHEETS.USERS)) {
+      swBenchmarkSalesWorkflowStep_(out, 'sw_adminListWorkflowUsers', function () {
+        var res = sw_adminListWorkflowUsers(authToken);
+        return {
+          users: res.users ? res.users.length : 0,
+          roles: res.roleOptions ? res.roleOptions.length : 0
+        };
+      });
+    } else {
+      swBenchmarkSalesWorkflowSkip_(out, 'sw_adminListWorkflowUsers', 'Workflow user sheet does not exist.');
+    }
   } else {
-    out.steps.push({
-      operation: 'sw_getTaskDetail',
-      skipped: true,
-      reason: 'No visible task was available for detail timing.'
-    });
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_adminGetTasks:pending', 'Admin Review is not visible for this user.');
+    swBenchmarkSalesWorkflowSkip_(out, 'sw_adminListWorkflowUsers', 'Admin controls are not visible for this user.');
   }
 
   out.totalMs = new Date().getTime() - started;
+  out.summary = swBenchmarkSalesWorkflowSummary_(out.steps);
+  out.ok = out.summary.failedSteps === 0;
   Logger.log('SW_BENCHMARK_SUMMARY ' + JSON.stringify(out, null, 2));
   return out;
 }
@@ -1763,10 +1884,77 @@ function swBenchmarkSalesWorkflowStep_(out, operation, fn) {
   return step;
 }
 
+function swBenchmarkSalesWorkflowSkip_(out, operation, reason) {
+  var step = {
+    operation: operation,
+    ok: true,
+    skipped: true,
+    reason: reason || 'Skipped.',
+    ms: 0
+  };
+  out.steps.push(step);
+  Logger.log('SW_BENCHMARK_STEP ' + JSON.stringify(step));
+  return step;
+}
+
+function swBenchmarkSalesWorkflowOptions_(options) {
+  options = options || {};
+  var detailLimit = Number(options.detailLimit || options.maxDetailTasks || 8);
+  if (!isFinite(detailLimit) || detailLimit < 0) detailLimit = 8;
+  detailLimit = Math.min(Math.floor(detailLimit), 25);
+  return {
+    detailLimit: detailLimit,
+    includeTaskDetails: options.includeTaskDetails !== false,
+    includeCustomerDetail: options.includeCustomerDetail !== false,
+    customerSearchQueries: swBenchmarkSalesWorkflowStringList_(
+      options.customerSearchQueries || options.searchQueries,
+      ['']
+    ),
+    calendarMonths: swBenchmarkSalesWorkflowStringList_(
+      options.calendarMonths,
+      [swCalendarMonthKey_(new Date())]
+    ),
+    adminDashboardFilters: swBenchmarkSalesWorkflowFilterList_(
+      options.adminDashboardFilters,
+      [{ windowPreset: options.windowPreset || 'last7' }]
+    )
+  };
+}
+
+function swBenchmarkSalesWorkflowStringList_(value, fallback) {
+  var list = [];
+  if (Object.prototype.toString.call(value) === '[object Array]') {
+    list = value;
+  } else if (value != null) {
+    list = [value];
+  }
+  list = list.map(function (item) { return swTrim_(item); });
+  if (!list.length) list = fallback || [];
+  return list.slice(0, 5);
+}
+
+function swBenchmarkSalesWorkflowFilterList_(value, fallback) {
+  var list = Object.prototype.toString.call(value) === '[object Array]'
+    ? value
+    : value ? [value] : [];
+  if (!list.length) list = fallback || [];
+  return list.map(function (item) { return item || {}; }).slice(0, 5);
+}
+
+function swBenchmarkSalesWorkflowQueueStep_(out, responses, authToken, viewName) {
+  swBenchmarkSalesWorkflowStep_(out, 'sw_getMyTasks:' + viewName, function () {
+    var res = sw_getMyTasks(authToken, viewName);
+    responses.push(res);
+    return swBenchmarkSalesWorkflowListSummary_(res);
+  });
+}
+
 function swBenchmarkSalesWorkflowListSummary_(res) {
+  var tasks = res && res.tasks ? res.tasks : [];
   return {
     view: res && res.view ? res.view : '',
-    tasks: res && res.tasks ? res.tasks.length : 0
+    tasks: tasks.length,
+    taskTypes: swBenchmarkSalesWorkflowTaskTypeCounts_(tasks)
   };
 }
 
@@ -1776,6 +1964,177 @@ function swBenchmarkSalesWorkflowFirstTaskId_(responses) {
     if (tasks.length && tasks[0].taskId) return tasks[0].taskId;
   }
   return '';
+}
+
+function swBenchmarkSalesWorkflowTaskTypeCounts_(tasks) {
+  var counts = {};
+  (tasks || []).forEach(function (task) {
+    var key = task && task.taskType ? task.taskType : '(blank)';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return counts;
+}
+
+function swBenchmarkSalesWorkflowDetailSamples_(responses, limit) {
+  var out = [];
+  var seenTypes = {};
+  var seenIds = {};
+  responses = responses || [];
+
+  responses.forEach(function (res) {
+    var tasks = res && res.tasks ? res.tasks : [];
+    tasks.forEach(function (task) {
+      if (out.length >= limit || !task || !task.taskId) return;
+      var type = task.taskType || '(blank)';
+      if (seenTypes[type]) return;
+      seenTypes[type] = true;
+      seenIds[task.taskId] = true;
+      out.push({
+        taskId: task.taskId,
+        taskType: type,
+        view: res.view || '',
+        title: task.taskTitle || '',
+        customerName: task.customerName || ''
+      });
+    });
+  });
+
+  responses.forEach(function (res) {
+    var tasks = res && res.tasks ? res.tasks : [];
+    tasks.forEach(function (task) {
+      if (out.length >= limit || !task || !task.taskId || seenIds[task.taskId]) return;
+      seenIds[task.taskId] = true;
+      out.push({
+        taskId: task.taskId,
+        taskType: task.taskType || '(blank)',
+        view: res.view || '',
+        title: task.taskTitle || '',
+        customerName: task.customerName || ''
+      });
+    });
+  });
+
+  return out;
+}
+
+function swBenchmarkSalesWorkflowTaskDetailSummary_(detail, sample) {
+  return {
+    taskId: sample.taskId,
+    sourceView: sample.view || '',
+    taskType: detail && detail.task ? detail.task.taskType : sample.taskType,
+    customerName: detail && detail.task ? detail.task.customerName : sample.customerName,
+    attachments: detail && detail.attachments ? detail.attachments.length : 0,
+    appointmentArtifacts: detail && detail.appointmentArtifacts ? detail.appointmentArtifacts.length : 0,
+    missingFields: detail && detail.missingFields ? detail.missingFields.length : 0,
+    checklist: detail && detail.checklist ? detail.checklist.length : 0,
+    formOptionGroups: detail && detail.formOptions ? Object.keys(detail.formOptions).length : 0,
+    canComplete: !!(detail && detail.canComplete),
+    canClaim: !!(detail && detail.canClaim),
+    canAdmin: !!(detail && detail.canAdmin)
+  };
+}
+
+function swBenchmarkSalesWorkflowCustomerSearchSummary_(res) {
+  var columns = res && res.kanban && res.kanban.columns ? res.kanban.columns : [];
+  var cards = 0;
+  var hidden = 0;
+  columns.forEach(function (col) {
+    cards += col.cards ? col.cards.length : 0;
+    hidden += Number(col.hiddenCount || 0);
+  });
+  return {
+    query: res && res.query ? res.query : '',
+    activeOnly: !(res && res.filters && res.filters.activeOnly === false),
+    columns: columns.length,
+    cards: cards,
+    hiddenCards: hidden
+  };
+}
+
+function swBenchmarkSalesWorkflowFirstCustomerRoot_(responses) {
+  for (var i = 0; i < responses.length; i++) {
+    var columns = responses[i] && responses[i].kanban && responses[i].kanban.columns
+      ? responses[i].kanban.columns
+      : [];
+    for (var c = 0; c < columns.length; c++) {
+      var cards = columns[c].cards || [];
+      for (var j = 0; j < cards.length; j++) {
+        if (cards[j] && cards[j].root) return cards[j].root;
+      }
+    }
+  }
+  return '';
+}
+
+function swBenchmarkSalesWorkflowCustomerDetailSummary_(detail) {
+  return {
+    root: detail && detail.root ? detail.root : '',
+    appointments: detail && detail.appointments ? detail.appointments.length : 0,
+    tasks: detail && detail.tasks ? detail.tasks.length : 0,
+    logs: detail && detail.logs ? detail.logs.length : 0,
+    actions: detail && detail.actions ? Object.keys(detail.actions).filter(function (key) {
+      return detail.actions[key];
+    }).length : 0
+  };
+}
+
+function swBenchmarkSalesWorkflowRowsSummary_(res) {
+  return {
+    available: !!(res && res.available !== false),
+    rows: res && res.rows ? res.rows.length : 0,
+    stats: res && res.stats ? res.stats : {},
+    missingColumns: res && res.missingColumns ? res.missingColumns : [],
+    tab: res && res.tab ? res.tab : ''
+  };
+}
+
+function swBenchmarkSalesWorkflowAdminDashboardSummary_(res) {
+  var columns = res && res.kanban && res.kanban.columns ? res.kanban.columns : [];
+  var cards = 0;
+  columns.forEach(function (col) {
+    cards += col.cards ? col.cards.length : 0;
+  });
+  var metrics = res && res.metrics ? res.metrics : {};
+  return {
+    window: res && res.filters ? res.filters.windowPreset : '',
+    windowLabel: res && res.filters ? res.filters.windowLabel : '',
+    bookingsCreated: metrics.bookingsCreated || 0,
+    paymentsCount: metrics.paymentsCount || 0,
+    adminOpenTasks: metrics.adminOpenTasks || 0,
+    kanbanCards: cards,
+    taskRows: res && res.tasks ? res.tasks.length : 0,
+    warnings: res && res.warnings ? res.warnings.length : 0
+  };
+}
+
+function swBenchmarkSalesWorkflowSummary_(steps) {
+  var summary = {
+    completedSteps: 0,
+    skippedSteps: 0,
+    failedSteps: 0,
+    slowest: []
+  };
+  (steps || []).forEach(function (step) {
+    if (step.skipped) {
+      summary.skippedSteps++;
+      return;
+    }
+    summary.completedSteps++;
+    if (step.ok === false) summary.failedSteps++;
+    summary.slowest.push({
+      operation: step.operation,
+      ms: step.ms || 0,
+      ok: step.ok !== false
+    });
+  });
+  summary.slowest.sort(function (a, b) { return b.ms - a.ms; });
+  summary.slowest = summary.slowest.slice(0, 8);
+  return summary;
+}
+
+function swBenchmarkSalesWorkflowLabel_(value) {
+  var label = swTrim_(value || 'blank').replace(/[^A-Za-z0-9_:-]+/g, '_');
+  return label ? label.slice(0, 60) : 'blank';
 }
 
 function swDiagnosticTargetUser_(ss, ownerNameOrEmail, fallbackUser) {
