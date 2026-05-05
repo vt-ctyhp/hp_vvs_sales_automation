@@ -68,10 +68,10 @@ var SW_ARTIFACT_STAGES = {
 };
 
 var SW_ARTIFACT_UPLOAD_FIELDS = [
-  { field: 'appointmentRecording', type: SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING },
-  { field: 'advisorRecap', type: SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP },
-  { field: 'diamondViewingRecording', type: SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING },
-  { field: 'intakeMaterial', type: SW_ARTIFACT_TYPES.CLIENT_INTAKE }
+  { field: 'appointmentRecording', driveUrlField: 'appointmentRecordingDriveUrl', type: SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING },
+  { field: 'advisorRecap', driveUrlField: 'advisorRecapDriveUrl', type: SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP },
+  { field: 'diamondViewingRecording', driveUrlField: 'diamondViewingRecordingDriveUrl', type: SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING },
+  { field: 'intakeMaterial', driveUrlField: 'intakeMaterialDriveUrl', type: SW_ARTIFACT_TYPES.CLIENT_INTAKE }
 ];
 
 function swEnsureAppointmentArtifactsSheet_(ss) {
@@ -265,9 +265,12 @@ function sw_uploadAppointmentArtifacts(form) {
     blobs.forEach(function (blob) {
       created.push(swCreateAppointmentArtifactFromBlob_(ss, root, taskId, slot.type, blob, user, {}));
     });
+    swFormTextValues_(form[slot.driveUrlField]).forEach(function (driveUrl) {
+      created.push(swCreateAppointmentArtifactFromDriveFile_(ss, root, taskId, slot.type, driveUrl, user, {}));
+    });
   });
 
-  if (!created.length) throw new Error('Choose at least one file to upload.');
+  if (!created.length) throw new Error('Choose at least one file or paste a Drive file link.');
   return {
     ok: true,
     uploaded: created.length,
@@ -281,6 +284,19 @@ function swFormBlobs_(value) {
   return values.filter(function (blob) {
     return blob && typeof blob.getBytes === 'function' && blob.getBytes().length;
   });
+}
+
+function swFormTextValues_(value) {
+  if (!value) return [];
+  var values = Array.isArray(value) ? value : [value];
+  var out = [];
+  values.forEach(function (item) {
+    String(item || '').split(/\n+/).forEach(function (line) {
+      line = swTrim_(line);
+      if (line) out.push(line);
+    });
+  });
+  return out;
 }
 
 function swCreateAppointmentArtifactFromBlob_(ss, rootApptId, taskId, artifactType, blob, user, options) {
@@ -323,24 +339,83 @@ function swCreateAppointmentArtifactFromBlob_(ss, rootApptId, taskId, artifactTy
   return record;
 }
 
+function swCreateAppointmentArtifactFromDriveFile_(ss, rootApptId, taskId, artifactType, driveUrl, user, options) {
+  options = options || {};
+  var fileId = swDriveFileIdFromUrl_(driveUrl);
+  if (!fileId) throw new Error('Could not read a Drive file ID from: ' + driveUrl);
+  var sourceFile;
+  try {
+    sourceFile = DriveApp.getFileById(fileId);
+  } catch (err) {
+    throw new Error('Could not open Drive file. Confirm the link is shared with this Apps Script account: ' + driveUrl);
+  }
+  var now = new Date();
+  var folders = swEnsureAppointmentFolderForRoot_(ss, rootApptId);
+  var originalName = swTrim_(options.filename || sourceFile.getName() || 'drive-file');
+  var canonicalName = swArtifactCanonicalName_(rootApptId, artifactType, originalName, now);
+  var targetFolder = swArtifactTargetFolder_(folders, artifactType);
+  var file = sourceFile.makeCopy(canonicalName, targetFolder);
+  var appt = swAppointmentRecordForRoot_(ss, rootApptId);
+  var needsTranscription = swArtifactNeedsTranscription_(artifactType);
+  var stage = needsTranscription ? SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED : SW_ARTIFACT_STAGES.UPLOADED;
+  var record = {
+    'ArtifactID': 'ART-' + Utilities.getUuid(),
+    'RootApptID': rootApptId,
+    'APPT_ID': appt && appt.appt ? appt.appt : '',
+    'TaskID': taskId || '',
+    'Artifact Type': artifactType,
+    'Workflow Stage': stage,
+    'Original Filename': originalName,
+    'Canonical Filename': canonicalName,
+    'Mime Type': file.getMimeType ? file.getMimeType() : '',
+    'Size Bytes': file.getSize ? file.getSize() : '',
+    'Drive File ID': file.getId(),
+    'Drive URL': file.getUrl(),
+    'Folder ID': targetFolder.getId(),
+    'Uploaded By': user.name || user.email || 'System',
+    'Uploaded By Email': user.email || '',
+    'Uploaded At': swIso_(now),
+    'Attempts': 0,
+    'Next Poll At': needsTranscription ? swIso_(now) : '',
+    'Last Error': '',
+    'Updated At': swIso_(now)
+  };
+  swAppendAppointmentArtifactRow_(ss, record);
+  return record;
+}
+
 function swAppendAppointmentArtifactRow_(ss, record) {
   var sh = swEnsureAppointmentArtifactsSheet_(ss);
-  sh.appendRow(SW_APPOINTMENT_ARTIFACT_HEADERS.map(function (h) {
-    return record[h] == null ? '' : record[h];
-  }));
+  var H = swArtifactHeaderMap_(sh);
+  var values = new Array(sh.getLastColumn()).fill('');
+  Object.keys(H).forEach(function (header) {
+    if (record[header] != null) values[H[header] - 1] = record[header];
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, 1, values.length).setValues([values]);
 }
 
 function swPatchAppointmentArtifactRow_(ss, row, patch) {
   if (!row || !row.rowNumber) return;
   var sh = swEnsureAppointmentArtifactsSheet_(ss);
   var H = swArtifactHeaderMap_(sh);
-  var values = sh.getRange(row.rowNumber, 1, 1, SW_APPOINTMENT_ARTIFACT_HEADERS.length).getValues()[0];
+  var values = sh.getRange(row.rowNumber, 1, 1, sh.getLastColumn()).getValues()[0];
   Object.keys(patch || {}).forEach(function (header) {
     var col = H[header];
     if (!col) return;
     values[col - 1] = patch[header] == null ? '' : patch[header];
   });
-  sh.getRange(row.rowNumber, 1, 1, SW_APPOINTMENT_ARTIFACT_HEADERS.length).setValues([values]);
+  sh.getRange(row.rowNumber, 1, 1, values.length).setValues([values]);
+}
+
+function swDriveFileIdFromUrl_(urlOrId) {
+  if (typeof idFromAnyGoogleUrl_ === 'function') return idFromAnyGoogleUrl_(urlOrId);
+  var s = swTrim_(urlOrId);
+  var m = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  m = s.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  m = s.match(/[-\w]{25,}/);
+  return m ? m[0] : '';
 }
 
 function swEnsureAppointmentFolderForRoot_(ss, rootApptId) {

@@ -195,6 +195,7 @@ function sw_getBootstrap(authToken) {
       },
       views: {
         mine: true,
+        customerSearch: user.isAdmin || user.isJoc || user.isRep,
         calendar: true,
         inStockDiamonds: true,
         diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
@@ -972,6 +973,36 @@ function sw_getTaskDetail(authToken, taskId) {
       canComplete: swCanActOnTask_(task, user),
       canClaim: swCanClaimTask_(task, user),
       canAdmin: user.isAdmin
+    };
+  });
+}
+
+function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
+  return swTimed_('sw_getAppointmentUploadFolder', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss);
+    var user = swAuthUserForApi_(ss, authToken);
+    var task = swReadTaskRowById_(ss, taskId, true);
+    if (!task) throw new Error('Task not found: ' + taskId);
+    if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
+
+    var payload = swParseJson_(task.payloadJson, {});
+    var root = swTrim_(task.root || task.appt || (payload.appointment && (payload.appointment.root || payload.appointment.appt)) || '');
+    if (!root) throw new Error('Missing RootApptID for appointment upload folder.');
+    if (typeof swEnsureAppointmentFolderForRoot_ !== 'function' ||
+        typeof swArtifactTargetFolder_ !== 'function') {
+      throw new Error('Appointment artifact folder helpers are not available.');
+    }
+
+    var type = swTrim_(artifactType) || (typeof SW_ARTIFACT_TYPES !== 'undefined' ? SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING : 'APPOINTMENT_RECORDING');
+    var folders = swEnsureAppointmentFolderForRoot_(ss, root);
+    var folder = swArtifactTargetFolder_(folders, type);
+    return {
+      ok: true,
+      rootApptId: root,
+      artifactType: type,
+      folderId: folder.getId(),
+      url: folder.getUrl()
     };
   });
 }

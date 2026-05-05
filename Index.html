@@ -709,6 +709,15 @@
       margin-top: 14px;
     }
 
+    .upload-slot {
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 12px;
+    }
+
+    .upload-slot input[type="file"] {
+      margin-bottom: 8px;
+    }
+
     .review-context {
       display: grid;
       gap: 12px;
@@ -1755,6 +1764,7 @@
       <div class="tabs">
         <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
         <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
+        <button id="tab-customerSearch" type="button" data-view="customerSearch" style="display:none">Customer Search</button>
         <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">Diamond Inventory</button>
         <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
         <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
@@ -1795,7 +1805,8 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'diamond-sync-inventory-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'appointment-drive-popup-upload-2026-05-05';
+    var APPOINTMENT_BROWSER_UPLOAD_MAX_BYTES = 45 * 1024 * 1024;
 
     var appState = {
       token: '',
@@ -1826,6 +1837,13 @@
       adminDashboard: null,
       adminDashboardFilters: null,
       adminDashboardMode: 'health',
+      customerSearch: {
+        query: '',
+        filters: { activeOnly: true },
+        result: null,
+        detail: null,
+        selectedRoot: ''
+      },
       mainRequestId: 0,
       detailRequestId: 0,
       lastActionButton: null,
@@ -1858,11 +1876,12 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'calendar', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
           if (view === 'calendar') loadCalendar();
+          else if (view === 'customerSearch') loadCustomerSearch();
           else if (view === 'inStockDiamonds') loadInStockDiamonds();
           else if (view === 'diamondTracking') loadDiamondTracking();
           else if (view === 'bulkReturns') loadBulkReturns();
@@ -1900,6 +1919,19 @@
           }
           if (closestMatch_(event.target, '.js-admin-dashboard-clear')) {
             clearAdminDashboardFilters();
+            return;
+          }
+          if (closestMatch_(event.target, '.js-customer-search-apply')) {
+            loadCustomerSearch(collectCustomerSearchFilters());
+            return;
+          }
+          if (closestMatch_(event.target, '.js-customer-search-clear')) {
+            clearCustomerSearchFilters();
+            return;
+          }
+          var customerCard = closestMatch_(event.target, '.js-customer-search-card');
+          if (customerCard) {
+            openCustomerSearchDetail(customerCard.getAttribute('data-root') || '');
             return;
           }
           var adminCard = closestMatch_(event.target, '.js-admin-kanban-card');
@@ -1940,6 +1972,12 @@
             updateBulkReturnActionPanel();
           }
         });
+        taskList.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter' && closestMatch_(event.target, '.js-customer-search-field')) {
+            event.preventDefault();
+            loadCustomerSearch(collectCustomerSearchFilters());
+          }
+        });
       }
 
       var detailPanel = document.getElementById('detailPanel');
@@ -1949,6 +1987,8 @@
           if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
           var appointmentUploadButton = closestMatch_(event.target, '.js-upload-appointment-artifacts');
           if (appointmentUploadButton) return uploadAppointmentArtifacts(appointmentUploadButton);
+          var appointmentDriveButton = closestMatch_(event.target, '.js-open-appointment-upload-folder');
+          if (appointmentDriveButton) return openAppointmentUploadFolder(appointmentDriveButton);
           if (closestMatch_(event.target, '.js-snooze-task')) return snoozeTask();
           var refreshButton = closestMatch_(event.target, '.js-refresh-diamond-quote');
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
@@ -1971,6 +2011,10 @@
           if (closestMatch_(event.target, '.js-admin-save-assignment')) return adminSaveAssignment();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+          if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
+          if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
+          if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
+          if (closestMatch_(event.target, '.js-customer-wax-save')) return submitCustomerSearchWaxRequest();
           if (closestMatch_(event.target, '.js-admin-generate-password')) return fillGeneratedUserPassword();
           if (closestMatch_(event.target, '.js-admin-save-user')) return saveWorkflowUser();
         });
@@ -2109,11 +2153,30 @@
     function uploadAppointmentArtifacts(sourceButton) {
       var form = document.getElementById('appointmentUploadForm');
       if (!form || !appState.selectedTaskId) return;
-      var hasFile = [].slice.call(form.querySelectorAll('input[type="file"]')).some(function (input) {
+      var fileInputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
+      var hasFile = fileInputs.some(function (input) {
         return input.files && input.files.length;
       });
-      if (!hasFile) {
-        setStatus('Choose at least one appointment file to upload.', true);
+      var hasDriveLink = [].slice.call(form.querySelectorAll('.js-appointment-drive-url')).some(function (input) {
+        return String(input.value || '').trim();
+      });
+      var oversized = [];
+      fileInputs.forEach(function (input) {
+        var clearInput = false;
+        [].slice.call(input.files || []).forEach(function (file) {
+          if (file.size > APPOINTMENT_BROWSER_UPLOAD_MAX_BYTES) {
+            oversized.push(file.name + ' (' + formatBytes(file.size) + ')');
+            clearInput = true;
+          }
+        });
+        if (clearInput) input.value = '';
+      });
+      if (oversized.length) {
+        setStatus('This recording is too large for dashboard upload: ' + oversized.join(', ') + '. I cleared the file picker. Upload it to Drive, paste the Drive file link below the slot, then click Upload Files again.', true);
+        return;
+      }
+      if (!hasFile && !hasDriveLink) {
+        setStatus('Choose at least one appointment file or paste a Drive file link.', true);
         return;
       }
       var token = document.getElementById('appointmentUploadToken');
@@ -2139,6 +2202,48 @@
           setStatus((err && err.message) ? err.message : String(err), true);
         })
         .sw_uploadAppointmentArtifacts(form);
+    }
+
+    function openAppointmentUploadFolder(sourceButton) {
+      if (!appState.selectedTaskId) return;
+      var popup = window.open('', 'appointmentDriveUpload', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+      if (popup) {
+        popup.document.write('<!doctype html><title>Opening Drive</title><body style="background:#F7F1EB;color:#2A2725;font-family:Inter,system-ui,sans-serif;padding:32px"><div style="color:#8A8178;font-size:11px;letter-spacing:.14em;text-transform:uppercase">Opening Drive Folder</div></body>');
+        popup.document.close();
+      }
+      var loadingButton = lockLoadingButton(sourceButton);
+      setBusy(true, 'Opening Drive folder');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          if (!res || !res.url) {
+            if (popup && !popup.closed) popup.close();
+            setStatus('No Drive folder URL was returned for this appointment.', true);
+            return;
+          }
+          if (popup && !popup.closed) {
+            popup.location.href = res.url;
+          } else {
+            window.open(res.url, '_blank');
+          }
+          setStatus('Drive folder opened. After the recording uploads, copy its Drive file link, paste it in the appointment recording field, and click Upload Files.');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          if (popup && !popup.closed) popup.close();
+          setStatus((err && err.message) ? err.message : String(err), true);
+        })
+        .sw_getAppointmentUploadFolder(appState.token, appState.selectedTaskId, 'APPOINTMENT_RECORDING');
+    }
+
+    function formatBytes(bytes) {
+      bytes = Number(bytes) || 0;
+      if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+      if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+      if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return bytes + ' B';
     }
 
     function beginMainRequest(view) {
@@ -2214,6 +2319,7 @@
       return {
         mine: true,
         calendar: true,
+        customerSearch: !!(user.isAdmin || user.isJoc || user.isRep),
         cleanup: false,
         inStockDiamonds: true,
         diamondTracking: !!(user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant),
@@ -2252,6 +2358,7 @@
         '</span>'
       ].join('');
       document.getElementById('tab-cleanup').style.display = res.views && res.views.cleanup ? '' : 'none';
+      document.getElementById('tab-customerSearch').style.display = res.views && res.views.customerSearch ? '' : 'none';
       document.getElementById('tab-inStockDiamonds').style.display = res.views && res.views.inStockDiamonds !== false ? '' : 'none';
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
       document.getElementById('tab-bulkReturns').style.display = res.views && res.views.bulkReturns ? '' : 'none';
@@ -2421,6 +2528,10 @@
         loadCalendar(appState.calendarMonth);
         return;
       }
+      if (view === 'customerSearch') {
+        loadCustomerSearch();
+        return;
+      }
       if (view === 'inStockDiamonds') {
         loadInStockDiamonds();
         return;
@@ -2449,7 +2560,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -2472,6 +2583,10 @@
       if (view === 'calendar') {
         title = 'Upcoming appointments by month';
         eyebrow = 'Calendar';
+      }
+      if (view === 'customerSearch') {
+        title = 'Search customers and take action';
+        eyebrow = 'Customer Search';
       }
       if (view === 'cleanup') {
         title = 'One-time stale customer cleanup';
@@ -4017,20 +4132,27 @@
             '<input type="hidden" id="appointmentUploadToken" name="swAuthToken" value="">',
             '<input type="hidden" id="appointmentUploadTaskId" name="taskId" value="' + escapeAttrValue(task.taskId || '') + '">',
             '<input type="hidden" id="appointmentUploadRoot" name="rootApptId" value="' + escapeAttrValue(task.root || task.appt || '') + '">',
-            appointmentFileInputHtml('appointmentRecording', 'Appointment recording *', 'audio/*,video/*'),
-            appointmentFileInputHtml('advisorRecap', 'Client Advisor recap', '.pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.heic'),
-            appointmentFileInputHtml('diamondViewingRecording', 'Diamond viewing recording', 'audio/*,video/*'),
-            appointmentFileInputHtml('intakeMaterial', 'Client intake form / photo', '.pdf,.jpg,.jpeg,.png,.heic,.doc,.docx'),
+            appointmentFileInputHtml('appointmentRecording', 'appointmentRecordingDriveUrl', 'Appointment recording *', 'audio/*,video/*', 'For long voice memos, upload to Drive and paste the file link here.'),
+            appointmentFileInputHtml('advisorRecap', 'advisorRecapDriveUrl', 'Client Advisor recap', '.pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.heic', 'Optional Drive file link.'),
+            appointmentFileInputHtml('diamondViewingRecording', 'diamondViewingRecordingDriveUrl', 'Diamond viewing recording', 'audio/*,video/*', 'Optional Drive file link.'),
+            appointmentFileInputHtml('intakeMaterial', 'intakeMaterialDriveUrl', 'Client intake form / photo', '.pdf,.jpg,.jpeg,.png,.heic,.doc,.docx', 'Optional Drive file link.'),
           '</form>',
-          '<div class="actions"><button class="js-upload-appointment-artifacts" type="button">Upload Files</button></div>',
+          '<div class="actions"><button class="js-open-appointment-upload-folder" type="button">Open Drive Folder</button><button class="js-upload-appointment-artifacts" type="button">Upload Files</button></div>',
           '<div class="meta">' + (primaryUploaded ? 'Appointment recording uploaded. Automation status is tracked below.' : 'Completed appointments require an appointment recording before this task can close.') + '</div>',
           renderArtifactStatus(artifacts),
         '</div>'
       ].join('');
     }
 
-    function appointmentFileInputHtml(name, label, accept) {
-      return '<div><label for="' + escapeAttrValue(name) + '">' + escapeHtml(label) + '</label><input id="' + escapeAttrValue(name) + '" name="' + escapeAttrValue(name) + '" type="file" accept="' + escapeAttrValue(accept || '') + '"></div>';
+    function appointmentFileInputHtml(name, driveUrlName, label, accept, helperText) {
+      return [
+        '<div class="upload-slot">',
+          '<label for="' + escapeAttrValue(name) + '">' + escapeHtml(label) + '</label>',
+          '<input id="' + escapeAttrValue(name) + '" name="' + escapeAttrValue(name) + '" type="file" accept="' + escapeAttrValue(accept || '') + '">',
+          '<input class="js-appointment-drive-url" id="' + escapeAttrValue(driveUrlName) + '" name="' + escapeAttrValue(driveUrlName) + '" type="text" placeholder="Drive file link">',
+          helperText ? '<div class="meta">' + escapeHtml(helperText) + '</div>' : '',
+        '</div>'
+      ].join('');
     }
 
     function renderArtifactStatus(artifacts) {
