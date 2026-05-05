@@ -1465,6 +1465,30 @@
       white-space: pre-wrap;
     }
 
+    .customer-ai-brief {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 14px;
+      padding: 20px 28px 24px;
+    }
+
+    .customer-ai-brief-body {
+      display: grid;
+      gap: 12px;
+    }
+
+    .review-flags-box {
+      border-left: 3px solid var(--ink-primary);
+      margin-bottom: 12px;
+      padding-left: 14px;
+    }
+
+    .review-flags-box .template-box,
+    .customer-ai-brief .template-box,
+    #calendarAiBriefMount .template-box {
+      min-height: 0;
+    }
+
     button.link-button {
       border: 0;
       color: var(--ink-body);
@@ -2376,6 +2400,7 @@
       }
 
       .customer-detail-hero,
+      .customer-ai-brief,
       .customer-detail-next,
       .customer-detail-info-grid,
       .customer-detail-footer-grid {
@@ -2700,6 +2725,7 @@
       },
       mainRequestId: 0,
       detailRequestId: 0,
+      calendarBriefRequestId: 0,
       lastActionButton: null,
       appointmentDriveSyncTimer: null,
       appointmentDriveSyncUntil: 0,
@@ -4811,6 +4837,7 @@
       return [
         '<section class="customer-detail-card">',
           renderCustomerDetailHero(card, logs),
+          renderCustomerDetailAiBrief(res.aiBrief || null),
           renderCustomerDetailNextSteps(card, logs),
           renderCustomerDetailActions(card, res.formOptions || {}, tasks),
           '<div class="customer-detail-info-grid">',
@@ -4824,6 +4851,30 @@
             renderCustomerSearchLogs(logs),
           '</div>',
         '</section>'
+      ].join('');
+    }
+
+    function renderCustomerDetailAiBrief(aiBrief) {
+      if (!(aiBrief && aiBrief.hasAiBrief)) return '';
+      var flags = reviewFlagItems(aiBrief.reviewFlags);
+      var links = aiBriefLinks(aiBrief);
+      var updated = customerDisplayDate(aiBrief.latestAiBriefUpdatedAt || '');
+      var meta = [
+        updated ? 'Updated ' + updated : '',
+        aiBrief.workflowStageLabel || aiBrief.workflowStage || ''
+      ].filter(Boolean).join(' | ');
+      return [
+        '<div class="customer-ai-brief">',
+          '<div class="customer-section-heading">',
+            '<label>Latest Appointment Brief</label>',
+            meta ? '<div class="meta">' + escapeHtml(meta) + '</div>' : '',
+          '</div>',
+          '<div class="customer-ai-brief-body">',
+            flags.length ? '<div class="review-flags-box"><div class="meta">Review Flags</div><div class="template-box">' + escapeHtml(flags.join('\n')) + '</div></div>' : '',
+            aiBrief.salesBrief ? '<div><div class="meta">Sales Brief</div><div class="template-box">' + escapeHtml(aiBrief.salesBrief) + '</div></div>' : '',
+            links ? '<div class="artifact-links">' + links + '</div>' : '',
+          '</div>',
+        '</div>'
       ].join('');
     }
 
@@ -5340,6 +5391,8 @@
     function renderCalendarAppointmentDetail(appointmentId) {
       var appt = findCalendarAppointment(appointmentId);
       if (!appt) return;
+      appState.calendarBriefRequestId += 1;
+      var briefRequestId = appState.calendarBriefRequestId;
       var visitTime = formatCalendarTime(appt.visitTime);
       var links = [
         appt.clientFolder ? '<a href="' + escapeHref(appt.clientFolder) + '" target="_blank">Client Folder</a>' : '',
@@ -5364,11 +5417,49 @@
             '<div class="meta">Client Advisor: ' + escapeHtml(appt.assignedRep || 'Unassigned') + '</div>',
             '<div class="meta">JOC: ' + escapeHtml(appt.assistedRep || 'Unassigned') + '</div>',
           '</div>',
+          renderCalendarAiBriefShell(appt),
           '<div class="detail-section">',
             '<label>References</label>',
             links.length ? '<div class="attachment-list">' + links.map(function (link) { return '<div class="attachment-row">' + link + '</div>'; }).join('') + '</div>' : '<div class="empty">No links available for this appointment.</div>',
           '</div>',
         '</div>'
+      ].join('');
+      loadCalendarAppointmentAiBrief(appt, briefRequestId);
+    }
+
+    function renderCalendarAiBriefShell(appt) {
+      if (!(appt && appt.hasAiBrief)) return '';
+      return [
+        '<div class="detail-section" id="calendarAiBriefMount">',
+          '<label>Latest Appointment Brief</label>',
+          '<div class="loading">LOADING AI BRIEF</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function loadCalendarAppointmentAiBrief(appt, requestId) {
+      if (!(appt && appt.hasAiBrief && appt.root)) return;
+      serverCall('sw_getAppointmentAiBrief', [appt.root], function (res) {
+        if (requestId !== appState.calendarBriefRequestId) return;
+        var current = findCalendarAppointment(appt.id);
+        if (!current || current.id !== appt.id) return;
+        var mount = document.getElementById('calendarAiBriefMount');
+        if (!mount) return;
+        mount.innerHTML = calendarAiBriefContent((res || {}).aiBrief || null);
+      }, 'Loading AI brief');
+    }
+
+    function calendarAiBriefContent(aiBrief) {
+      if (!(aiBrief && aiBrief.hasAiBrief)) {
+        return '<label>Latest Appointment Brief</label><div class="empty">No AI brief is ready for this appointment.</div>';
+      }
+      var flags = reviewFlagItems(aiBrief.reviewFlags);
+      var links = aiBriefLinks(aiBrief);
+      return [
+        '<label>Latest Appointment Brief</label>',
+        flags.length ? '<div class="review-flags-box"><div class="meta">Review Flags</div><div class="template-box">' + escapeHtml(flags.join('\n')) + '</div></div>' : '',
+        aiBrief.salesBrief ? '<div><div class="meta">Sales Brief</div><div class="template-box">' + escapeHtml(aiBrief.salesBrief) + '</div></div>' : '',
+        links ? '<div class="artifact-links">' + links + '</div>' : '',
       ].join('');
     }
 
@@ -6292,9 +6383,10 @@
     function renderAiReviewPanel(task, res) {
       if (task.taskType !== 'APPROVE_RECAP_MESSAGE' && task.taskType !== 'SEND_FINAL_RECAP') return '';
       var extra = ((res.payload || {}).extra || {});
+      var flags = reviewFlagItems(extra.reviewFlags);
       var rows = [
-        extra.salesBrief ? ['Sales Brief', extra.salesBrief] : null,
-        extra.reviewFlags ? ['Review Flags', extra.reviewFlags] : null
+        flags.length ? ['Review Flags', flags.join('\n')] : null,
+        extra.salesBrief ? ['Sales Brief', extra.salesBrief] : null
       ].filter(Boolean);
       var links = [
         extra.summaryDocUrl ? '<a href="' + escapeHref(extra.summaryDocUrl) + '" target="_blank">AI Follow-Up Doc</a>' : '',
@@ -6312,6 +6404,31 @@
           '</div>',
         '</div>'
       ].join('');
+    }
+
+    function reviewFlagItems(value) {
+      if (Array.isArray(value)) {
+        return value.map(function (item) { return String(item || '').trim(); }).filter(Boolean);
+      }
+      value = String(value == null ? '' : value).trim();
+      if (!value) return [];
+      if (/^\s*\[/.test(value)) {
+        try {
+          var parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            return parsed.map(function (item) { return String(item || '').trim(); }).filter(Boolean);
+          }
+        } catch (_) {}
+      }
+      return value.split(/\r?\n/).map(function (item) { return item.trim(); }).filter(Boolean);
+    }
+
+    function aiBriefLinks(aiBrief) {
+      aiBrief = aiBrief || {};
+      return [
+        aiBrief.summaryDocUrl ? '<a href="' + escapeHref(aiBrief.summaryDocUrl) + '" target="_blank">AI Follow-Up Doc</a>' : '',
+        aiBrief.transcriptDocUrl ? '<a href="' + escapeHref(aiBrief.transcriptDocUrl) + '" target="_blank">Transcript Doc</a>' : ''
+      ].filter(Boolean).join('');
     }
 
     function renderChecklist(items) {

@@ -19,6 +19,9 @@ function sw_searchCustomers(authToken, query, filters) {
     swCustomerSearchApplyDefaultOwnerFilters_(appointments, user, filters);
     var rows = swCustomerSearchFilteredRows_(appointments, query, filters);
     var groups = swAdminDashboardRowsByRoot_(rows);
+    var aiBriefByRoot = Object.keys(groups).length && typeof swAppointmentAiBriefIndex_ === 'function'
+      ? swAppointmentAiBriefIndex_(ss)
+      : {};
     var master = ss.getSheetByName(SW_SHEETS.MASTER);
     var masterGid = master ? master.getSheetId() : '';
     var columnsByKey = {};
@@ -33,7 +36,7 @@ function sw_searchCustomers(authToken, query, filters) {
       if (!rec) return;
       var stage = swAdminDashboardPipelineStage_(rec, rootRows);
       var column = columnsByKey[stage.key] || columnsByKey.lead;
-      var card = swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage);
+      var card = swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage, aiBriefByRoot[root]);
       column.count++;
       if (column.cards.length < SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN) {
         column.cards.push(card);
@@ -376,7 +379,7 @@ function swCustomerSearchUserAdvisorCandidates_(user) {
   return swUnique_(out);
 }
 
-function swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage) {
+function swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage, aiBrief) {
   var card = swAdminDashboardCustomerCard_(ss, masterGid, root, rec, rootRows, stage, { byRoot: {}, bySo: {} });
   card.email = rec.email || '';
   card.phone = rec.phone || '';
@@ -386,6 +389,21 @@ function swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage) {
   card.waxDeadlineAdmin = rec.waxDeadlineAdmin || '';
   card.centerStoneStatus = rec.centerStoneStatus || '';
   card.badges = swCustomerSearchBadges_(rec);
+  swCustomerSearchApplyAiBriefCompact_(card, aiBrief);
+  return card;
+}
+
+function swCustomerSearchApplyAiBriefCompact_(card, aiBrief) {
+  var compact = typeof swAppointmentAiBriefCompact_ === 'function'
+    ? swAppointmentAiBriefCompact_(aiBrief)
+    : { hasAiBrief: false, reviewFlagCount: 0, latestAiBriefUpdatedAt: '' };
+  card.hasAiBrief = !!compact.hasAiBrief;
+  card.reviewFlagCount = Number(compact.reviewFlagCount || 0);
+  card.latestAiBriefUpdatedAt = compact.latestAiBriefUpdatedAt || '';
+  if (!card.hasAiBrief) return card;
+  card.badges = card.badges || [];
+  card.badges.push('AI Brief');
+  if (card.reviewFlagCount) card.badges.push('Flags: ' + card.reviewFlagCount);
   return card;
 }
 
@@ -408,7 +426,10 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
   var master = ss.getSheetByName(SW_SHEETS.MASTER);
   var masterGid = master ? master.getSheetId() : '';
   var stage = swAdminDashboardPipelineStage_(target.rec, target.rows);
-  var card = swCustomerSearchCard_(ss, masterGid, target.root, target.rec, target.rows, stage);
+  var aiBrief = typeof swAppointmentAiBriefForRoot_ === 'function'
+    ? swAppointmentAiBriefForRoot_(ss, target.root)
+    : null;
+  var card = swCustomerSearchCard_(ss, masterGid, target.root, target.rec, target.rows, stage, aiBrief);
   mark('card');
   var paymentResult = swCustomerSearchPaymentHistory_(target.root, card.so, 12);
   swCustomerSearchApplyPaymentSummary_(card, paymentResult.rows || [], target.rec);
@@ -436,6 +457,7 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
     user: user,
     root: target.root,
     card: card,
+    aiBrief: aiBrief,
     appointments: target.rows.map(swCustomerSearchPublicAppointment_),
     tasks: tasks,
     logs: logs,

@@ -353,7 +353,7 @@ function sw_getCalendarAppointments(authToken, monthKey) {
     var month = swCalendarMonthRange_(monthKey);
     var today = new Date();
     var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-    var appointments = swReadAppointments_(ss).filter(function (rec) {
+    var rows = swReadAppointments_(ss).filter(function (rec) {
       if (!swIsAppointmentActive_(rec)) return false;
       var visitAt = swVisitDateTime_(rec, tz);
       if (!visitAt) return false;
@@ -363,8 +363,16 @@ function sw_getCalendarAppointments(authToken, monthKey) {
       var av = swVisitDateTime_(a, tz);
       var bv = swVisitDateTime_(b, tz);
       return av.getTime() - bv.getTime() || String(a.name).localeCompare(String(b.name));
-    }).map(function (rec) {
+    });
+    var aiBriefByRoot = rows.length && typeof swAppointmentAiBriefIndex_ === 'function'
+      ? swAppointmentAiBriefIndex_(ss)
+      : {};
+    var appointments = rows.map(function (rec) {
       var visitAt = swVisitDateTime_(rec, tz);
+      var root = rec.root || rec.appt || '';
+      var aiBrief = root && aiBriefByRoot[root] && typeof swAppointmentAiBriefCompact_ === 'function'
+        ? swAppointmentAiBriefCompact_(aiBriefByRoot[root])
+        : { hasAiBrief: false, reviewFlagCount: 0, latestAiBriefUpdatedAt: '' };
       return {
         id: ['CAL', rec.row, rec.root || rec.appt || ''].join('|'),
         row: rec.row,
@@ -384,7 +392,10 @@ function sw_getCalendarAppointments(authToken, monthKey) {
         reportUrl: rec.reportUrl,
         quotationUrl: rec.quotationUrl,
         tracker3dUrl: rec.tracker3dUrl,
-        isDiamondViewing: swDiamondIsViewingAppointment_(rec)
+        isDiamondViewing: swDiamondIsViewingAppointment_(rec),
+        hasAiBrief: !!aiBrief.hasAiBrief,
+        reviewFlagCount: Number(aiBrief.reviewFlagCount || 0),
+        latestAiBriefUpdatedAt: aiBrief.latestAiBriefUpdatedAt || ''
       };
     });
 
@@ -397,6 +408,24 @@ function sw_getCalendarAppointments(authToken, monthKey) {
       todayKey: swDateKey_(todayStart),
       appointmentCount: appointments.length,
       appointments: appointments
+    };
+  });
+}
+
+function sw_getAppointmentAiBrief(authToken, rootApptId) {
+  return swTimed_('sw_getAppointmentAiBrief', function () {
+    var ss = swSpreadsheet_();
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    swAuthUserForApi_(ss, authToken);
+    var root = swTrim_(rootApptId);
+    if (!root) throw new Error('Missing RootApptID.');
+    var brief = typeof swAppointmentAiBriefForRoot_ === 'function'
+      ? swAppointmentAiBriefForRoot_(ss, root)
+      : null;
+    return {
+      ok: true,
+      rootApptId: root,
+      aiBrief: brief
     };
   });
 }

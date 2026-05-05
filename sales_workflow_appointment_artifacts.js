@@ -109,10 +109,7 @@ function swMigrateAppointmentArtifactsSheet_(sh) {
   var values = sh.getRange(1, 1, lastRow, lastCol).getValues();
   var currentHeaders = values[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(currentHeaders);
-  var aliases = {
-    'Sales Brief': ['Sales Brief', 'Internal Summary', 'Customer Insights'],
-    'Review Flags': ['Review Flags', 'Confidence Flags']
-  };
+  var aliases = {};
   var nextValues = values.map(function (_, rowIndex) {
     return SW_APPOINTMENT_ARTIFACT_HEADERS.map(function (header) {
       if (rowIndex === 0) return header;
@@ -347,6 +344,11 @@ function swSummaryExtraForRoot_(ss, rootApptId) {
   return swSummaryExtraFromArtifactRow_(row);
 }
 
+function swAppointmentAiBriefForRoot_(ss, rootApptId) {
+  var summary = swSummaryExtraForRoot_(ss, rootApptId);
+  return summary && summary.ready ? swAppointmentAiBriefFull_(summary) : null;
+}
+
 function swAppointmentSummaryIndex_(ss) {
   var readyRank = swArtifactStageRank_(SW_ARTIFACT_STAGES.SUMMARY_READY);
   var byRoot = {};
@@ -363,6 +365,58 @@ function swAppointmentSummaryIndex_(ss) {
     out[root] = swSummaryExtraFromArtifactRow_(byRoot[root]);
   });
   return out;
+}
+
+function swAppointmentAiBriefIndex_(ss) {
+  var summaries = swAppointmentSummaryIndex_(ss);
+  var out = {};
+  Object.keys(summaries || {}).forEach(function (root) {
+    var brief = swAppointmentAiBriefFull_(summaries[root]);
+    if (brief && brief.hasAiBrief) out[root] = brief;
+  });
+  return out;
+}
+
+function swAppointmentAiBriefFull_(summary) {
+  if (!(summary && summary.ready)) return null;
+  var flags = swAppointmentReviewFlagsFromValue_(summary.reviewFlags);
+  return {
+    hasAiBrief: true,
+    ready: true,
+    artifactId: summary.artifactId || '',
+    workflowStage: summary.workflowStage || '',
+    workflowStageLabel: swArtifactStageLabel_(summary.workflowStage || ''),
+    salesBrief: summary.salesBrief || '',
+    reviewFlags: flags,
+    reviewFlagCount: flags.length,
+    clientFollowUpDraft: summary.clientFollowUpDraft || '',
+    transcriptDocUrl: summary.transcriptDocUrl || '',
+    summaryDocUrl: summary.summaryDocUrl || '',
+    summaryJsonUrl: summary.summaryJsonUrl || '',
+    latestAiBriefUpdatedAt: summary.updatedAt || summary.uploadedAt || ''
+  };
+}
+
+function swAppointmentAiBriefCompact_(brief) {
+  if (!(brief && brief.hasAiBrief)) {
+    return { hasAiBrief: false, reviewFlagCount: 0, latestAiBriefUpdatedAt: '' };
+  }
+  return {
+    hasAiBrief: true,
+    reviewFlagCount: Number(brief.reviewFlagCount || 0),
+    latestAiBriefUpdatedAt: brief.latestAiBriefUpdatedAt || ''
+  };
+}
+
+function swAppointmentReviewFlagsFromValue_(value) {
+  if (Array.isArray(value)) {
+    return value.map(swTrim_).filter(Boolean);
+  }
+  value = swTrim_(value);
+  if (!value) return [];
+  var parsed = swParseJson_(value, null);
+  if (Array.isArray(parsed)) return parsed.map(swTrim_).filter(Boolean);
+  return value.split(/\r?\n/).map(swTrim_).filter(Boolean);
 }
 
 function swCompareSummaryArtifacts_(a, b) {
@@ -384,7 +438,9 @@ function swSummaryExtraFromArtifactRow_(row) {
     reviewFlags: row['Review Flags'] || '',
     clientFollowUpDraft: row['Client Follow-Up Draft'] || '',
     recapDraft: row['Client Follow-Up Draft'] || '',
-    approvedText: row['Client Follow-Up Draft'] || ''
+    approvedText: row['Client Follow-Up Draft'] || '',
+    uploadedAt: row['Uploaded At'] || '',
+    updatedAt: row['Updated At'] || ''
   };
 }
 
