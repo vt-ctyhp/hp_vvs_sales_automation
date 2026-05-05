@@ -2,6 +2,8 @@
  * Sales workflow data repository: context, source appointment reads, roster, and schedule indexes.
  */
 
+var SW_APPOINTMENT_ROOT_ROW_CACHE_SECONDS = 5 * 60;
+
 function swReadRosterAvailabilityIndex_(ss) {
   var out = { exists: false, schemaOk: false, byName: {} };
   var roster = ss.getSheetByName(SW_SHEETS.ROSTER);
@@ -179,17 +181,22 @@ function swReadWaxRequestIndex_(ss) {
 function swReadAppointments_(ss) {
   var sh = ss.getSheetByName(SW_SHEETS.MASTER);
   if (!sh) throw new Error('Missing sheet: ' + SW_SHEETS.MASTER);
-  if (sh.getLastRow() < 2 || sh.getLastColumn() < 1) return [];
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
 
-  var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
-  var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
-  var headers = display[0].map(function (h) { return swTrim_(h); });
+  var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
   var idx = swAppointmentColumnIndex_(headers);
+  var width = swAppointmentDataWidth_(idx, lastCol);
+  var rowCount = lastRow - 1;
+  var values = sh.getRange(2, 1, rowCount, width).getValues();
+  var display = sh.getRange(2, 1, rowCount, width).getDisplayValues();
 
   var out = [];
-  for (var i = 1; i < values.length; i++) {
-    out.push(swAppointmentRecordFromRows_(display[i], values[i], idx, i + 1));
+  for (var i = 0; i < values.length; i++) {
+    out.push(swAppointmentRecordFromRows_(display[i], values[i], idx, i + 2));
   }
+  swCacheAppointmentRootRows_(ss, out);
   return out;
 }
 
@@ -211,6 +218,20 @@ function swReadAppointmentsForRoot_(ss, rootApptId) {
   }
 
   var rowCount = lastRow - 1;
+  var width = swAppointmentDataWidth_(idx, lastCol);
+  var cachedRows = swCachedAppointmentRootRows_(ss, want);
+  if (cachedRows && cachedRows.length) {
+    var cachedOut = [];
+    cachedRows.forEach(function (rowNumber) {
+      if (rowNumber < 2 || rowNumber > lastRow) return;
+      var values = sh.getRange(rowNumber, 1, 1, width).getValues()[0];
+      var display = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+      var rec = swAppointmentRecordFromRows_(display, values, idx, rowNumber);
+      if (swTrim_(rec.root) === want || swTrim_(rec.appt) === want) cachedOut.push(rec);
+    });
+    if (cachedOut.length) return cachedOut;
+  }
+
   var roots = idx.root >= 0 ? sh.getRange(2, idx.root + 1, rowCount, 1).getDisplayValues() : [];
   var appts = idx.appt >= 0 ? sh.getRange(2, idx.appt + 1, rowCount, 1).getDisplayValues() : [];
   var out = [];
@@ -219,11 +240,51 @@ function swReadAppointmentsForRoot_(ss, rootApptId) {
     var appt = appts.length ? swTrim_(appts[i][0]) : '';
     if (root !== want && appt !== want) continue;
     var rowNumber = i + 2;
-    var values = sh.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
-    var display = sh.getRange(rowNumber, 1, 1, lastCol).getDisplayValues()[0];
+    var values = sh.getRange(rowNumber, 1, 1, width).getValues()[0];
+    var display = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
     out.push(swAppointmentRecordFromRows_(display, values, idx, rowNumber));
   }
   return out;
+}
+
+function swAppointmentDataWidth_(idx, lastCol) {
+  var max = 0;
+  Object.keys(idx || {}).forEach(function (key) {
+    var col = Number(idx[key]);
+    if (isFinite(col) && col >= 0 && col > max) max = col;
+  });
+  return Math.max(1, Math.min(Number(lastCol) || 1, max + 1));
+}
+
+function swCacheAppointmentRootRows_(ss, appointments) {
+  var map = {};
+  (appointments || []).forEach(function (rec) {
+    if (!rec || !rec.row) return;
+    [rec.root, rec.appt].forEach(function (id) {
+      id = swTrim_(id);
+      if (!id) return;
+      if (!map[id]) map[id] = [];
+      if (map[id].indexOf(rec.row) < 0) map[id].push(rec.row);
+    });
+  });
+  try {
+    var payload = swStringify_({ rowsById: map, cachedAt: swIso_(new Date()) });
+    if (payload.length < 90000) CacheService.getScriptCache().put(swAppointmentRootRowCacheKey_(ss), payload, SW_APPOINTMENT_ROOT_ROW_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swCachedAppointmentRootRows_(ss, rootApptId) {
+  try {
+    var cached = CacheService.getScriptCache().get(swAppointmentRootRowCacheKey_(ss));
+    var parsed = cached ? swParseJson_(cached, null) : null;
+    var rows = parsed && parsed.rowsById ? parsed.rowsById[swTrim_(rootApptId)] : null;
+    return Array.isArray(rows) ? rows.map(function (row) { return Number(row); }).filter(function (row) { return isFinite(row); }) : null;
+  } catch (_) {}
+  return null;
+}
+
+function swAppointmentRootRowCacheKey_(ss) {
+  return 'sw:appointmentRootRows:v1:' + ss.getId();
 }
 
 function swAppointmentColumnIndex_(headers) {

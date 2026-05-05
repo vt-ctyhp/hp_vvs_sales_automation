@@ -33,6 +33,7 @@ var SW_ADMIN_DASHBOARD_STAGE_WEIGHTS = {
   won: 0,
   lost: 0
 };
+var SW_ADMIN_DASHBOARD_AUX_CACHE_SECONDS = 5 * 60;
 
 /**
  * Read-only admin dashboard payload.
@@ -453,9 +454,7 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   var lc = sh.getLastColumn();
   if (lr < 2 || lc < 1) return out;
 
-  var values = sh.getRange(1, 1, lr, lc).getValues();
-  var display = sh.getRange(1, 1, lr, lc).getDisplayValues();
-  var headers = display[0].map(function (h) { return swTrim_(h); });
+  var headers = sh.getRange(1, 1, 1, lc).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(headers);
   var C = {
     root: swPickIndex_(H, ['RootApptID', 'APPT_ID', 'Root Appt ID', 'Appointment ID']),
@@ -474,8 +473,12 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
     return out;
   }
 
+  var width = swAdminDashboardPaymentDataWidth_(C, lc);
+  var rowCount = lr - 1;
+  var values = sh.getRange(2, 1, rowCount, width).getValues();
+  var display = sh.getRange(2, 1, rowCount, width).getDisplayValues();
   var receipts = [];
-  for (var i = 1; i < display.length; i++) {
+  for (var i = 0; i < display.length; i++) {
     var row = values[i];
     var drow = display[i];
     var docType = swTrim_(swCell_(drow, C.docType));
@@ -525,6 +528,15 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   });
 
   return out;
+}
+
+function swAdminDashboardPaymentDataWidth_(columns, lastCol) {
+  var max = 0;
+  Object.keys(columns || {}).forEach(function (key) {
+    var col = Number(columns[key]);
+    if (isFinite(col) && col >= 0 && col > max) max = col;
+  });
+  return Math.max(1, Math.min(Number(lastCol) || 1, max + 1));
 }
 
 function swAdminDashboardPaymentsSheet_() {
@@ -591,7 +603,7 @@ function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payment
   mark('groups', { roots: Object.keys(groups || {}).length });
   var rootIndex = swAdminDashboardReadRootIndex_(ss, warnings);
   mark('rootIndex', { available: rootIndex.available });
-  var statusLog = swAdminDashboardReadStatusLog_(ss, appointments, warnings);
+  var statusLog = swAdminDashboardReadStatusLog_(ss, appointments, warnings, currentByRoot);
   mark('statusLog', { available: statusLog.available });
   var stageWeights = swAdminDashboardStageWeights_(ss);
   mark('stageWeights');
