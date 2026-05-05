@@ -212,6 +212,26 @@ function swBuildCustomerReadModel_(ss, builtAt) {
     write.sourceRows = appointments.length;
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
+    if (typeof swCustomerSearchReadModelRecord_ === 'function' &&
+        typeof swCacheCustomerSearchReadModelRows_ === 'function') {
+      var cacheStarted = new Date().getTime();
+      try {
+        var customerSearchRows = rows.map(function (values) {
+          var obj = {};
+          SW_CUSTOMER_READ_MODEL_HEADERS.forEach(function (header, index) {
+            obj[header] = values[index] || '';
+          });
+          return swCustomerSearchReadModelRecord_(obj);
+        }).filter(function (rec) { return !!rec.root; });
+        swCacheCustomerSearchReadModelRows_(ss, customerSearchRows, { builtAt: swIso_(builtAt) });
+        write.cacheRows = customerSearchRows.length;
+        write.cacheMs = new Date().getTime() - cacheStarted;
+      } catch (cacheErr) {
+        write.cacheRows = 0;
+        write.cacheMs = new Date().getTime() - cacheStarted;
+        write.cacheError = cacheErr && cacheErr.message ? cacheErr.message : String(cacheErr);
+      }
+    }
     return write;
   } catch (err) {
     return swReadModelErrorResult_(err, started);
@@ -462,6 +482,8 @@ function swWorkflowReadModelLogSummary_(result) {
       projectionUsers: model.projectionUsers || 0,
       projectionKeys: model.projectionKeys || 0,
       projectionMs: model.projectionMs || 0,
+      cacheRows: model.cacheRows || 0,
+      cacheMs: model.cacheMs || 0,
       error: model.error || ''
     };
   });
@@ -799,9 +821,6 @@ function swTaskDashboardUserSignature_(user, cleanupTabEnabled) {
     swNormEmail_(user.email || ''),
     user.isAdmin ? 'admin' : '',
     user.isJoc ? 'joc' : '',
-    user.isRep ? 'rep' : '',
-    user.isDiamondOrderAdmin ? 'diamondAdmin' : '',
-    user.isDiamondOrderAssistant ? 'diamondAssistant' : '',
     cleanupTabEnabled ? 'cleanupY' : 'cleanupN'
   ];
   return parts.join('|').replace(/[^a-z0-9@._|,-]+/gi, '').slice(0, 220);
