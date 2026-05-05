@@ -199,8 +199,14 @@ function swBuildBootstrapResponse_(ss, user, mark) {
   var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
     ? swDataCleanupCampaignTabEnabled_(config)
     : false;
-  var state = swReadTaskListState_(ss, true);
-  mark('taskListRead', { tasks: state.tasks.length });
+  var taskRead = swReadTaskListStateForDashboard_(ss, config);
+  var state = taskRead.state;
+  mark('taskListRead', {
+    tasks: state.tasks.length,
+    source: taskRead.source,
+    fallbackReason: taskRead.fallbackReason || '',
+    ageSeconds: taskRead.ageSeconds || 0
+  });
   mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
   var buckets = swBuildVisibleTaskBuckets_(state, user, { cleanupCampaignTabEnabled: cleanupTabEnabled });
   mark('taskBuckets', {
@@ -258,8 +264,14 @@ function sw_getMyTasks(authToken, view) {
     var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
       ? swDataCleanupCampaignTabEnabled_(config)
       : false;
-    var state = swReadTaskListState_(ss, true);
-    mark('taskListRead', { tasks: state.tasks.length });
+    var taskRead = swReadTaskListStateForDashboard_(ss, config);
+    var state = taskRead.state;
+    mark('taskListRead', {
+      tasks: state.tasks.length,
+      source: taskRead.source,
+      fallbackReason: taskRead.fallbackReason || '',
+      ageSeconds: taskRead.ageSeconds || 0
+    });
     var tasks = swListVisibleTasksFromState_(state, user, viewName, { cleanupCampaignTabEnabled: cleanupTabEnabled });
     mark('filter', { view: viewName, tasks: tasks.length });
     return {

@@ -8,6 +8,7 @@
 var SW_READ_MODEL_VERSION = 'phase1-v1';
 var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 10 * 60;
 var SW_READ_MODEL_REFRESH_HANDLER = 'sw_rebuildWorkflowReadModels';
+var SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_ = {};
 
 function sw_rebuildWorkflowReadModels(options) {
   options = options || {};
@@ -27,8 +28,31 @@ function sw_getWorkflowReadModelStatus() {
 
 function sw_invalidateWorkflowReadModels(reason) {
   var ss = swSpreadsheet_();
+  var result = swMarkWorkflowReadModelsStale_(ss, reason || 'Manual invalidation');
+  if (result.invalidated) return result;
+  return {
+    ok: true,
+    invalidated: false,
+    reason: swTrim_(reason || ''),
+    message: 'No read-model metadata exists yet.'
+  };
+}
+
+function swMarkWorkflowReadModelsStale_(ss, reason, modelName) {
   var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_META);
   var now = swIso_(new Date());
+  modelName = swTrim_(modelName || '');
+  var key = ss.getId() + ':' + (modelName || 'all');
+  if (SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_[key]) {
+    return {
+      ok: true,
+      invalidated: true,
+      skippedDuplicate: true,
+      reason: swTrim_(reason || ''),
+      models: 0,
+      invalidatedAt: now
+    };
+  }
   if (!sh || sh.getLastRow() < 2) {
     return {
       ok: true,
@@ -43,15 +67,23 @@ function sw_invalidateWorkflowReadModels(reason) {
   var statusCol = swPickIndex_(H, ['Status']) + 1;
   var invalidatedCol = swPickIndex_(H, ['Invalidated At']) + 1;
   var notesCol = swPickIndex_(H, ['Notes']) + 1;
-  var rowCount = sh.getLastRow() - 1;
-  if (statusCol > 0) sh.getRange(2, statusCol, rowCount, 1).setValue('STALE');
-  if (invalidatedCol > 0) sh.getRange(2, invalidatedCol, rowCount, 1).setValue(now);
-  if (notesCol > 0) sh.getRange(2, notesCol, rowCount, 1).setValue(swTrim_(reason || 'Manual invalidation'));
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(sh.getLastColumn(), SW_READ_MODEL_META_HEADERS.length)).getDisplayValues();
+  var changed = 0;
+  rows.forEach(function (row, idx) {
+    var rowModel = swTrim_(row[swPickIndex_(H, ['Model'])] || '');
+    if (modelName && rowModel !== modelName) return;
+    var rowNumber = idx + 2;
+    if (statusCol > 0) sh.getRange(rowNumber, statusCol).setValue('STALE');
+    if (invalidatedCol > 0) sh.getRange(rowNumber, invalidatedCol).setValue(now);
+    if (notesCol > 0) sh.getRange(rowNumber, notesCol).setValue(swTrim_(reason || 'Manual invalidation'));
+    changed++;
+  });
+  SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_[key] = true;
 
   return {
     ok: true,
-    invalidated: true,
-    models: rowCount,
+    invalidated: changed > 0,
+    models: changed,
     invalidatedAt: now,
     reason: swTrim_(reason || '')
   };
@@ -133,6 +165,7 @@ function swBuildTaskReadModel_(ss, builtAt) {
     write.sourceRows = state.tasks ? state.tasks.length : 0;
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
+    try { swCacheTaskListState_(ss, state); } catch (_) {}
     return write;
   } catch (err) {
     return swReadModelErrorResult_(err, started);
@@ -443,4 +476,122 @@ function swReadModelDateMs_(value) {
   if (!s) return 0;
   var d = new Date(s);
   return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function swReadTaskListStateForDashboard_(ss, config) {
+  var readModel = swTryReadTaskListStateFromReadModel_(ss, config);
+  if (readModel && readModel.state) return readModel;
+
+  var state = swReadTaskListState_(ss, true);
+  return {
+    source: 'taskQueue',
+    fallbackReason: readModel ? readModel.fallbackReason || '' : '',
+    ageSeconds: readModel ? readModel.ageSeconds || 0 : 0,
+    state: state
+  };
+}
+
+function swTryReadTaskListStateFromReadModel_(ss, config) {
+  if (!swTaskReadModelServingEnabled_(config)) {
+    return { source: 'taskQueue', fallbackReason: 'disabled', state: null };
+  }
+  try {
+    var status = swTaskReadModelStatus_(ss);
+    if (!status.fresh) {
+      return {
+        source: 'taskQueue',
+        fallbackReason: status.reason || 'notFresh',
+        ageSeconds: status.ageSeconds || 0,
+        state: null
+      };
+    }
+
+    var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_TASKS);
+    var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_TASK_READ_MODEL_HEADERS);
+    var tasks = rows.map(swTaskFromReadModelRow_).filter(function (task) {
+      return !!task.taskId;
+    });
+    var state = swBuildTaskStateFromTasks_(tasks, [], {});
+    return {
+      source: 'taskReadModel',
+      fallbackReason: '',
+      ageSeconds: status.ageSeconds || 0,
+      state: state
+    };
+  } catch (err) {
+    try {
+      Logger.log('SW_READ_MODEL_TASK_FALLBACK ' + JSON.stringify({
+        reason: err && err.message ? err.message : String(err)
+      }));
+    } catch (_) {}
+    return {
+      source: 'taskQueue',
+      fallbackReason: err && err.message ? err.message : String(err),
+      state: null
+    };
+  }
+}
+
+function swTaskReadModelServingEnabled_(config) {
+  return swNorm_(swConfigValue_(config || [], 'SYSTEM', 'READ_MODEL_SERVE_TASKS', 'Y')) !== 'n';
+}
+
+function swTaskReadModelStatus_(ss) {
+  var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_TASKS);
+  if (!sh) return { fresh: false, reason: 'missingSheet' };
+  var meta = null;
+  var rows = swReadModelMetaRows_(ss);
+  for (var i = 0; i < rows.length; i++) {
+    if (swTrim_(rows[i]['Model']) === 'tasks') {
+      meta = rows[i];
+      break;
+    }
+  }
+  if (!meta) return { fresh: false, reason: 'missingMeta' };
+  if (swTrim_(meta['Version']) !== SW_READ_MODEL_VERSION) return { fresh: false, reason: 'versionMismatch' };
+  if (swTrim_(meta['Status']) !== 'OK') return { fresh: false, reason: 'status:' + swTrim_(meta['Status']) };
+  if (swTrim_(meta['Invalidated At'])) return { fresh: false, reason: 'invalidated' };
+  var builtAtMs = swReadModelDateMs_(meta['Built At']);
+  var expiresAtMs = swReadModelDateMs_(meta['Expires At']);
+  var nowMs = new Date().getTime();
+  var ageSeconds = builtAtMs ? Math.max(0, Math.round((nowMs - builtAtMs) / 1000)) : 0;
+  if (!builtAtMs || !expiresAtMs) return { fresh: false, reason: 'missingDates', ageSeconds: ageSeconds };
+  if (expiresAtMs < nowMs) return { fresh: false, reason: 'expired', ageSeconds: ageSeconds };
+  return {
+    fresh: true,
+    reason: '',
+    ageSeconds: ageSeconds,
+    builtAt: meta['Built At'] || '',
+    expiresAt: meta['Expires At'] || '',
+    rows: Math.max(0, sh.getLastRow() - 1)
+  };
+}
+
+function swTaskFromReadModelRow_(row) {
+  row = row || {};
+  return {
+    taskId: row['TaskID'] || '',
+    root: row['RootApptID'] || '',
+    appt: row['APPT_ID'] || '',
+    customerName: row['Customer Name'] || '',
+    brand: row['Brand'] || '',
+    visitDate: row['Visit Date'] || '',
+    visitTime: swFormatAppointmentTime_(row['Visit Time'] || ''),
+    visitType: row['Visit Type'] || '',
+    lifecycleStage: row['Lifecycle Stage'] || '',
+    taskType: row['Task Type'] || '',
+    taskTitle: row['Task Title'] || '',
+    ownerRole: row['Owner Role'] || '',
+    intendedOwner: row['Intended Owner'] || '',
+    intendedOwnerEmail: swNormEmail_(row['Intended Owner Email'] || ''),
+    currentOwner: row['Current Owner'] || '',
+    currentOwnerEmail: swNormEmail_(row['Current Owner Email'] || ''),
+    coverageReason: row['Coverage Reason'] || '',
+    dueAt: row['Due At'] || '',
+    status: row['Status'] || SW_STATUSES.PENDING,
+    primaryAction: row['Primary Action'] || '',
+    snoozeUntil: row['Snooze Until'] || '',
+    snoozeReason: row['Snooze Reason'] || '',
+    rowNumber: Number(row['Row Number'] || 0) || 0
+  };
 }

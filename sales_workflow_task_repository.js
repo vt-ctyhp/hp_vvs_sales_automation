@@ -170,6 +170,11 @@ function swInvalidateTaskListCache_(ss) {
   var key = swTaskListCacheKey_(ss);
   try { delete SW_TASK_LIST_MEMORY_CACHE_[key]; } catch (_) {}
   swTaskListCacheRemove_(key);
+  try {
+    if (typeof swMarkWorkflowReadModelsStale_ === 'function') {
+      swMarkWorkflowReadModelsStale_(ss, 'Task queue changed.', 'tasks');
+    }
+  } catch (_) {}
 }
 
 function swTaskListCacheKey_(ss) {
@@ -557,6 +562,11 @@ function swFlushDeferredTaskWrites_(ss, state) {
   state.pendingTaskRows = [];
   state.pendingLogRows = [];
   swCacheTaskListStateFromTaskState_(ss, state);
+  try {
+    if (typeof swMarkWorkflowReadModelsStale_ === 'function') {
+      swMarkWorkflowReadModelsStale_(ss, 'Task queue changed.', 'tasks');
+    }
+  } catch (_) {}
 }
 
 function swQueueOrAppendTaskRow_(ss, state, task) {

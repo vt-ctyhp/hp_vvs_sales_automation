@@ -31,6 +31,7 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'DATA_CLEANUP_CAMPAIGN_ID', 'ONE_TIME_2026_05', '', '', '', 'Y', '', 'Identifier for the one-time cleanup campaign.'],
     ['SYSTEM', 'DATA_CLEANUP_CAMPAIGN_TAB_ENABLED', 'Y', '', '', '', 'Y', '', 'Show the temporary Cleanup dashboard tab for unresolved one-time campaign cases. The generator disables this after the campaign is resolved.'],
     ['SYSTEM', 'READ_MODEL_ENABLED', 'N', '', '', '', 'Y', '', 'Shadow read-model flag. Phase 1 builds generated _SW_* tabs but does not serve app reads from them.'],
+    ['SYSTEM', 'READ_MODEL_SERVE_TASKS', 'Y', '', '', '', 'Y', '', 'Use fresh _SW_TaskReadModel rows for dashboard bootstrap and queue views. Falls back to _SalesTaskQueue when stale or missing.'],
     ['SYSTEM', 'READ_MODEL_TTL_SECONDS', '600', '', '', '', 'Y', '', 'Freshness window for generated workflow read models. The refresh trigger still targets every 5 minutes.'],
     ['USER', 'ADMIN_1', '', 'Admin', '', '', 'Y', '1', 'Optional admin row.'],
     ['USER', 'DIAMOND_ORDER_ADMIN_1', '', 'DIAMOND_ORDER_ADMIN', '', '', 'Y', '1', 'Legacy config row only; dashboard access now comes from _SalesWorkflowUsers role DIAMOND_ORDER_ADMIN.'],
