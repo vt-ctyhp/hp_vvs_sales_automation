@@ -5,7 +5,7 @@
  * comparison, but the web app still serves from the existing source sheets.
  */
 
-var SW_READ_MODEL_VERSION = 'phase4-cache-v3';
+var SW_READ_MODEL_VERSION = 'phase1-v1';
 var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 10 * 60;
 var SW_READ_MODEL_REFRESH_HANDLER = 'sw_rebuildWorkflowReadModels';
 var SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_ = {};
@@ -570,6 +570,8 @@ function swTryReadTaskListStateFromReadModel_(ss, config) {
       return {
         source: 'taskQueue',
         fallbackReason: status.reason || 'notFresh',
+        actualVersion: status.actualVersion || '',
+        expectedVersion: status.expectedVersion || '',
         ageSeconds: status.ageSeconds || 0,
         state: null
       };
@@ -628,7 +630,15 @@ function swTaskReadModelStatus_(ss) {
     }
   }
   if (!meta) return { fresh: false, reason: 'missingMeta' };
-  if (swTrim_(meta['Version']) !== SW_READ_MODEL_VERSION) return { fresh: false, reason: 'versionMismatch' };
+  var metaVersion = swTrim_(meta['Version']);
+  if (metaVersion !== SW_READ_MODEL_VERSION) {
+    return {
+      fresh: false,
+      reason: 'versionMismatch',
+      actualVersion: metaVersion,
+      expectedVersion: SW_READ_MODEL_VERSION
+    };
+  }
   if (swTrim_(meta['Status']) !== 'OK') return { fresh: false, reason: 'status:' + swTrim_(meta['Status']) };
   if (swTrim_(meta['Invalidated At'])) return { fresh: false, reason: 'invalidated' };
   var builtAtMs = swReadModelDateMs_(meta['Built At']);
@@ -659,7 +669,15 @@ function swCustomerReadModelStatus_(ss) {
     }
   }
   if (!meta) return { fresh: false, reason: 'missingMeta' };
-  if (swTrim_(meta['Version']) !== SW_READ_MODEL_VERSION) return { fresh: false, reason: 'versionMismatch' };
+  var metaVersion = swTrim_(meta['Version']);
+  if (metaVersion !== SW_READ_MODEL_VERSION) {
+    return {
+      fresh: false,
+      reason: 'versionMismatch',
+      actualVersion: metaVersion,
+      expectedVersion: SW_READ_MODEL_VERSION
+    };
+  }
   if (swTrim_(meta['Status']) !== 'OK') return { fresh: false, reason: 'status:' + swTrim_(meta['Status']) };
   if (swTrim_(meta['Invalidated At'])) return { fresh: false, reason: 'invalidated' };
   var builtAtMs = swReadModelDateMs_(meta['Built At']);

@@ -338,6 +338,8 @@ function swCustomerSearchReadModelRows_(ss, config) {
       return {
         ok: false,
         fallbackReason: status.reason || 'notFresh',
+        actualVersion: status.actualVersion || '',
+        expectedVersion: status.expectedVersion || '',
         ageSeconds: status.ageSeconds || 0
       };
     }
