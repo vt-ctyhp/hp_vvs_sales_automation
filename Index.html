@@ -2629,6 +2629,10 @@
         loadAdminDashboard();
         return;
       }
+      if (view === 'employeeSchedules') {
+        loadEmployeeSchedules();
+        return;
+      }
       options = options || {};
       var viewName = view || 'mine';
       var reopenTaskId = options.reopenTaskId || '';
@@ -2652,7 +2656,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (v) {
+      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
@@ -2664,6 +2668,7 @@
       if (!shell) return;
       shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard' && appState.adminDashboardMode !== 'kanban');
       shell.classList.toggle('customer-search-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'customerSearch');
+      shell.classList.toggle('employee-schedule-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'employeeSchedules');
     }
 
     function renderViewHeader(view) {
@@ -2700,6 +2705,10 @@
       if (view === 'adminDashboard') {
         title = 'Business health and customer pipeline';
         eyebrow = 'Admin Dashboard';
+      }
+      if (view === 'employeeSchedules') {
+        title = 'Employee schedules and coverage';
+        eyebrow = 'Team Schedules';
       }
       if (view === 'admin') {
         title = 'Open tasks across the workflow';

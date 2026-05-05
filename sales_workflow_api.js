@@ -210,6 +210,7 @@ function swBuildBootstrapResponse_(ss, user, mark) {
       cleanup: cleanupTabEnabled,
       coverage: user.isJoc || user.isAdmin,
       adminDashboard: user.isAdmin,
+      employeeSchedules: user.isAdmin,
       admin: user.isAdmin
     },
     message: 'Connected. Use Refresh Queue to create or refresh the queue.'
