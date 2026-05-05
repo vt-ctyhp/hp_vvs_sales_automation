@@ -6,6 +6,7 @@ var SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN = 30;
 var SW_CUSTOMER_SEARCH_LOG_SCAN_ROWS = 500;
 var SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS = 10 * 60;
 var SW_CUSTOMER_SEARCH_DETAIL_CACHE_SECONDS = 10 * 60;
+var SW_CUSTOMER_SEARCH_DETAIL_INDEX_SHARDS = 32;
 var SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_ = {};
 var SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_ = {};
 var SW_CUSTOMER_SEARCH_PAYMENT_HISTORY_MEMORY_CACHE_ = {};
@@ -563,37 +564,75 @@ function swCustomerSearchReadModelCacheKey_(ss) {
 }
 
 function swCacheCustomerSearchDetailIndex_(ss, rows, status) {
-  var records = [];
-  var idToIndex = {};
+  var shards = {};
+  var recordCount = 0;
+  var keyCount = 0;
   (rows || []).forEach(function (rec) {
     if (!rec || !rec.root) return;
-    var index = records.length;
-    records.push(swCustomerSearchDetailIndexRecord_(rec));
+    var record = swCustomerSearchDetailIndexRecord_(rec);
+    recordCount++;
     [rec.root, rec.appt].forEach(function (id) {
       id = swTrim_(id);
-      if (id) idToIndex[id] = index;
+      if (!id) return;
+      var shard = swCustomerSearchDetailIndexShard_(id);
+      if (!shards[shard]) {
+        shards[shard] = {
+          cachedAt: swIso_(new Date()),
+          version: typeof SW_READ_MODEL_VERSION !== 'undefined' ? SW_READ_MODEL_VERSION : '',
+          modelBuiltAt: status && status.builtAt || '',
+          records: {}
+        };
+      }
+      shards[shard].records[id] = record;
+      keyCount++;
     });
   });
-  var payload = {
+  var meta = {
     cachedAt: swIso_(new Date()),
     version: typeof SW_READ_MODEL_VERSION !== 'undefined' ? SW_READ_MODEL_VERSION : '',
     modelBuiltAt: status && status.builtAt || '',
-    records: records,
-    idToIndex: idToIndex
+    shards: SW_CUSTOMER_SEARCH_DETAIL_INDEX_SHARDS,
+    records: recordCount,
+    keys: keyCount
   };
-  var key = swCustomerSearchDetailIndexCacheKey_(ss);
-  try {
-    SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_[key] = {
-      expiresAt: new Date().getTime() + SW_CUSTOMER_SEARCH_DETAIL_CACHE_SECONDS * 1000,
-      version: payload.version,
-      modelBuiltAt: payload.modelBuiltAt,
-      payload: payload
-    };
-  } catch (_) {}
-  var result = swTaskListCachePut_(key, payload) || {};
-  result.records = records.length;
-  result.keys = Object.keys(idToIndex).length;
-  return result;
+  var totalChunks = 0;
+  var totalBytes = 0;
+  var ok = true;
+  var reason = '';
+  Object.keys(shards).forEach(function (shard) {
+    var shardKey = swCustomerSearchDetailIndexShardCacheKey_(ss, shard);
+    var payload = shards[shard];
+    try {
+      SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_[shardKey] = {
+        expiresAt: new Date().getTime() + SW_CUSTOMER_SEARCH_DETAIL_CACHE_SECONDS * 1000,
+        version: payload.version,
+        modelBuiltAt: payload.modelBuiltAt,
+        payload: payload
+      };
+    } catch (_) {}
+    var shardResult = swTaskListCachePut_(shardKey, payload) || {};
+    totalChunks += shardResult.chunks || 0;
+    totalBytes += shardResult.bytes || 0;
+    if (shardResult.ok === false) {
+      ok = false;
+      if (!reason) reason = shardResult.reason || 'detailShardCacheFailed';
+    }
+  });
+  var metaResult = swTaskListCachePut_(swCustomerSearchDetailIndexCacheKey_(ss), meta) || {};
+  totalChunks += metaResult.chunks || 0;
+  totalBytes += metaResult.bytes || 0;
+  if (metaResult.ok === false) {
+    ok = false;
+    if (!reason) reason = metaResult.reason || 'detailIndexMetaCacheFailed';
+  }
+  return {
+    ok: ok,
+    reason: reason,
+    chunks: totalChunks,
+    bytes: totalBytes,
+    records: recordCount,
+    keys: keyCount
+  };
 }
 
 function swCustomerSearchDetailIndexRecord_(rec) {
@@ -653,7 +692,9 @@ function swCustomerSearchDetailIndexRecord_(rec) {
 }
 
 function swReadCachedCustomerSearchDetailRecord_(ss, status, rootApptId) {
-  var key = swCustomerSearchDetailIndexCacheKey_(ss);
+  var id = swTrim_(rootApptId);
+  if (!id) return null;
+  var key = swCustomerSearchDetailIndexShardCacheKey_(ss, swCustomerSearchDetailIndexShard_(id));
   var expectedVersion = typeof SW_READ_MODEL_VERSION !== 'undefined' ? SW_READ_MODEL_VERSION : '';
   var payload = null;
   try {
@@ -669,8 +710,7 @@ function swReadCachedCustomerSearchDetailRecord_(ss, status, rootApptId) {
     if (!payload ||
         payload.modelBuiltAt !== status.builtAt ||
         payload.version !== expectedVersion ||
-        !payload.records ||
-        !payload.idToIndex) {
+        !payload.records) {
       return null;
     }
     try {
@@ -682,13 +722,24 @@ function swReadCachedCustomerSearchDetailRecord_(ss, status, rootApptId) {
       };
     } catch (_) {}
   }
-  var index = payload.idToIndex[swTrim_(rootApptId)];
-  if (index === undefined || index === null) return null;
-  return payload.records[Number(index)] || null;
+  return payload.records[id] || null;
 }
 
 function swCustomerSearchDetailIndexCacheKey_(ss) {
-  return 'sw:customerSearchDetailIndex:v1:' + ss.getId();
+  return 'sw:customerSearchDetailIndex:v2:' + ss.getId() + ':meta';
+}
+
+function swCustomerSearchDetailIndexShardCacheKey_(ss, shard) {
+  return 'sw:customerSearchDetailIndex:v2:' + ss.getId() + ':' + shard;
+}
+
+function swCustomerSearchDetailIndexShard_(id) {
+  id = swTrim_(id);
+  var hash = 0;
+  for (var i = 0; i < id.length; i++) {
+    hash = ((hash * 31) + id.charCodeAt(i)) % 2147483647;
+  }
+  return Math.abs(hash) % SW_CUSTOMER_SEARCH_DETAIL_INDEX_SHARDS;
 }
 
 function swCustomerSearchFilteredRows_(appointments, query, filters) {
@@ -1171,8 +1222,7 @@ function swCustomerSearchRecentLogs_(ss, root) {
 function swCustomerSearchCachedRecentLogs_(ss, root) {
   var payload = swCustomerSearchRecentLogIndex_(ss);
   if (!(payload && payload.byKey)) return null;
-  var logs = payload.byKey[swTrim_(root)] || null;
-  if (!logs) return null;
+  var logs = payload.byKey[swTrim_(root)] || [];
   logs = logs.slice(0, 20);
   logs.source = 'customerRecentLogCache';
   return logs;
@@ -1318,6 +1368,11 @@ function swInvalidateCustomerSearchDetailCaches_(ss) {
   try { delete SW_CUSTOMER_SEARCH_PAYMENT_HISTORY_MEMORY_CACHE_[paymentKey]; } catch (_) {}
   try { delete SW_CUSTOMER_SEARCH_RECENT_LOG_MEMORY_CACHE_[logKey]; } catch (_) {}
   try { swTaskListCacheRemove_(detailIndexKey); } catch (_) {}
+  for (var shard = 0; shard < SW_CUSTOMER_SEARCH_DETAIL_INDEX_SHARDS; shard++) {
+    var shardKey = swCustomerSearchDetailIndexShardCacheKey_(ss, shard);
+    try { delete SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_[shardKey]; } catch (_) {}
+    try { swTaskListCacheRemove_(shardKey); } catch (_) {}
+  }
   try { swTaskListCacheRemove_(paymentKey); } catch (_) {}
   try { swTaskListCacheRemove_(logKey); } catch (_) {}
 }
