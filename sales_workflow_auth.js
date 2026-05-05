@@ -9,43 +9,56 @@ var SW_AUTH_SESSION_SECONDS = 6 * 60 * 60;
 var SW_AUTH_USER_CACHE_SECONDS = 5 * 60;
 
 function sw_login(email, password, options) {
-  options = options || {};
-  var ss = swSpreadsheet_();
-  email = swNormEmail_(email);
-  password = String(password || '');
-  if (!email || !password) throw new Error('Email and password are required.');
-
-  var row = swAuthFindUserRow_(ss, email);
-  if (!row || !swTruthy_(row['Active?'] || '')) throw new Error('Login is not active for this email.');
-  if (!row['Password Salt'] || !row['Password Hash']) throw new Error('Password is not set for this email.');
-  var expected = swAuthHash_(password, row['Password Salt']);
-  if (expected !== row['Password Hash']) throw new Error('Email or password is incorrect.');
-
-  var user = swAuthUserFromRow_(row);
-  var token = swAuthNewToken_();
-  CacheService.getScriptCache().put(swAuthCacheKey_(token), swStringify_({
-    email: user.email,
-    name: user.name,
-    roles: user.roles,
-    user: user,
-    issuedAt: swIso_(new Date())
-  }), SW_AUTH_SESSION_SECONDS);
-  swAuthCacheApiUser_(ss, user);
-  var out = {
-    ok: true,
-    token: token,
-    user: user,
-    expiresInSeconds: SW_AUTH_SESSION_SECONDS
-  };
-  if (options.includeBootstrap && typeof swBuildBootstrapResponse_ === 'function') {
-    swRequireWorkflowReadSheets_(ss, { templates: false });
+  return swTimed_('sw_login', function () {
     var mark = typeof swStepTimer_ === 'function'
-      ? swStepTimer_('sw_loginBootstrap')
+      ? swStepTimer_('sw_login')
       : function () {};
-    mark('requiredSheets');
-    out.bootstrap = swBuildBootstrapResponse_(ss, user, mark);
-  }
-  return out;
+    options = options || {};
+    var ss = swSpreadsheet_();
+    mark('spreadsheet');
+    email = swNormEmail_(email);
+    password = String(password || '');
+    mark('normalize');
+    if (!email || !password) throw new Error('Email and password are required.');
+
+    var row = swAuthFindUserRowForLogin_(ss, email);
+    mark('userLookup', { found: !!row });
+    if (!row || !swTruthy_(row['Active?'] || '')) throw new Error('Login is not active for this email.');
+    if (!row['Password Salt'] || !row['Password Hash']) throw new Error('Password is not set for this email.');
+    var expected = swAuthHash_(password, row['Password Salt']);
+    mark('passwordHash');
+    if (expected !== row['Password Hash']) throw new Error('Email or password is incorrect.');
+
+    var user = swAuthUserFromRow_(row);
+    var token = swAuthNewToken_();
+    mark('token');
+    CacheService.getScriptCache().put(swAuthCacheKey_(token), swStringify_({
+      email: user.email,
+      name: user.name,
+      roles: user.roles,
+      user: user,
+      issuedAt: swIso_(new Date())
+    }), SW_AUTH_SESSION_SECONDS);
+    mark('sessionCache');
+    swAuthCacheApiUser_(ss, user);
+    mark('apiUserCache');
+    var out = {
+      ok: true,
+      token: token,
+      user: user,
+      expiresInSeconds: SW_AUTH_SESSION_SECONDS
+    };
+    if (options.includeBootstrap && typeof swBuildBootstrapResponse_ === 'function') {
+      swRequireWorkflowReadSheets_(ss, { templates: false });
+      mark('bootstrapRequiredSheets');
+      var bootstrapMark = typeof swStepTimer_ === 'function'
+        ? swStepTimer_('sw_loginBootstrap')
+        : function () {};
+      out.bootstrap = swBuildBootstrapResponse_(ss, user, bootstrapMark);
+      mark('bootstrap');
+    }
+    return out;
+  });
 }
 
 function sw_logout(token) {
@@ -443,6 +456,10 @@ function swAuthCanonicalRole_(role) {
 
 function swAuthRoleKey_(role) {
   return swWorkflowRoleKey_(role);
+}
+
+function swAuthFindUserRowForLogin_(ss, email) {
+  return swAuthFindUserRowReadOnly_(ss, email) || swAuthFindUserRow_(ss, email);
 }
 
 function swAuthFindUserRow_(ss, email) {
