@@ -8262,8 +8262,14 @@
     function completeTask() {
       if (appState.busy) return;
       if (!appState.selectedTaskId) return;
-      serverCall('sw_completeTask', [appState.selectedTaskId, completionPayload()], function () {
-        setStatus('Task completed');
+      serverCall('sw_completeTask', [appState.selectedTaskId, completionPayload()], function (res) {
+        if (res && res.queueRefreshPending) {
+          setStatus('Task completed. Queue refresh is pending and will catch up shortly.');
+        } else if (res && res.generationError) {
+          setStatus('Task completed. Queue refresh had an issue; use Refresh Queue if the list looks stale.');
+        } else {
+          setStatus('Task completed');
+        }
         loadTasks(appState.view);
         closeTaskWorkspace(true);
       });

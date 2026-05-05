@@ -284,7 +284,16 @@ function swHandleDataCleanupTaskCompletion_(ss, task, data, user) {
   if (cleanupCase.status === SW_DATA_CLEANUP_STATUS.APPLIED) throw new Error('This cleanup case has already been applied.');
 
   if (task.taskType === SW_TASKS.DATA_CLEANUP_CONFIRM) {
+    if (cleanupCase.status !== SW_DATA_CLEANUP_STATUS.PENDING_CONFIRMATION) {
+      throw new Error(swDataCleanupInactiveTaskMessage_(ss, task) || 'This cleanup confirmation is no longer active. Refresh Queue to load the current cleanup task.');
+    }
     return swCompleteDataCleanupConfirmation_(ss, task, cleanupCase, data, user);
+  }
+  if (task.taskType === SW_TASKS.DATA_CLEANUP_REVIEW && cleanupCase.status !== SW_DATA_CLEANUP_STATUS.OPEN) {
+    throw new Error(swDataCleanupInactiveTaskMessage_(ss, task) || 'This cleanup review is no longer active. Refresh Queue to load the current cleanup task.');
+  }
+  if (task.taskType === SW_TASKS.DATA_CLEANUP_REVISE && cleanupCase.status !== SW_DATA_CLEANUP_STATUS.RETURNED) {
+    throw new Error(swDataCleanupInactiveTaskMessage_(ss, task) || 'This cleanup revision is no longer active. Refresh Queue to load the current cleanup task.');
   }
   return swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user);
 }
@@ -374,10 +383,11 @@ function swCompleteDataCleanupConfirmation_(ss, task, cleanupCase, data, user) {
 }
 
 function swApplyDataCleanupProposal_(ss, task, cleanupCase, proposal, user, now) {
-  swSetMasterActiveRowForTask_(ss, task);
+  var row = swMasterRowForTask_(ss, task);
+  if (!(row >= 2)) throw new Error('Could not resolve Master row for cleanup writeback.');
   var payload = swParseJson_(task.payloadJson, {});
   var appt = payload.appointment || {};
-  var result = cs_submitFromDialog({
+  var writebackPayload = {
     assignedRep: appt.assignedRep || cleanupCase.clientAdvisor || '',
     assistedRep: appt.assistedRep || cleanupCase.joc || '',
     salesStage: swTrim_(proposal.salesStage),
@@ -393,7 +403,14 @@ function swApplyDataCleanupProposal_(ss, task, cleanupCase, proposal, user, now)
     wax: null,
     waxSummary: '',
     notebookLMLink: swTrim_(proposal.notebookLMLink)
-  });
+  };
+  var result;
+  if (typeof cs_submitFromDialogForRow_ === 'function') {
+    result = cs_submitFromDialogForRow_(row, writebackPayload);
+  } else {
+    swSetMasterActiveRowForTask_(ss, task);
+    result = cs_submitFromDialog(writebackPayload);
+  }
   if (result && result.ok === false) throw new Error(result.error || 'Cleanup writeback failed.');
   swDataCleanupWriteMasterAudit_(ss, task, cleanupCase, proposal, now || new Date());
   return { action: 'CUSTOMER_DATA_CLEANUP_WRITEBACK', summary: result && result.summary ? result.summary : result };

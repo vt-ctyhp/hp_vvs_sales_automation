@@ -3643,6 +3643,14 @@ function cs_openStatusDialog_() {
 // === OPTIMIZED: cs_submitFromDialog - Single ensure call ===
 // ============================================================
 function cs_submitFromDialog(payload) {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName(CS_MASTER_SHEET_NAME);
+  const r = sh.getActiveRange();
+  if (!r || r.getNumRows() !== 1 || r.getRow() === 1) throw new Error('Select exactly one row.');
+  return cs_submitFromDialogForRow_(r.getRow(), payload);
+}
+
+function cs_submitFromDialogForRow_(rowNum, payload) {
 
   function _centerStoneRequired(stage, conv) {
     if (/^Lost Lead/i.test(String(stage || ''))) return false;
@@ -3689,9 +3697,7 @@ function cs_submitFromDialog(payload) {
 
   const ss = SpreadsheetApp.getActive();
   const sh = ss.getSheetByName(CS_MASTER_SHEET_NAME);
-  const r = sh.getActiveRange();
-  if (!r || r.getNumRows() !== 1 || r.getRow() === 1) throw new Error('Select exactly one row.');
-  const row = r.getRow();
+  const row = cs_resolveRow_(sh, rowNum);
 
   // ═══════════════════════════════════════════════════════════
   // OPTIMIZATION: Ensure report URL ONCE here, pass to submit

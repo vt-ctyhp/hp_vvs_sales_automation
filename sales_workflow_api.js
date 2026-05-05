@@ -52,64 +52,103 @@ function sw_generateSalesWorkflowTasks() {
     var lock = LockService.getDocumentLock() || LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      sw_setupSalesWorkflow();
-
-      var ss = swSpreadsheet_();
-      var ctx = swBuildContext_(ss, true);
-      ctx.appointmentSummaryByRoot = typeof swAppointmentSummaryIndex_ === 'function' ? swAppointmentSummaryIndex_(ss) : {};
-      if (swNorm_(swConfigValue_(ctx.config, 'SYSTEM', 'FEATURE_ENABLED', 'Y')) === 'n') {
-        return {
-          ok: true,
-          generatedAt: swIso_(new Date()),
-          scannedAppointments: 0,
-          created: 0,
-          updated: 0,
-          blocked: 0,
-          skippedOld: 0,
-          systemCompleted: 0,
-          paused: true
-        };
-      }
-      var masterRows = swReadAppointments_(ss);
-      swPrepareClientAdvisorRoundRobin_(ss, ctx, masterRows);
-      var taskState = swReadTaskState_(ss);
-      swBeginDeferredTaskWrites_(ss, taskState);
-      var now = new Date();
-      var summary = {
-        ok: true,
-        generatedAt: swIso_(now),
-        scannedAppointments: masterRows.length,
-        created: 0,
-        updated: 0,
-        blocked: 0,
-        skippedOld: 0,
-        systemCompleted: 0
-      };
-
-      masterRows.forEach(function (rec) {
-        if (!rec.root && !rec.appt) return;
-        if (!swIsWorkflowRelevant_(rec, now, ctx)) {
-          summary.skippedOld++;
-          return;
-        }
-
-        if (!swIsAppointmentActive_(rec)) {
-          summary.blocked += swBlockTasksForAppointment_(ss, taskState, rec, SW_INACTIVE_APPOINTMENT_BLOCK_REASON);
-          return;
-        }
-
-        swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary);
-        swGenerateTasksForAppointment_(ss, taskState, ctx, rec, now, summary);
-      });
-
-      if (typeof swGenerateDataCleanupTasks_ === 'function') {
-        summary.dataCleanup = swGenerateDataCleanupTasks_(ss, taskState, ctx, masterRows, now, summary);
-      }
-
-      swFlushDeferredTaskWrites_(ss, taskState);
-      return summary;
+      return swGenerateSalesWorkflowTasksUnlocked_();
     } finally {
       try { lock.releaseLock(); } catch (_) {}
+    }
+  });
+}
+
+function swGenerateSalesWorkflowTasksUnlocked_() {
+  sw_setupSalesWorkflow();
+
+  var ss = swSpreadsheet_();
+  var ctx = swBuildContext_(ss, true);
+  ctx.appointmentSummaryByRoot = typeof swAppointmentSummaryIndex_ === 'function' ? swAppointmentSummaryIndex_(ss) : {};
+  if (swNorm_(swConfigValue_(ctx.config, 'SYSTEM', 'FEATURE_ENABLED', 'Y')) === 'n') {
+    return {
+      ok: true,
+      generatedAt: swIso_(new Date()),
+      scannedAppointments: 0,
+      created: 0,
+      updated: 0,
+      blocked: 0,
+      skippedOld: 0,
+      systemCompleted: 0,
+      paused: true
+    };
+  }
+  var masterRows = swReadAppointments_(ss);
+  swPrepareClientAdvisorRoundRobin_(ss, ctx, masterRows);
+  var taskState = swReadTaskState_(ss);
+  swBeginDeferredTaskWrites_(ss, taskState);
+  var now = new Date();
+  var summary = {
+    ok: true,
+    generatedAt: swIso_(now),
+    scannedAppointments: masterRows.length,
+    created: 0,
+    updated: 0,
+    blocked: 0,
+    skippedOld: 0,
+    systemCompleted: 0
+  };
+
+  masterRows.forEach(function (rec) {
+    if (!rec.root && !rec.appt) return;
+    if (!swIsWorkflowRelevant_(rec, now, ctx)) {
+      summary.skippedOld++;
+      return;
+    }
+
+    if (!swIsAppointmentActive_(rec)) {
+      summary.blocked += swBlockTasksForAppointment_(ss, taskState, rec, SW_INACTIVE_APPOINTMENT_BLOCK_REASON);
+      return;
+    }
+
+    swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary);
+    swGenerateTasksForAppointment_(ss, taskState, ctx, rec, now, summary);
+  });
+
+  if (typeof swGenerateDataCleanupTasks_ === 'function') {
+    summary.dataCleanup = swGenerateDataCleanupTasks_(ss, taskState, ctx, masterRows, now, summary);
+  }
+
+  swFlushDeferredTaskWrites_(ss, taskState);
+  return summary;
+}
+
+function sw_tryGenerateSalesWorkflowTasksAfterSubmit_(reason) {
+  return swTimed_('sw_tryGenerateSalesWorkflowTasksAfterSubmit_', function () {
+    var lock = LockService.getDocumentLock() || LockService.getScriptLock();
+    var acquired = false;
+    try {
+      acquired = lock.tryLock(1500);
+      if (!acquired) {
+        return {
+          ok: true,
+          skipped: true,
+          reason: 'LOCK_BUSY',
+          message: 'Task was saved. Queue refresh is pending because another process is updating workflow data.',
+          requestedAt: swIso_(new Date())
+        };
+      }
+      var result = swGenerateSalesWorkflowTasksUnlocked_();
+      result.skipped = false;
+      result.reason = reason || '';
+      return result;
+    } catch (err) {
+      return {
+        ok: false,
+        skipped: false,
+        reason: reason || '',
+        error: swTrim_(err && err.message || err),
+        requestedAt: swIso_(new Date())
+      };
+    } finally {
+      if (acquired) {
+        try { lock.releaseLock(); } catch (_) {}
+      }
     }
   });
 }
@@ -1500,14 +1539,20 @@ function sw_completeTask(authToken, taskId, data) {
   swWriteTaskRow_(ss, task);
   swAppendTaskLog_(ss, 'COMPLETE', task, user, oldOwner, task.currentOwner, data);
 
-  var generation = sw_generateSalesWorkflowTasks();
-  if (appointmentAction || approvalAction || jocHandoffAction) {
-    try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, 'Appointment task completion updated source data'); } catch (_) {}
+  if (appointmentAction || approvalAction || jocHandoffAction ||
+      (dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED')) {
+    var readModelReason = dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED'
+      ? 'Data cleanup writeback updated customer source data'
+      : 'Appointment task completion updated source data';
+    try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, readModelReason); } catch (_) {}
   }
+  var generation = sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion');
   return {
     ok: true,
     task: swGetTaskById_(ss, taskId),
-    generation: generation
+    generation: generation,
+    queueRefreshPending: !!(generation && generation.skipped),
+    generationError: generation && generation.ok === false ? generation.error : ''
   };
 }
 
