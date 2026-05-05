@@ -32,7 +32,10 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
   try { email = swNormEmail_(Session.getActiveUser().getEmail()); } catch (_) {}
   var config = swReadConfig_(ss, readOnly);
   var admins = swReadAdminsFromConfig_(config);
-  var authRoles = email ? swAuthRolesForEmail_(ss, email) : [];
+  var authUser = email && typeof swAuthPublicUserForEmailCached_ === 'function'
+    ? swAuthPublicUserForEmailCached_(ss, email)
+    : null;
+  var authRoles = authUser && swTruthy_(authUser.active || '') ? swAuthRoles_(authUser.roles) : (email ? swAuthRolesForEmail_(ss, email) : []);
   var name = '';
   for (var i = 0; i < config.length; i++) {
     if (email && swNormEmail_(config[i]['Email']) === email) {
@@ -40,6 +43,7 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
       break;
     }
   }
+  if (!name && authUser && authUser.name) name = authUser.name;
   if (!name && email) name = email;
   var isAdmin = admins.length === 0 || admins.indexOf(email) >= 0 || swUserHasConfigRole_(config, email, 'Admin') || swAuthHasRole_(authRoles, 'Admin');
   var isJoc = swUserHasConfigRole_(config, email, 'JOC') || swAuthHasRole_(authRoles, 'JOC');
@@ -136,10 +140,40 @@ function swCanClaimTask_(task, user) {
 }
 
 function swReadConfig_(ss, readOnly) {
+  if (readOnly) {
+    var cached = swReadConfigCache_(ss);
+    if (cached) return cached;
+  }
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.CONFIG)
     : swEnsureSheet_(ss, SW_SHEETS.CONFIG, SW_CONFIG_HEADERS);
-  return swReadSheetObjectsExpectedHeaders_(sh, SW_CONFIG_HEADERS);
+  var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_CONFIG_HEADERS);
+  if (readOnly) swPutConfigCache_(ss, rows);
+  return rows;
+}
+
+function swReadConfigCache_(ss) {
+  try {
+    var cached = CacheService.getScriptCache().get(swConfigCacheKey_(ss));
+    var rows = cached ? swParseJson_(cached, null) : null;
+    if (Array.isArray(rows)) return rows;
+  } catch (_) {}
+  return null;
+}
+
+function swPutConfigCache_(ss, rows) {
+  try {
+    var payload = swStringify_(rows || []);
+    if (payload.length < 90000) CacheService.getScriptCache().put(swConfigCacheKey_(ss), payload, 10 * 60);
+  } catch (_) {}
+}
+
+function swClearConfigCache_(ss) {
+  try { CacheService.getScriptCache().remove(swConfigCacheKey_(ss)); } catch (_) {}
+}
+
+function swConfigCacheKey_(ss) {
+  return 'sw:config:v1:' + ss.getId();
 }
 
 function swReadAdmins_(ss) {

@@ -269,6 +269,16 @@ function swAuthReadPublicUserRowsCached_(ss) {
   return swAuthCachePublicUserRowsFromAuthRows_(ss, swAuthReadUserRows_(ss, true));
 }
 
+function swAuthPublicUserForEmailCached_(ss, email) {
+  email = swNormEmail_(email);
+  if (!email) return null;
+  var rows = swAuthReadPublicUserRowsCached_(ss);
+  for (var i = 0; i < rows.length; i++) {
+    if (swNormEmail_(rows[i].email) === email) return rows[i];
+  }
+  return null;
+}
+
 function swAuthCachePublicUserRowsFromAuthRows_(ss, rows) {
   var out = (rows || []).map(function (row) {
     return swAuthPublicUserRow_(row);
@@ -465,9 +475,9 @@ function swAuthReadUserRows_(ss, readOnly) {
 }
 
 function swAuthRolesForEmail_(ss, email) {
-  var row = swAuthFindUserRowReadOnly_(ss, email);
-  if (!row || !swTruthy_(row['Active?'] || '')) return [];
-  return swAuthRoles_(row['Roles']);
+  var row = swAuthPublicUserForEmailCached_(ss, email);
+  if (!row || !swTruthy_(row.active || '')) return [];
+  return swAuthRoles_(row.roles);
 }
 
 function swAuthActiveUserCount_(ss) {

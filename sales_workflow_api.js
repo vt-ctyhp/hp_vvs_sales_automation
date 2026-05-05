@@ -32,6 +32,7 @@ function sw_setupSalesWorkflow() {
   swStyleSheet_(qualificationSheet);
 
   swSeedConfig_(configSheet);
+  if (typeof swClearConfigCache_ === 'function') swClearConfigCache_(ss);
   swSeedTemplates_(templateSheet);
   swSeedAuthUsers_(usersSheet);
   swNormalizeWorkflowUserRoleLabels_(ss);
@@ -1788,6 +1789,7 @@ function swSetWorkflowConfigValue_(ss, section, key, value) {
     for (var i = 0; i < values.length; i++) {
       if (swNorm_(values[i][0]) === targetSection && swNorm_(values[i][1]) === targetKey) {
         sh.getRange(i + 2, 3).setValue(value);
+        if (typeof swClearConfigCache_ === 'function') swClearConfigCache_(ss);
         return i + 2;
       }
     }
@@ -1797,6 +1799,7 @@ function swSetWorkflowConfigValue_(ss, section, key, value) {
   row[1] = key;
   row[2] = value;
   sh.appendRow(row);
+  if (typeof swClearConfigCache_ === 'function') swClearConfigCache_(ss);
   return sh.getLastRow();
 }
 
