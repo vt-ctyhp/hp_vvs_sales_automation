@@ -22,6 +22,7 @@ var SW_APPOINTMENT_ARTIFACT_HEADERS = [
   'Uploaded By Email',
   'Uploaded At',
   'Assembly Upload URL',
+  'Assembly Source',
   'Assembly Transcript ID',
   'Assembly Status',
   'Transcript Doc ID',
@@ -127,6 +128,7 @@ function swPublicAppointmentArtifacts_(ss, rootApptId) {
       summaryJsonUrl: row['Summary JSON URL'] || '',
       uploadedBy: row['Uploaded By'] || '',
       uploadedAt: row['Uploaded At'] || '',
+      assemblySource: row['Assembly Source'] || '',
       assemblyStatus: row['Assembly Status'] || '',
       lastError: row['Last Error'] || '',
       updatedAt: row['Updated At'] || ''
@@ -627,11 +629,12 @@ function swProcessAppointmentArtifact_(ss, row, now) {
 
 function swStartAssemblyTranscription_(ss, row, now) {
   var file = DriveApp.getFileById(row['Drive File ID']);
-  var uploadOne = swAssemblyUploadDriveFile_(file);
-  var transcriptOne = swAssemblySubmitTranscript_(uploadOne.upload_url || uploadOne.uploadUrl || '');
+  var audioSource = swAssemblyAudioSourceForDriveFile_(file);
+  var transcriptOne = swAssemblySubmitTranscript_(audioSource.audioUrl);
   swPatchAppointmentArtifactRow_(ss, row, {
     'Workflow Stage': SW_ARTIFACT_STAGES.TRANSCRIBING,
-    'Assembly Upload URL': uploadOne.upload_url || uploadOne.uploadUrl || '',
+    'Assembly Upload URL': audioSource.audioUrl,
+    'Assembly Source': audioSource.source,
     'Assembly Transcript ID': transcriptOne.id || '',
     'Assembly Status': transcriptOne.status || 'queued',
     'Attempts': 0,
@@ -779,6 +782,34 @@ function swAssemblyApiKey_() {
 
 function swAssemblyBaseUrl_() {
   return swTrim_(PropertiesService.getScriptProperties().getProperty('ASSEMBLYAI_BASE_URL')) || 'https://api.assemblyai.com';
+}
+
+function swAssemblyAudioSourceForDriveFile_(file) {
+  var size = Number(file.getSize && file.getSize()) || 0;
+  if (size > swAssemblyAppsScriptUploadMaxBytes_()) {
+    return {
+      audioUrl: swAssemblyDriveDownloadUrlForFile_(file),
+      source: 'DRIVE_DIRECT_DOWNLOAD'
+    };
+  }
+  var uploadOne = swAssemblyUploadDriveFile_(file);
+  return {
+    audioUrl: uploadOne.upload_url || uploadOne.uploadUrl || '',
+    source: 'ASSEMBLYAI_UPLOAD'
+  };
+}
+
+function swAssemblyAppsScriptUploadMaxBytes_() {
+  return 45 * 1024 * 1024;
+}
+
+function swAssemblyDriveDownloadUrlForFile_(file) {
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    throw new Error('Large recording cannot be shared for AssemblyAI access. Reduce/compress the recording below 45 MB or allow link sharing for the client folder. ' + (err && err.message ? err.message : err));
+  }
+  return 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(file.getId());
 }
 
 function swAssemblyUploadDriveFile_(file) {
