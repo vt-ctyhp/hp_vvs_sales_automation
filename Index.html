@@ -893,6 +893,18 @@
       display: none;
     }
 
+    .shell.customer-search-wide {
+      max-width: none;
+    }
+
+    .customer-search-wide .layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .customer-search-wide #detailPanel {
+      display: none;
+    }
+
     .admin-dashboard-shell {
       display: grid;
       gap: 18px;
@@ -2045,6 +2057,10 @@
           if (closestMatch_(event.target, '.js-admin-save-assignment')) return adminSaveAssignment();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+          if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
+          if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
+          if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
+          if (closestMatch_(event.target, '.js-customer-wax-save')) return submitCustomerSearchWaxRequest();
         });
         taskWorkspace.addEventListener('change', function (event) {
           if (closestMatch_(event.target, '.proposal-inventory-check')) updateProposalInventorySelection();
@@ -2540,6 +2556,7 @@
       var shell = document.getElementById('appShell');
       if (!shell) return;
       shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard' && appState.adminDashboardMode !== 'kanban');
+      shell.classList.toggle('customer-search-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'customerSearch');
     }
 
     function renderViewHeader(view) {
@@ -3117,7 +3134,9 @@
       if (!preserveDetail) {
         appState.customerSearch.detail = null;
         appState.customerSearch.selectedRoot = '';
-        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Customer Search</div><h2>Select a customer</h2></div><div class="empty">Search and open a customer card to see links, tasks, activity, and action forms.</div>';
+        hideCustomerSearchWorkspace();
+      } else if (appState.customerSearch.detail) {
+        showCustomerSearchWorkspace();
       }
       serverCall('sw_searchCustomers', [filters.query || '', filters], function (res) {
         if (!isCurrentMainRequest(requestId, 'customerSearch')) return;
@@ -3230,12 +3249,26 @@
       appState.customerSearch.selectedRoot = root;
       appState.detailRequestId += 1;
       var detailRequestId = appState.detailRequestId;
-      document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING CUSTOMER</div>';
+      showCustomerSearchWorkspace('<div class="panel"><div class="loading">LOADING CUSTOMER</div></div>');
       serverCall('sw_getCustomerSearchDetail', [root], function (res) {
         if (detailRequestId !== appState.detailRequestId || appState.customerSearch.selectedRoot !== root) return;
         appState.customerSearch.detail = res || {};
         renderCustomerSearchDetail(res || {});
       }, 'Loading customer');
+    }
+
+    function showCustomerSearchWorkspace(html) {
+      var workspace = document.getElementById('taskWorkspace');
+      if (!workspace) return;
+      if (html != null) workspace.innerHTML = html;
+      workspace.style.display = '';
+    }
+
+    function hideCustomerSearchWorkspace() {
+      var workspace = document.getElementById('taskWorkspace');
+      if (!workspace) return;
+      workspace.innerHTML = '';
+      workspace.style.display = 'none';
     }
 
     function renderCustomerSearchDetail(res) {
@@ -3248,7 +3281,8 @@
         card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : '',
         card.masterUrl ? '<a href="' + escapeHref(card.masterUrl) + '" target="_blank">Open Master Row</a>' : ''
       ].filter(Boolean);
-      document.getElementById('detailPanel').innerHTML = [
+      showCustomerSearchWorkspace([
+        '<div class="panel">',
         '<div class="panel-header">',
           '<div class="eyebrow">' + escapeHtml(card.stageLabel || 'Customer') + '</div>',
           '<h2>' + escapeHtml(card.customerName || 'No customer') + '</h2>',
@@ -3263,8 +3297,9 @@
           renderCustomerDeadlineAction(card),
           renderCustomerRevisionAction(card),
           renderCustomerWaxAction(card, res.formOptions || {}),
+        '</div>',
         '</div>'
-      ].join('');
+      ].join(''));
     }
 
     function renderCustomerSearchSummary(card) {

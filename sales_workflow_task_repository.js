@@ -25,15 +25,21 @@ function swReadTaskListState_(ss, readOnly, options) {
   if (lastRow < 2) return { rows: [], byId: {}, tasks: [] };
 
   var statusCol = swTaskHeaderColumn_('Status');
-  var snoozeCol = swTaskHeaderColumn_('Snooze Until');
-  var readCols = Math.min(sh.getLastColumn(), Math.max(statusCol, snoozeCol, SW_TASK_HEADERS.length));
+  var primaryActionCol = swTaskHeaderColumn_('Primary Action');
+  var snoozeReasonCol = swTaskHeaderColumn_('Snooze Reason');
   if (statusCol <= 0 || sh.getLastColumn() < statusCol) return swReadTaskState_(ss, readOnly, options);
 
-  var rows = sh.getRange(2, 1, lastRow - 1, readCols).getDisplayValues();
+  var rowCount = lastRow - 1;
+  var rows = sh.getRange(2, 1, rowCount, statusCol).getDisplayValues();
+  var extraRows = [];
+  if (primaryActionCol > 0 && snoozeReasonCol >= primaryActionCol && sh.getLastColumn() >= primaryActionCol) {
+    var extraWidth = Math.min(sh.getLastColumn(), snoozeReasonCol) - primaryActionCol + 1;
+    extraRows = sh.getRange(2, primaryActionCol, rowCount, extraWidth).getDisplayValues();
+  }
   var rawTasks = [];
 
   for (var i = 0; i < rows.length; i++) {
-    var t = swTaskListFromValues_(rows[i], '', i + 2);
+    var t = swTaskListFromListValues_(rows[i], extraRows[i] || [], i + 2);
     if (!t.taskId) continue;
     rawTasks.push(t);
   }
@@ -97,6 +103,42 @@ function swTaskTimestampValue_(value) {
 
 function swTaskHeaderColumn_(header) {
   return SW_TASK_HEADERS.indexOf(header) + 1;
+}
+
+function swTaskListFromListValues_(coreRow, extraRow, rowNumber) {
+  var primaryActionCol = swTaskHeaderColumn_('Primary Action');
+  function val(header) {
+    var idx = SW_TASK_HEADERS.indexOf(header);
+    if (idx < 0) return '';
+    if (idx < coreRow.length) return coreRow[idx];
+    var extraIdx = idx - primaryActionCol + 1;
+    return extraIdx >= 0 && extraIdx < extraRow.length ? extraRow[extraIdx] : '';
+  }
+  return {
+    taskId: val('TaskID'),
+    root: val('RootApptID'),
+    appt: val('APPT_ID'),
+    customerName: val('Customer Name'),
+    brand: val('Brand'),
+    visitDate: val('Visit Date'),
+    visitTime: swFormatAppointmentTime_(val('Visit Time')),
+    visitType: val('Visit Type'),
+    lifecycleStage: val('Lifecycle Stage'),
+    taskType: val('Task Type'),
+    taskTitle: val('Task Title'),
+    ownerRole: val('Owner Role'),
+    intendedOwner: val('Intended Owner'),
+    intendedOwnerEmail: swNormEmail_(val('Intended Owner Email')),
+    currentOwner: val('Current Owner'),
+    currentOwnerEmail: swNormEmail_(val('Current Owner Email')),
+    coverageReason: val('Coverage Reason'),
+    dueAt: val('Due At'),
+    status: val('Status') || SW_STATUSES.PENDING,
+    primaryAction: val('Primary Action'),
+    snoozeUntil: val('Snooze Until'),
+    snoozeReason: val('Snooze Reason'),
+    rowNumber: rowNumber || 0
+  };
 }
 
 function swTaskListFromValues_(row, primaryAction, rowNumber) {
@@ -412,12 +454,15 @@ function swFindTaskRow_(sh, taskId) {
 
 function swFindCanonicalTaskInSheet_(sh, taskId) {
   if (!taskId || sh.getLastRow() < 2) return null;
+  var rowCount = sh.getLastRow() - 1;
   var colCount = Math.min(sh.getLastColumn(), SW_TASK_HEADERS.length);
-  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, colCount).getDisplayValues();
+  var ids = sh.getRange(2, 1, rowCount, 1).getDisplayValues();
   var best = null;
-  for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]) !== String(taskId)) continue;
-    best = swBetterTaskRecord_(best, swTaskFromValues_(rows[i], i + 2));
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) !== String(taskId)) continue;
+    var rowNumber = i + 2;
+    var row = sh.getRange(rowNumber, 1, 1, colCount).getDisplayValues()[0];
+    best = swBetterTaskRecord_(best, swTaskFromValues_(row, rowNumber));
   }
   return best;
 }

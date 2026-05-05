@@ -953,6 +953,17 @@ function sw_getTaskDetail(authToken, taskId) {
     var missingFields = swMissingFieldsForTask_(task, template, renderData);
     var checklist = swParseJson_(template.checklistJson, []);
     mark('render');
+    var formOptions = typeof swTaskFormOptions_ === 'function' ? swTaskFormOptions_(ss, task) : {};
+    mark('formOptions', { groups: formOptions ? Object.keys(formOptions).length : 0 });
+    var appointmentArtifacts = typeof swPublicAppointmentArtifacts_ === 'function'
+      ? swPublicAppointmentArtifacts_(ss, task.root || task.appt || '')
+      : [];
+    mark('appointmentArtifacts', { artifacts: appointmentArtifacts.length });
+    var assignmentOptions = user.isAdmin ? swReadAssignmentOptions_(ss) : {};
+    mark('assignmentOptions', {
+      salesReps: assignmentOptions.salesReps ? assignmentOptions.salesReps.length : 0,
+      jocReps: assignmentOptions.jocReps ? assignmentOptions.jocReps.length : 0
+    });
 
     return {
       ok: true,
@@ -965,9 +976,9 @@ function sw_getTaskDetail(authToken, taskId) {
         url: renderedAttachmentUrl
       },
       attachments: attachments,
-      formOptions: typeof swTaskFormOptions_ === 'function' ? swTaskFormOptions_(ss, task) : {},
-      appointmentArtifacts: typeof swPublicAppointmentArtifacts_ === 'function' ? swPublicAppointmentArtifacts_(ss, task.root || task.appt || '') : [],
-      assignmentOptions: user.isAdmin ? swReadAssignmentOptions_(ss) : {},
+      formOptions: formOptions,
+      appointmentArtifacts: appointmentArtifacts,
+      assignmentOptions: assignmentOptions,
       missingFields: missingFields,
       checklist: checklist,
       canComplete: swCanActOnTask_(task, user),
@@ -1368,6 +1379,12 @@ function swEnsureMasterOwnerHeaders_(master) {
 }
 
 function swReadAssignmentOptions_(ss) {
+  var cacheKey = '';
+  try {
+    cacheKey = 'sw:assignmentOptions:v1:' + ss.getId();
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) return swParseJson_(cached, { salesReps: [], jocReps: [] });
+  } catch (_) {}
   var out = { salesReps: [], jocReps: [] };
   var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
   if (sh && sh.getLastRow() >= 2 && sh.getLastColumn() >= 1) {
@@ -1388,6 +1405,12 @@ function swReadAssignmentOptions_(ss) {
 
   out.salesReps.sort(swAssignmentOptionSort_);
   out.jocReps.sort(swAssignmentOptionSort_);
+  if (cacheKey) {
+    try {
+      var json = JSON.stringify(out);
+      if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 300);
+    } catch (_) {}
+  }
   return out;
 }
 
@@ -1761,7 +1784,7 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
   out.totalMs = new Date().getTime() - started;
   out.summary = swBenchmarkSalesWorkflowSummary_(out.steps);
   out.ok = out.summary.failedSteps === 0;
-  Logger.log('SW_BENCHMARK_SUMMARY ' + JSON.stringify(out, null, 2));
+  Logger.log('SW_BENCHMARK_SUMMARY ' + JSON.stringify(swBenchmarkSalesWorkflowLogSummary_(out)));
   return out;
 }
 
@@ -2132,6 +2155,28 @@ function swBenchmarkSalesWorkflowSummary_(steps) {
   summary.slowest.sort(function (a, b) { return b.ms - a.ms; });
   summary.slowest = summary.slowest.slice(0, 8);
   return summary;
+}
+
+function swBenchmarkSalesWorkflowLogSummary_(out) {
+  return {
+    ok: out.ok,
+    generatedAt: out.generatedAt,
+    readOnly: out.readOnly,
+    totalMs: out.totalMs,
+    summary: out.summary,
+    options: out.options,
+    steps: (out.steps || []).map(function (step) {
+      return {
+        operation: step.operation,
+        ok: step.ok,
+        skipped: !!step.skipped,
+        reason: step.reason || '',
+        error: step.error || '',
+        ms: step.ms || 0,
+        result: step.result || {}
+      };
+    })
+  };
 }
 
 function swBenchmarkSalesWorkflowLabel_(value) {

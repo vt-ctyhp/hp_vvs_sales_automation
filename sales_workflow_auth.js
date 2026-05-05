@@ -58,7 +58,7 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
     if (!googleUser.isAdmin) throw new Error('Admin access required to set workflow passwords.');
   }
 
-  return swAuthSetWorkflowPassword_(ss, {
+  var out = swAuthSetWorkflowPassword_(ss, {
     email: email,
     password: password,
     name: name,
@@ -66,6 +66,8 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
     active: 'Y',
     temporary: 'Y'
   });
+  try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
+  return out;
 }
 
 function sw_adminListWorkflowUsers(authToken) {
@@ -112,6 +114,7 @@ function sw_adminUpsertWorkflowUser(authToken, data) {
   });
   out.password = password;
   out.generatedPassword = generated;
+  try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
   return out;
 }
 

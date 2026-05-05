@@ -92,7 +92,8 @@ function swArtifactHeaderMap_(sh) {
 }
 
 function swReadAppointmentArtifactRows_(ss) {
-  var sh = swEnsureAppointmentArtifactsSheet_(ss);
+  var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
   var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_APPOINTMENT_ARTIFACT_HEADERS);
   return rows.map(function (row) {
     row.rowNumber = row.__rowNumber || row.rowNumber || 0;
@@ -103,9 +104,29 @@ function swReadAppointmentArtifactRows_(ss) {
 function swAppointmentArtifactRowsForRoot_(ss, rootApptId) {
   var root = swTrim_(rootApptId);
   if (!root) return [];
-  return swReadAppointmentArtifactRows_(ss).filter(function (row) {
-    return swTrim_(row['RootApptID']) === root;
-  });
+  var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var rootCol = SW_APPOINTMENT_ARTIFACT_HEADERS.indexOf('RootApptID') + 1;
+  if (swHeaderKey_(sh.getRange(1, rootCol).getDisplayValue()) !== swHeaderKey_('RootApptID')) {
+    return swReadAppointmentArtifactRows_(ss).filter(function (row) {
+      return swTrim_(row['RootApptID']) === root;
+    });
+  }
+  var rowCount = sh.getLastRow() - 1;
+  var roots = sh.getRange(2, rootCol, rowCount, 1).getDisplayValues();
+  var width = Math.min(sh.getLastColumn(), SW_APPOINTMENT_ARTIFACT_HEADERS.length);
+  var out = [];
+  for (var i = 0; i < roots.length; i++) {
+    if (swTrim_(roots[i][0]) !== root) continue;
+    var rowNumber = i + 2;
+    var values = sh.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+    var row = { __rowNumber: rowNumber, rowNumber: rowNumber };
+    for (var j = 0; j < SW_APPOINTMENT_ARTIFACT_HEADERS.length; j++) {
+      row[SW_APPOINTMENT_ARTIFACT_HEADERS[j]] = j < values.length ? values[j] : '';
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 function swPublicAppointmentArtifacts_(ss, rootApptId) {
@@ -759,7 +780,8 @@ function sw_processAppointmentAutomation() {
 
 function swArtifactReadyForWorker_(row, now) {
   var stage = row['Workflow Stage'];
-  if (stage === SW_ARTIFACT_STAGES.ERROR || stage === SW_ARTIFACT_STAGES.REVIEW_PENDING ||
+  if (stage === SW_ARTIFACT_STAGES.ERROR) return swArtifactCanRetryDriveSharingError_(row);
+  if (stage === SW_ARTIFACT_STAGES.REVIEW_PENDING ||
       stage === SW_ARTIFACT_STAGES.APPROVED || stage === SW_ARTIFACT_STAGES.JOC_HANDOFF) return false;
   if (!swArtifactNeedsTranscription_(row['Artifact Type'])) return false;
   var due = swTrim_(row['Next Poll At']);
@@ -770,6 +792,19 @@ function swArtifactReadyForWorker_(row, now) {
 
 function swProcessAppointmentArtifact_(ss, row, now) {
   var stage = row['Workflow Stage'];
+  if (stage === SW_ARTIFACT_STAGES.ERROR && swArtifactCanRetryDriveSharingError_(row)) {
+    swPatchAppointmentArtifactRow_(ss, row, {
+      'Workflow Stage': SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED,
+      'Attempts': 0,
+      'Next Poll At': swIso_(now),
+      'Last Error': '',
+      'Updated At': swIso_(now)
+    });
+    row['Workflow Stage'] = SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED;
+    row['Attempts'] = 0;
+    row['Last Error'] = '';
+    stage = row['Workflow Stage'];
+  }
   if (stage === SW_ARTIFACT_STAGES.UPLOADED || stage === SW_ARTIFACT_STAGES.TRANSCRIPTION_QUEUED) {
     swStartAssemblyTranscription_(ss, row, now);
     return { refreshTasks: false };
@@ -797,6 +832,16 @@ function swProcessAppointmentArtifact_(ss, row, now) {
     return { refreshTasks: true };
   }
   return { refreshTasks: false };
+}
+
+function swArtifactCanRetryDriveSharingError_(row) {
+  if (!swArtifactNeedsTranscription_(row['Artifact Type'])) return false;
+  if (swTrim_(row['Assembly Transcript ID'])) return false;
+  if (!swTrim_(row['Drive File ID'])) return false;
+  if (String(row['Last Error'] || '').indexOf('Drive link sharing was denied') < 0 &&
+      String(row['Last Error'] || '').indexOf('Large recording cannot be shared') < 0) return false;
+  var size = swBytesNumber_(row['Size Bytes']);
+  return !size || size <= swAssemblyAppsScriptUploadMaxBytes_();
 }
 
 function swStartAssemblyTranscription_(ss, row, now) {
@@ -958,30 +1003,46 @@ function swAssemblyBaseUrl_() {
 
 function swAssemblyAudioSourceForDriveFile_(file) {
   var size = Number(file.getSize && file.getSize()) || 0;
-  if (size > swAssemblyAppsScriptUploadMaxBytes_()) {
+  if (!size || size <= swAssemblyAppsScriptUploadMaxBytes_()) {
+    var uploadOne = swAssemblyUploadDriveFile_(file);
     return {
-      audioUrl: swAssemblyDriveDownloadUrlForFile_(file),
-      source: 'DRIVE_DIRECT_DOWNLOAD'
+      audioUrl: uploadOne.upload_url || uploadOne.uploadUrl || '',
+      source: 'ASSEMBLYAI_UPLOAD'
     };
   }
-  var uploadOne = swAssemblyUploadDriveFile_(file);
   return {
-    audioUrl: uploadOne.upload_url || uploadOne.uploadUrl || '',
-    source: 'ASSEMBLYAI_UPLOAD'
+    audioUrl: swAssemblyDriveDownloadUrlForFile_(file, size),
+    source: 'DRIVE_DIRECT_DOWNLOAD'
   };
 }
 
 function swAssemblyAppsScriptUploadMaxBytes_() {
-  return 45 * 1024 * 1024;
+  return 49 * 1000 * 1000;
 }
 
-function swAssemblyDriveDownloadUrlForFile_(file) {
+function swAssemblyDriveDownloadUrlForFile_(file, size) {
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (err) {
-    throw new Error('Large recording cannot be shared for AssemblyAI access. Reduce/compress the recording below 45 MB or allow link sharing for the client folder. ' + (err && err.message ? err.message : err));
+    var message = 'Drive link sharing was denied for this ' + swFormatBytes_(size) + ' recording. Apps Script can send recordings up to about 49 MB directly to AssemblyAI; larger files need Drive link sharing enabled for the upload folder or need to be compressed below 49 MB. ' + (err && err.message ? err.message : err);
+    var e = new Error(message);
+    e.terminal = true;
+    throw e;
   }
   return 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(file.getId());
+}
+
+function swBytesNumber_(value) {
+  var n = Number(String(value || '').replace(/,/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function swFormatBytes_(bytes) {
+  bytes = Number(bytes) || 0;
+  if (bytes >= 1000000000) return (bytes / 1000000000).toFixed(1) + ' GB';
+  if (bytes >= 1000000) return (bytes / 1000000).toFixed(1) + ' MB';
+  if (bytes >= 1000) return (bytes / 1000).toFixed(1) + ' KB';
+  return bytes + ' B';
 }
 
 function swAssemblyUploadDriveFile_(file) {

@@ -322,6 +322,14 @@ function swUniqueNumberList_(values) {
 }
 
 function swReadTemplates_(ss, readOnly) {
+  var cacheKey = '';
+  if (readOnly) {
+    try {
+      cacheKey = 'sw:templates:v1:' + ss.getId();
+      var cached = CacheService.getScriptCache().get(cacheKey);
+      if (cached) return swParseJson_(cached, {});
+    } catch (_) {}
+  }
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TEMPLATES)
     : swEnsureSheet_(ss, SW_SHEETS.TEMPLATES, SW_TEMPLATE_HEADERS);
@@ -340,6 +348,12 @@ function swReadTemplates_(ss, readOnly) {
       primaryAction: r['Primary Action'] || 'Complete'
     });
   });
+  if (cacheKey) {
+    try {
+      var json = JSON.stringify(out);
+      if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 300);
+    } catch (_) {}
+  }
   return out;
 }
 
