@@ -34,6 +34,8 @@ var SW_ADMIN_DASHBOARD_STAGE_WEIGHTS = {
   lost: 0
 };
 var SW_ADMIN_DASHBOARD_AUX_CACHE_SECONDS = 5 * 60;
+var SW_ADMIN_DASHBOARD_PAYMENTS_CACHE_SECONDS = 2 * 60;
+var SW_ADMIN_DASHBOARD_PAYMENTS_MEMORY_CACHE_ = {};
 
 /**
  * Read-only admin dashboard payload.
@@ -58,7 +60,7 @@ function sw_getAdminDashboard(authToken, filters) {
     var scope = swAdminDashboardBuildScope_(appointments, filters);
     var warnings = [];
     var payments = swAdminDashboardReadPayments_(scope, filters, warnings);
-    mark('payments', { receipts: payments.receipts ? payments.receipts.length : 0 });
+    mark('payments', { receipts: payments.receipts ? payments.receipts.length : 0, cacheHit: !!payments.cacheHit });
     var state = swReadTaskListState_(ss, true);
     var tasks = swAdminDashboardOpenTasksFromState_(state);
     mark('tasks', { rows: tasks.length });
@@ -440,68 +442,27 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
     firstDeposits: [],
     firstByKey: {},
     byRoot: {},
-    bySo: {}
+    bySo: {},
+    cacheHit: false
   };
 
-  var target = null;
-  try {
-    target = swAdminDashboardPaymentsSheet_();
-  } catch (err) {
-    warnings.push('Payments ledger unavailable: ' + (err && err.message ? err.message : err));
-    return out;
-  }
-  if (!target || !target.sh) {
-    warnings.push('Payments ledger unavailable.');
-    return out;
-  }
-
-  var sh = target.sh;
-  var lr = sh.getLastRow();
-  var lc = sh.getLastColumn();
-  if (lr < 2 || lc < 1) return out;
-
-  var headers = sh.getRange(1, 1, 1, lc).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
-  var H = swHeaderMapFromArray_(headers);
-  var C = {
-    root: swPickIndex_(H, ['RootApptID', 'APPT_ID', 'Root Appt ID', 'Appointment ID']),
-    so: swPickIndex_(H, ['SO#', 'SO', 'SO Number', 'Sales Order', 'Sales Order #']),
-    brand: swPickIndex_(H, ['Brand']),
-    docType: swPickIndex_(H, ['DocType', 'Doc Type', 'Document Type', 'Type']),
-    docStatus: swPickIndex_(H, ['DocStatus', 'Doc Status', 'Status']),
-    when: swPickIndex_(H, ['PaymentDateTime', 'Payment DateTime', 'Payment Date/Time', 'Payment Date', 'Paid At']),
-    amountNet: swPickIndex_(H, ['AmountNet', 'Net', 'Net Amount']),
-    amountGross: swPickIndex_(H, ['AmountGross', 'Gross', 'Amount']),
-    balance: swPickIndex_(H, ['Balance_SO', 'Balance SO', 'BalanceDue', 'Balance Due']),
-    orderTotal: swPickIndex_(H, ['Order_Total_SO', 'Order Total SO', 'OrderTotalValue', 'Order Total'])
-  };
-  if (C.docType < 0 || C.when < 0 || (C.amountNet < 0 && C.amountGross < 0)) {
-    warnings.push('Payments ledger is missing DocType, PaymentDateTime, or amount columns.');
-    return out;
-  }
-
-  var rowCount = lr - 1;
-  var indexes = swAdminDashboardPaymentColumnIndexes_(C);
-  var values = swReadSelectedRows_(sh, 2, rowCount, indexes, 'values');
+  var source = swAdminDashboardReadPaymentReceiptRows_(warnings);
+  out.cacheHit = !!(source && source.cacheHit);
+  var values = source && source.rows ? source.rows : [];
   var receipts = [];
   for (var i = 0; i < values.length; i++) {
     var row = values[i];
-    var docType = swTrim_(swCell_(row, C.docType));
-    if (!/receipt/i.test(docType)) continue;
-    var status = swNorm_(swCell_(row, C.docStatus));
-    if (/void|replaced|cancel|draft|deleted/.test(status)) continue;
-
-    var root = swAdminDashboardCleanId_(swCell_(row, C.root));
-    var so = swAdminDashboardCleanId_(swCell_(row, C.so));
-    var brand = swTrim_(swCell_(row, C.brand));
+    var root = row.root || '';
+    var so = row.so || '';
+    var brand = row.brand || '';
     if (!swAdminDashboardPaymentInScope_(root, so, brand, scope, filters)) continue;
 
-    var when = swAdminDashboardDateTimeValue_(swCell_(row, C.when), swCell_(row, C.when));
-    if (!when) continue;
-
-    var net = swAdminDashboardNumber_(C.amountNet >= 0 ? swCell_(row, C.amountNet) : swCell_(row, C.amountGross));
-    var balance = C.balance >= 0 ? swAdminDashboardNumberOrBlank_(swCell_(row, C.balance)) : '';
-    var orderTotal = C.orderTotal >= 0 ? swAdminDashboardNumberOrBlank_(swCell_(row, C.orderTotal)) : '';
-    var key = root || so;
+    var when = new Date(Number(row.whenMs || 0));
+    if (isNaN(when.getTime())) continue;
+    var net = Number(row.net || 0);
+    var balance = row.balance === '' || row.balance == null ? '' : Number(row.balance);
+    var orderTotal = row.orderTotal === '' || row.orderTotal == null ? '' : Number(row.orderTotal);
+    var key = row.key || root || so;
     if (!key) continue;
 
     var receipt = { root: root, so: so, key: key, when: when, net: net, balance: balance, orderTotal: orderTotal };
@@ -534,6 +495,96 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   return out;
 }
 
+function swAdminDashboardReadPaymentReceiptRows_(warnings) {
+  var target = null;
+  try {
+    target = swAdminDashboardPaymentsSheet_();
+  } catch (err) {
+    warnings.push('Payments ledger unavailable: ' + (err && err.message ? err.message : err));
+    return { rows: [], cacheHit: false };
+  }
+  if (!target || !target.sh) {
+    warnings.push('Payments ledger unavailable.');
+    return { rows: [], cacheHit: false };
+  }
+
+  var cacheKey = swAdminDashboardPaymentsCacheKey_(target);
+  var cached = swAdminDashboardCachedPaymentReceiptRows_(cacheKey);
+  if (cached !== null) return { rows: cached, cacheHit: true };
+
+  var sh = target.sh;
+  var lr = sh.getLastRow();
+  var lc = sh.getLastColumn();
+  if (lr < 2 || lc < 1) return { rows: [], cacheHit: false };
+
+  var headers = sh.getRange(1, 1, 1, lc).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var C = {
+    root: swPickIndex_(H, ['RootApptID', 'APPT_ID', 'Root Appt ID', 'Appointment ID']),
+    so: swPickIndex_(H, ['SO#', 'SO', 'SO Number', 'Sales Order', 'Sales Order #']),
+    brand: swPickIndex_(H, ['Brand']),
+    docType: swPickIndex_(H, ['DocType', 'Doc Type', 'Document Type', 'Type']),
+    docStatus: swPickIndex_(H, ['DocStatus', 'Doc Status', 'Status']),
+    when: swPickIndex_(H, ['PaymentDateTime', 'Payment DateTime', 'Payment Date/Time', 'Payment Date', 'Paid At']),
+    amountNet: swPickIndex_(H, ['AmountNet', 'Net', 'Net Amount']),
+    amountGross: swPickIndex_(H, ['AmountGross', 'Gross', 'Amount']),
+    balance: swPickIndex_(H, ['Balance_SO', 'Balance SO', 'BalanceDue', 'Balance Due']),
+    orderTotal: swPickIndex_(H, ['Order_Total_SO', 'Order Total SO', 'OrderTotalValue', 'Order Total'])
+  };
+  if (C.docType < 0 || C.when < 0 || (C.amountNet < 0 && C.amountGross < 0)) {
+    warnings.push('Payments ledger is missing DocType, PaymentDateTime, or amount columns.');
+    return { rows: [], cacheHit: false };
+  }
+
+  var rowCount = lr - 1;
+  var indexes = swAdminDashboardPaymentColumnIndexes_(C);
+  var block = swAdminDashboardReadPaymentBlock_(sh, rowCount, indexes);
+  var rows = [];
+  for (var i = 0; i < block.rows.length; i++) {
+    var row = block.rows[i];
+    var docType = swTrim_(swAdminDashboardPaymentBlockCell_(row, C.docType, block.offset));
+    if (!/receipt/i.test(docType)) continue;
+    var status = swNorm_(swAdminDashboardPaymentBlockCell_(row, C.docStatus, block.offset));
+    if (/void|replaced|cancel|draft|deleted/.test(status)) continue;
+    var root = swAdminDashboardCleanId_(swAdminDashboardPaymentBlockCell_(row, C.root, block.offset));
+    var so = swAdminDashboardCleanId_(swAdminDashboardPaymentBlockCell_(row, C.so, block.offset));
+    var key = root || so;
+    if (!key) continue;
+    var whenRaw = swAdminDashboardPaymentBlockCell_(row, C.when, block.offset);
+    var when = swAdminDashboardDateTimeValue_(whenRaw, whenRaw);
+    if (!when) continue;
+    var netRaw = C.amountNet >= 0
+      ? swAdminDashboardPaymentBlockCell_(row, C.amountNet, block.offset)
+      : swAdminDashboardPaymentBlockCell_(row, C.amountGross, block.offset);
+    rows.push({
+      root: root,
+      so: so,
+      key: key,
+      brand: swTrim_(swAdminDashboardPaymentBlockCell_(row, C.brand, block.offset)),
+      whenMs: when.getTime(),
+      net: swAdminDashboardNumber_(netRaw),
+      balance: C.balance >= 0 ? swAdminDashboardNumberOrBlank_(swAdminDashboardPaymentBlockCell_(row, C.balance, block.offset)) : '',
+      orderTotal: C.orderTotal >= 0 ? swAdminDashboardNumberOrBlank_(swAdminDashboardPaymentBlockCell_(row, C.orderTotal, block.offset)) : ''
+    });
+  }
+  swAdminDashboardCachePaymentReceiptRows_(cacheKey, rows);
+  return { rows: rows, cacheHit: false };
+}
+
+function swAdminDashboardReadPaymentBlock_(sh, rowCount, indexes) {
+  var columns = swSelectedColumnIndexes_(indexes);
+  var minCol = columns.length ? columns[0] : 0;
+  var maxCol = columns.length ? columns[columns.length - 1] : 0;
+  return {
+    offset: minCol,
+    rows: columns.length ? sh.getRange(2, minCol + 1, rowCount, maxCol - minCol + 1).getValues() : []
+  };
+}
+
+function swAdminDashboardPaymentBlockCell_(row, idx, offset) {
+  return idx >= 0 ? row[idx - offset] : '';
+}
+
 function swAdminDashboardPaymentColumnIndexes_(columns) {
   var out = [];
   Object.keys(columns || {}).forEach(function (key) {
@@ -541,6 +592,49 @@ function swAdminDashboardPaymentColumnIndexes_(columns) {
     if (isFinite(col) && col >= 0) out.push(col);
   });
   return out;
+}
+
+function swAdminDashboardCachedPaymentReceiptRows_(cacheKey) {
+  if (!cacheKey) return null;
+  try {
+    var memory = SW_ADMIN_DASHBOARD_PAYMENTS_MEMORY_CACHE_[cacheKey];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.rows || [];
+  } catch (_) {}
+  try {
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    var parsed = cached ? swParseJson_(cached, null) : null;
+    if (!parsed || !Array.isArray(parsed.rows)) return null;
+    SW_ADMIN_DASHBOARD_PAYMENTS_MEMORY_CACHE_[cacheKey] = {
+      expiresAt: new Date().getTime() + SW_ADMIN_DASHBOARD_PAYMENTS_CACHE_SECONDS * 1000,
+      rows: parsed.rows || []
+    };
+    return parsed.rows || [];
+  } catch (_) {}
+  return null;
+}
+
+function swAdminDashboardCachePaymentReceiptRows_(cacheKey, rows) {
+  if (!cacheKey) return;
+  rows = rows || [];
+  try {
+    SW_ADMIN_DASHBOARD_PAYMENTS_MEMORY_CACHE_[cacheKey] = {
+      expiresAt: new Date().getTime() + SW_ADMIN_DASHBOARD_PAYMENTS_CACHE_SECONDS * 1000,
+      rows: rows
+    };
+  } catch (_) {}
+  try {
+    var text = swStringify_({ cachedAt: swIso_(new Date()), rows: rows });
+    if (text.length < 90000) CacheService.getScriptCache().put(cacheKey, text, SW_ADMIN_DASHBOARD_PAYMENTS_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAdminDashboardPaymentsCacheKey_(target) {
+  try {
+    var sh = target && target.sh;
+    if (!sh) return '';
+    return 'sw:adminDashboardPayments:v1:' + sh.getParent().getId() + ':' + sh.getSheetId();
+  } catch (_) {}
+  return '';
 }
 
 function swAdminDashboardPaymentsSheet_() {
@@ -1014,10 +1108,10 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
     warnings.push('Last-touch data unavailable: 07_Root_Index is missing RootApptID or Updated At.');
     return out;
   }
-  var display = swAdminDashboardReadSelectedDisplayColumns_(sh, [C.root, C.updatedAt]);
-  for (var i = 0; i < display.length; i++) {
-    var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
-    var when = swAdminDashboardDateTimeValue_(swCell_(display[i], C.updatedAt), swCell_(display[i], C.updatedAt));
+  var values = swReadSelectedRows_(sh, 2, sh.getLastRow() - 1, [C.root, C.updatedAt], 'values');
+  for (var i = 0; i < values.length; i++) {
+    var root = swAdminDashboardCleanId_(swCell_(values[i], C.root));
+    var when = swAdminDashboardDateTimeValue_(swCell_(values[i], C.updatedAt), swCell_(values[i], C.updatedAt));
     if (!root || !when) continue;
     if (!out.byRoot[root] || when.getTime() > out.byRoot[root].getTime()) out.byRoot[root] = when;
   }
@@ -1059,17 +1153,17 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings, rootScope) {
     warnings.push('Status-log timing unavailable: 03_Client_Status_Log is missing an appointment/root id or Updated At.');
     return out;
   }
-  var display = swAdminDashboardReadSelectedDisplayColumns_(sh, [C.root, C.appt, C.custom, C.inProduction, C.updatedAt]);
-  for (var i = 0; i < display.length; i++) {
-    var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
-    var appt = swAdminDashboardCleanId_(swCell_(display[i], C.appt));
+  var values = swReadSelectedRows_(sh, 2, sh.getLastRow() - 1, [C.root, C.appt, C.custom, C.inProduction, C.updatedAt], 'values');
+  for (var i = 0; i < values.length; i++) {
+    var root = swAdminDashboardCleanId_(swCell_(values[i], C.root));
+    var appt = swAdminDashboardCleanId_(swCell_(values[i], C.appt));
     root = root || apptToRoot[appt] || '';
     if (!root) continue;
     if (hasTargetRoots && !targetRoots[root]) continue;
-    var when = swAdminDashboardDateTimeValue_(swCell_(display[i], C.updatedAt), swCell_(display[i], C.updatedAt));
+    var when = swAdminDashboardDateTimeValue_(swCell_(values[i], C.updatedAt), swCell_(values[i], C.updatedAt));
     if (!when) continue;
-    var custom = swNorm_(swCell_(display[i], C.custom));
-    var ips = swTrim_(swCell_(display[i], C.inProduction));
+    var custom = swNorm_(swCell_(values[i], C.custom));
+    var ips = swTrim_(swCell_(values[i], C.inProduction));
 
     if (custom) {
       var d3 = out.threeDByRoot[root] || { requestDate: null, resolveDate: null, pending: false };
