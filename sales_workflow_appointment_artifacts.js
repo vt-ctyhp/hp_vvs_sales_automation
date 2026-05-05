@@ -1024,15 +1024,55 @@ function swAssemblyAppsScriptUploadMaxBytes_() {
 }
 
 function swAssemblyDriveDownloadUrlForFile_(file, size) {
+  swEnsureAssemblyFileCanBeShared_(file);
+  var sharingErrors = [];
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (err) {
-    var message = 'Drive link sharing was denied for this ' + swFormatBytes_(size) + ' recording. Apps Script can send recordings up to about 49 MB directly to AssemblyAI; larger files need Drive link sharing enabled for the upload folder or need to be compressed below 49 MB. ' + (err && err.message ? err.message : err);
-    var e = new Error(message);
-    e.terminal = true;
-    throw e;
+    sharingErrors.push('DriveApp: ' + (err && err.message ? err.message : err));
+    try {
+      swCreateDriveAnyoneWithLinkPermission_(file.getId());
+    } catch (apiErr) {
+      sharingErrors.push('Drive API: ' + (apiErr && apiErr.message ? apiErr.message : apiErr));
+      var message = 'Drive link sharing was denied for this ' + swFormatBytes_(size) + ' audio file. The workflow only tried to share the audio file itself, not the client folder. Apps Script can send recordings up to about 49 MB directly to AssemblyAI; larger files need anyone-with-link sharing allowed for the audio file or need to be compressed below 49 MB. ' + sharingErrors.join(' | ');
+      var e = new Error(message);
+      e.terminal = true;
+      throw e;
+    }
   }
   return 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(file.getId());
+}
+
+function swEnsureAssemblyFileCanBeShared_(file) {
+  var mime = swNorm_(file.getMimeType ? file.getMimeType() : '');
+  var name = swNorm_(file.getName ? file.getName() : '');
+  var audioVideo = mime.indexOf('audio/') === 0 || mime.indexOf('video/') === 0 ||
+    /\.(m4a|mp3|mp4|mov|wav|aac|webm|mpeg|mpga)$/i.test(name);
+  if (audioVideo) return;
+  var err = new Error('Only audio/video appointment files can be shared externally for AssemblyAI transcription.');
+  err.terminal = true;
+  throw err;
+}
+
+function swCreateDriveAnyoneWithLinkPermission_(fileId) {
+  var url = 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) +
+    '/permissions?supportsAllDrives=true&sendNotificationEmail=false&fields=id,type,role,allowFileDiscovery';
+  var response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      Authorization: 'Bearer ' + ScriptApp.getOAuthToken()
+    },
+    payload: JSON.stringify({
+      role: 'reader',
+      type: 'anyone',
+      allowFileDiscovery: false
+    }),
+    muteHttpExceptions: true
+  });
+  var code = response.getResponseCode();
+  if (code >= 200 && code < 300) return true;
+  throw new Error('HTTP ' + code + ' ' + response.getContentText().slice(0, 500));
 }
 
 function swBytesNumber_(value) {
