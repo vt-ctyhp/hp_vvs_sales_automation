@@ -602,9 +602,9 @@ function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payment
   var groups = indexes.groups || swAdminDashboardRowsByRoot_(appointments);
   mark('groups', { roots: Object.keys(groups || {}).length });
   var rootIndex = swAdminDashboardReadRootIndex_(ss, warnings);
-  mark('rootIndex', { available: rootIndex.available });
+  mark('rootIndex', { available: rootIndex.available, cacheHit: !!rootIndex.cacheHit });
   var statusLog = swAdminDashboardReadStatusLog_(ss, appointments, warnings, currentByRoot);
-  mark('statusLog', { available: statusLog.available });
+  mark('statusLog', { available: statusLog.available, cacheHit: !!statusLog.cacheHit });
   var stageWeights = swAdminDashboardStageWeights_(ss);
   mark('stageWeights');
   var master = ss.getSheetByName(SW_SHEETS.MASTER);
@@ -994,7 +994,7 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
   var cached = swAdminDashboardCachedRootIndex_(ss);
   if (cached) return cached;
 
-  var out = { available: false, byRoot: {} };
+  var out = { available: false, byRoot: {}, cacheHit: false };
   var sh = ss.getSheetByName('07_Root_Index');
   if (!sh || sh.getLastRow() < 2) {
     warnings.push('Last-touch data unavailable: 07_Root_Index is missing or empty.');
@@ -1026,7 +1026,7 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings, rootScope) {
   var cached = swAdminDashboardCachedStatusLog_(ss);
   if (cached) return cached;
 
-  var out = { available: false, threeDByRoot: {}, productionByRoot: {} };
+  var out = { available: false, threeDByRoot: {}, productionByRoot: {}, cacheHit: false };
   var sh = ss.getSheetByName('03_Client_Status_Log');
   if (!sh || sh.getLastRow() < 2) {
     warnings.push('Status-log timing unavailable: 03_Client_Status_Log is missing or empty.');
@@ -1098,7 +1098,7 @@ function swAdminDashboardCachedRootIndex_(ss) {
     var cached = CacheService.getScriptCache().get(swAdminDashboardAuxCacheKey_(ss, 'rootIndex'));
     var parsed = cached ? swParseJson_(cached, null) : null;
     if (!parsed || !parsed.byRoot) return null;
-    var out = { available: !!parsed.available, byRoot: {} };
+    var out = { available: !!parsed.available, byRoot: {}, cacheHit: true };
     Object.keys(parsed.byRoot || {}).forEach(function (root) {
       var ms = Number(parsed.byRoot[root]);
       if (isFinite(ms) && ms > 0) out.byRoot[root] = new Date(ms);
@@ -1123,7 +1123,7 @@ function swAdminDashboardCachedStatusLog_(ss) {
     var cached = CacheService.getScriptCache().get(swAdminDashboardAuxCacheKey_(ss, 'statusLog'));
     var parsed = cached ? swParseJson_(cached, null) : null;
     if (!parsed || !parsed.available) return null;
-    var out = { available: true, threeDByRoot: {}, productionByRoot: {} };
+    var out = { available: true, threeDByRoot: {}, productionByRoot: {}, cacheHit: true };
     Object.keys(parsed.threeDByRoot || {}).forEach(function (root) {
       var item = parsed.threeDByRoot[root] || {};
       out.threeDByRoot[root] = {
