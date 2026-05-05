@@ -8,6 +8,7 @@ var SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS = 10 * 60;
 var SW_CUSTOMER_SEARCH_DETAIL_CACHE_SECONDS = 10 * 60;
 var SW_CUSTOMER_SEARCH_DETAIL_INDEX_SHARDS = 32;
 var SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_ = {};
+var SW_CUSTOMER_SEARCH_INITIAL_PAYLOAD_MEMORY_CACHE_ = {};
 var SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_ = {};
 var SW_CUSTOMER_SEARCH_PAYMENT_HISTORY_MEMORY_CACHE_ = {};
 var SW_CUSTOMER_SEARCH_RECENT_LOG_MEMORY_CACHE_ = {};
@@ -28,14 +29,39 @@ function sw_searchCustomers(authToken, query, filters) {
 
     var config = swReadConfig_(ss, true);
     mark('config');
-    var readModel = swCustomerSearchReadModelRows_(ss, config);
+    var readModelStatus = typeof swCustomerReadModelStatus_ === 'function'
+      ? swCustomerReadModelStatus_(ss)
+      : null;
+    var initialPayload = swCustomerSearchInitialPayloadForRequest_(ss, user, query, filters, readModelStatus);
+    if (initialPayload) {
+      mark('rows', {
+        source: 'customerSearchInitialPayloadCache',
+        rows: initialPayload.sourceRows || 0,
+        ageSeconds: initialPayload.ageSeconds || 0
+      });
+      mark('filter', {
+        source: 'customerSearchInitialPayloadCache',
+        rows: initialPayload.filteredRows || 0,
+        query: false
+      });
+      mark('cards', {
+        source: 'customerSearchInitialPayloadCache',
+        cards: initialPayload.cards || 0,
+        hiddenCards: initialPayload.hiddenCards || 0
+      });
+      return initialPayload.payload;
+    }
+
+    var readModel = swCustomerSearchReadModelRows_(ss, config, readModelStatus);
     if (readModel && readModel.ok) {
       mark('rows', {
         source: readModel.source || 'customerReadModel',
         rows: readModel.rows ? readModel.rows.length : 0,
         ageSeconds: readModel.ageSeconds || 0
       });
-      return swCustomerSearchBuildPayload_(ss, user, query, filters, readModel.rows || [], readModel.source || 'customerReadModel', mark);
+      var readModelPayload = swCustomerSearchBuildPayload_(ss, user, query, filters, readModel.rows || [], readModel.source || 'customerReadModel', mark);
+      swMaybeCacheCustomerSearchInitialPayload_(ss, user, query, filters, readModel.rows || [], readModelStatus || readModel.status, readModelPayload);
+      return readModelPayload;
     }
 
     var appointments = swReadAppointments_(ss);
@@ -68,6 +94,116 @@ function swCustomerSearchBuildPayload_(ss, user, query, filters, sourceRows, sou
     kanban: {
       columns: kanban.columns
     }
+  };
+}
+
+function swCustomerSearchInitialPayloadForRequest_(ss, user, query, filters, status) {
+  if (!swCanUseCustomerSearchInitialPayloadCache_(user, query, filters)) return null;
+  if (!(status && status.fresh)) return null;
+  var key = swCustomerSearchInitialPayloadCacheKey_(ss);
+  var expectedVersion = typeof SW_READ_MODEL_VERSION !== 'undefined' ? SW_READ_MODEL_VERSION : '';
+  var cached = null;
+  try {
+    var memory = SW_CUSTOMER_SEARCH_INITIAL_PAYLOAD_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime() &&
+        memory.modelBuiltAt === status.builtAt &&
+        memory.version === expectedVersion) {
+      cached = memory.payload || null;
+    }
+  } catch (_) {}
+  if (!cached) {
+    cached = swCustomerSearchInitialPayloadCacheGet_(key);
+    if (!cached ||
+        cached.modelBuiltAt !== status.builtAt ||
+        cached.version !== expectedVersion ||
+        !(cached.payload && cached.payload.ok)) {
+      return null;
+    }
+    try {
+      SW_CUSTOMER_SEARCH_INITIAL_PAYLOAD_MEMORY_CACHE_[key] = {
+        expiresAt: new Date().getTime() + SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS * 1000,
+        version: cached.version || '',
+        modelBuiltAt: cached.modelBuiltAt || '',
+        payload: cached
+      };
+    } catch (_) {}
+  }
+  cached.payload.generatedAt = swIso_(new Date());
+  cached.ageSeconds = status.ageSeconds || 0;
+  return cached;
+}
+
+function swCanUseCustomerSearchInitialPayloadCache_(user, query, filters) {
+  filters = filters || {};
+  return !!(user && user.isAdmin) &&
+    !swTrim_(query) &&
+    filters.activeOnly !== false &&
+    !swTrim_(filters.brand) &&
+    !swTrim_(filters.clientAdvisor) &&
+    !swTrim_(filters.joc) &&
+    !filters.defaultOwner &&
+    !filters.defaultAdvisor &&
+    !filters.defaultJoc;
+}
+
+function swMaybeCacheCustomerSearchInitialPayload_(ss, user, query, filters, rows, status, payload) {
+  if (!swCanUseCustomerSearchInitialPayloadCache_(user, query, filters)) return null;
+  if (!(status && status.fresh)) return null;
+  try {
+    return swCacheCustomerSearchInitialPayload_(ss, rows || [], status, payload);
+  } catch (_) {}
+  return null;
+}
+
+function swCacheCustomerSearchInitialPayload_(ss, rows, status, payload) {
+  if (!(status && status.builtAt)) return { ok: false, reason: 'missingStatus' };
+  rows = rows || [];
+  if (!(payload && payload.ok)) {
+    payload = swCustomerSearchBuildPayload_(
+      ss,
+      { isAdmin: true },
+      '',
+      swCustomerSearchNormalizeFilters_({ activeOnly: true }),
+      rows,
+      'customerReadModelCache',
+      function () {}
+    );
+  }
+  var columns = payload && payload.kanban && payload.kanban.columns ? payload.kanban.columns : [];
+  var filteredRows = columns.reduce(function (sum, col) {
+    return sum + Number(col.count || 0);
+  }, 0);
+  var cards = columns.reduce(function (sum, col) {
+    return sum + ((col.cards || []).length);
+  }, 0);
+  var hiddenCards = columns.reduce(function (sum, col) {
+    return sum + Number(col.hiddenCount || 0);
+  }, 0);
+  var cachePayload = {
+    cachedAt: swIso_(new Date()),
+    version: typeof SW_READ_MODEL_VERSION !== 'undefined' ? SW_READ_MODEL_VERSION : '',
+    modelBuiltAt: status.builtAt || '',
+    sourceRows: rows.length,
+    filteredRows: filteredRows,
+    cards: cards,
+    hiddenCards: hiddenCards,
+    payload: payload
+  };
+  var key = swCustomerSearchInitialPayloadCacheKey_(ss);
+  try {
+    SW_CUSTOMER_SEARCH_INITIAL_PAYLOAD_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS * 1000,
+      version: cachePayload.version,
+      modelBuiltAt: cachePayload.modelBuiltAt,
+      payload: cachePayload
+    };
+  } catch (_) {}
+  var result = swCustomerSearchInitialPayloadCachePut_(key, cachePayload) || {};
+  return {
+    ok: result.ok !== false,
+    chunks: result.chunks || 0,
+    bytes: result.bytes || 0,
+    reason: result.reason || ''
   };
 }
 
@@ -328,7 +464,7 @@ function swCustomerSearchPublicFilters_(filters) {
   };
 }
 
-function swCustomerSearchReadModelRows_(ss, config) {
+function swCustomerSearchReadModelRows_(ss, config, knownStatus) {
   if (typeof swCustomerReadModelServingEnabled_ === 'function' &&
       !swCustomerReadModelServingEnabled_(config || [])) {
     return { ok: false, fallbackReason: 'disabled' };
@@ -338,7 +474,7 @@ function swCustomerSearchReadModelRows_(ss, config) {
   }
 
   try {
-    var status = swCustomerReadModelStatus_(ss);
+    var status = knownStatus || swCustomerReadModelStatus_(ss);
     if (!status.fresh) {
       return {
         ok: false,
@@ -355,7 +491,8 @@ function swCustomerSearchReadModelRows_(ss, config) {
         ok: true,
         source: 'customerReadModelCache',
         rows: cachedRows,
-        ageSeconds: status.ageSeconds || 0
+        ageSeconds: status.ageSeconds || 0,
+        status: status
       };
     }
 
@@ -368,7 +505,8 @@ function swCustomerSearchReadModelRows_(ss, config) {
       ok: true,
       source: 'customerReadModelSheet',
       rows: rows,
-      ageSeconds: status.ageSeconds || 0
+      ageSeconds: status.ageSeconds || 0,
+      status: status
     };
   } catch (err) {
     try {
@@ -549,18 +687,51 @@ function swCacheCustomerSearchReadModelRows_(ss, rows, status) {
       rows: payload.rows
     };
   } catch (_) {}
-  return swTaskListCachePut_(key, payload);
+  var result = swTaskListCachePut_(key, payload);
+  try { swCacheCustomerSearchInitialPayload_(ss, rows || [], status); } catch (_) {}
+  return result;
 }
 
 function swInvalidateCustomerSearchReadModelCache_(ss) {
   var key = swCustomerSearchReadModelCacheKey_(ss);
+  var payloadKey = swCustomerSearchInitialPayloadCacheKey_(ss);
   try { delete SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_[key]; } catch (_) {}
+  try { delete SW_CUSTOMER_SEARCH_INITIAL_PAYLOAD_MEMORY_CACHE_[payloadKey]; } catch (_) {}
   try { swTaskListCacheRemove_(key); } catch (_) {}
+  try { swCustomerSearchInitialPayloadCacheRemove_(payloadKey); } catch (_) {}
   try { swInvalidateCustomerSearchDetailCaches_(ss); } catch (_) {}
 }
 
 function swCustomerSearchReadModelCacheKey_(ss) {
   return 'sw:customerSearchReadModel:v1:' + ss.getId();
+}
+
+function swCustomerSearchInitialPayloadCacheKey_(ss) {
+  return 'sw:customerSearchInitialPayload:v1:' + ss.getId();
+}
+
+function swCustomerSearchInitialPayloadCacheGet_(key) {
+  try {
+    var text = CacheService.getScriptCache().get(key);
+    if (text) return swParseJson_(text, null);
+  } catch (_) {}
+  return swTaskListCacheGet_(key);
+}
+
+function swCustomerSearchInitialPayloadCachePut_(key, payload) {
+  try {
+    var text = swStringify_(payload);
+    if (text.length <= 90000) {
+      CacheService.getScriptCache().put(key, text, SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS);
+      return { ok: true, chunks: 1, bytes: text.length };
+    }
+  } catch (_) {}
+  return swTaskListCachePut_(key, payload);
+}
+
+function swCustomerSearchInitialPayloadCacheRemove_(key) {
+  try { CacheService.getScriptCache().remove(key); } catch (_) {}
+  try { swTaskListCacheRemove_(key); } catch (_) {}
 }
 
 function swCacheCustomerSearchDetailIndex_(ss, rows, status) {
