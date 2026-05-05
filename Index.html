@@ -942,24 +942,6 @@
       margin-top: 0;
     }
 
-    .admin-kpi-grid {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-      margin-bottom: 18px;
-    }
-
-    .admin-kpi-card {
-      background: var(--surface-inset);
-      border: 1px solid var(--rule);
-      min-height: 112px;
-      padding: 14px;
-    }
-
-    .admin-kpi-card .meta {
-      margin-top: 8px;
-    }
-
     .admin-warning {
       background: var(--surface-inset);
       border-top: 2px solid var(--accent);
@@ -1450,20 +1432,20 @@
     .customer-detail-next {
       border-top: 1px solid var(--rule);
       display: grid;
-      gap: 16px;
-      grid-template-columns: 8px minmax(118px, 150px) minmax(0, 1fr) auto;
-      padding: 26px 28px;
+      gap: 14px;
+      grid-template-columns: 8px minmax(104px, 132px) minmax(0, 1fr) auto;
+      padding: 18px 28px;
     }
 
     .customer-next-rule {
       background: var(--ink-primary);
-      min-height: 110px;
+      min-height: 72px;
     }
 
     .customer-next-text {
       color: var(--ink-primary);
-      font-size: 18px;
-      line-height: 1.55;
+      font-size: 16px;
+      line-height: 1.45;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
     }
@@ -1639,218 +1621,6 @@
     .admin-dashboard-shell {
       display: grid;
       gap: 18px;
-    }
-
-    .admin-dashboard-toolbar {
-      align-items: center;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: space-between;
-    }
-
-    .admin-mode-toggle {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .admin-health-section {
-      border: 1px solid var(--rule);
-      padding: 22px;
-    }
-
-    .admin-health-section.unframed {
-      border: 0;
-      padding: 0;
-    }
-
-    .admin-health-heading {
-      align-items: end;
-      display: flex;
-      gap: 16px;
-      justify-content: space-between;
-      margin-bottom: 16px;
-    }
-
-    .admin-risk-grid,
-    .admin-pulse-grid {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .admin-risk-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .admin-health-card {
-      background: var(--surface-inset);
-      border: 1px solid var(--rule);
-      min-width: 0;
-      padding: 16px;
-    }
-
-    .admin-health-card.danger {
-      border-top: 2px solid #A71358;
-    }
-
-    .admin-health-card.warn {
-      border-top: 2px solid #B56A00;
-    }
-
-    .admin-health-card.info {
-      border-top: 2px solid #1261A6;
-    }
-
-    .admin-health-value {
-      color: var(--ink-primary);
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 34px;
-      line-height: 1;
-      overflow-wrap: anywhere;
-    }
-
-    .admin-health-footnote {
-      color: var(--ink-primary);
-      font-size: 12px;
-      margin-top: 8px;
-    }
-
-    .admin-stage-grid {
-      display: grid;
-      gap: 8px;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-    }
-
-    .admin-stage-card {
-      background: var(--surface-card);
-      border-top: 3px solid var(--rule);
-      padding: 12px;
-    }
-
-    .admin-stage-card.lead { border-top-color: #A71358; }
-    .admin-stage-card.hotLead { border-top-color: #B56A00; }
-    .admin-stage-card.followUp { border-top-color: #7E6DD8; }
-    .admin-stage-card.appointment { border-top-color: #1261A6; }
-    .admin-stage-card.deposit { border-top-color: #168A62; }
-    .admin-stage-card.inProduction { border-top-color: #5B6C72; }
-
-    .admin-dashboard-grid {
-      display: grid;
-      gap: 18px;
-      grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
-    }
-
-    .admin-trend-chart {
-      align-items: end;
-      border-bottom: 1px solid var(--rule);
-      border-left: 1px solid var(--rule);
-      display: grid;
-      gap: 8px;
-      grid-template-columns: repeat(12, minmax(18px, 1fr));
-      height: 220px;
-      padding: 12px 8px 0;
-    }
-
-    .admin-trend-week {
-      align-items: end;
-      display: grid;
-      gap: 6px;
-      height: 100%;
-      min-width: 0;
-    }
-
-    .admin-trend-bars {
-      align-items: end;
-      display: flex;
-      gap: 3px;
-      height: 160px;
-      justify-content: center;
-    }
-
-    .admin-trend-bar {
-      background: #7E6DD8;
-      min-height: 2px;
-      width: 12px;
-    }
-
-    .admin-trend-dot {
-      background: #168A62;
-      min-height: 2px;
-      width: 4px;
-    }
-
-    .admin-trend-label {
-      color: var(--ink-muted);
-      font-size: 10px;
-      overflow: hidden;
-      text-align: center;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .admin-source-list,
-    .admin-deal-list {
-      display: grid;
-      gap: 10px;
-    }
-
-    .admin-source-row {
-      display: grid;
-      gap: 8px;
-    }
-
-    .admin-source-top,
-    .admin-deal-row {
-      align-items: baseline;
-      display: flex;
-      gap: 12px;
-      justify-content: space-between;
-    }
-
-    .admin-source-track {
-      background: var(--surface-card);
-      border: 1px solid var(--rule);
-      height: 8px;
-      overflow: hidden;
-    }
-
-    .admin-source-fill {
-      background: var(--ink-primary);
-      height: 100%;
-    }
-
-    .admin-scorecard-wrap {
-      overflow-x: auto;
-    }
-
-    .admin-scorecard {
-      border-collapse: collapse;
-      min-width: 760px;
-      width: 100%;
-    }
-
-    .admin-scorecard th,
-    .admin-scorecard td {
-      border-bottom: 1px solid var(--rule);
-      font-size: 12px;
-      padding: 10px 8px;
-      text-align: right;
-      white-space: nowrap;
-    }
-
-    .admin-scorecard th:first-child,
-    .admin-scorecard td:first-child {
-      text-align: left;
-    }
-
-    .admin-scorecard th {
-      color: var(--ink-muted);
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
     }
 
     .admin-kanban-board {
@@ -2360,7 +2130,7 @@
         min-height: 96px;
       }
 
-      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-kpi-grid, .admin-risk-grid, .admin-pulse-grid, .admin-dashboard-grid, .admin-stage-grid {
+      .stat-grid, .proposal-grid, .admin-filter-grid {
         grid-template-columns: 1fr;
       }
 
@@ -2590,7 +2360,7 @@
             </button>
             <button id="tab-adminDashboard" class="nav-menu-item" type="button" data-view="adminDashboard" role="menuitem" style="display:none">
               <span class="nav-item-label">Customer Pipeline</span>
-              <span class="nav-item-description">Admin kanban and health</span>
+              <span class="nav-item-description">Full-width customer pipeline</span>
             </button>
           </div>
         </div>
@@ -3625,7 +3395,7 @@
         eyebrow = 'Bulk Returns';
       }
       if (view === 'adminDashboard') {
-        title = 'Business health and customer pipeline';
+        title = 'Customer pipeline';
         eyebrow = 'Admin Dashboard';
       }
       if (view === 'employeeSchedules') {
@@ -3640,18 +3410,19 @@
       document.getElementById('viewEyebrow').textContent = eyebrow;
     }
 
-    function loadAdminDashboard(filters) {
+    function loadAdminDashboard(filters, preserveDetail) {
       var requestId = beginMainRequest('adminDashboard');
       appState.selectedTaskId = '';
-      appState.detailRequestId += 1;
-      appState.adminDashboardDetail = null;
-      appState.adminDashboardSelectedRoot = '';
+      if (!preserveDetail) {
+        appState.detailRequestId += 1;
+        appState.adminDashboardDetail = null;
+        appState.adminDashboardSelectedRoot = '';
+      }
       setActiveTab('adminDashboard');
       renderViewHeader('adminDashboard');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING ADMIN DASHBOARD</div>';
       document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Admin Dashboard</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
       filters = filters || appState.adminDashboardFilters || {};
-      filters.mode = 'kanban';
       var dashboardCacheKey = adminDashboardFilterCacheKey(filters);
       var previousDashboard = appState.adminDashboardCacheKey === dashboardCacheKey ? (appState.adminDashboard || {}) : {};
       serverCall('sw_getAdminDashboard', [filters], function (res) {
@@ -3685,7 +3456,6 @@
         filters: next.filters || prev.filters || {},
         filterOptions: next.filterOptions || prev.filterOptions || {},
         kanban: next.kanban || prev.kanban || null,
-        taskCount: next.taskCount == null ? prev.taskCount : next.taskCount,
         warnings: next.warnings || prev.warnings || []
       };
     }
@@ -3695,7 +3465,6 @@
         windowPreset: valueOf('adminDashWindow'),
         startDate: valueOf('adminDashStartDate'),
         endDate: valueOf('adminDashEndDate'),
-        mode: 'kanban',
         brand: valueOf('adminDashBrand'),
         clientAdvisor: valueOf('adminDashClientAdvisor'),
         joc: valueOf('adminDashJoc'),
@@ -4231,7 +4000,7 @@
       return [
         '<div class="panel-header">',
           '<div class="eyebrow">Customer Pipeline</div>',
-          '<h2>Kanban View</h2>',
+          '<h2>Full-width Pipeline</h2>',
         '</div>',
         '<div class="admin-kanban-board">',
           columns.map(renderAdminKanbanColumn).join(''),
@@ -4813,8 +4582,14 @@
       return options;
     }
 
+    function activeCustomerDetailPayload() {
+      if (appState.view === 'adminDashboard') return appState.adminDashboardDetail || {};
+      return ((appState.customerSearch || {}).detail) || {};
+    }
+
     function customerSearchRoot() {
-      return ((appState.customerSearch || {}).detail || {}).root || appState.customerSearch.selectedRoot || '';
+      var detail = activeCustomerDetailPayload();
+      return detail.root || ((detail.card || {}).root) || (appState.view === 'adminDashboard' ? appState.adminDashboardSelectedRoot : appState.customerSearch.selectedRoot) || '';
     }
 
     function openCustomerStatusAction() {
@@ -4881,6 +4656,14 @@
 
     function customerSearchActionSuccess(message) {
       return function (res) {
+        if (appState.view === 'adminDashboard') {
+          appState.adminDashboardDetail = res || {};
+          appState.adminDashboardSelectedRoot = (res && res.root) || appState.adminDashboardSelectedRoot || '';
+          renderAdminDashboard(appState.adminDashboard || {});
+          setStatus(message);
+          loadAdminDashboard(appState.adminDashboardFilters || {}, true);
+          return;
+        }
         appState.customerSearch.detail = res || {};
         appState.customerSearch.selectedRoot = (res && res.root) || appState.customerSearch.selectedRoot || '';
         renderCustomerSearchDetail(res || {});
