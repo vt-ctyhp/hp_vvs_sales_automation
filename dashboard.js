@@ -2245,31 +2245,18 @@ function ensureBrandRepDropdowns_() {
     .build();
   dash.getRange(CELL_BRAND).setDataValidation(dvBrand);
 
-  // --- Rep dropdown: from "Dropdown" tab, column "Assigned Rep"
-  const DROPDOWN_SHEET = 'Dropdown';
+  // --- Rep dropdown: canonical active Client Advisor workflow users
   const repValues = (() => {
-    const sh = ss.getSheetByName(DROPDOWN_SHEET);
-    if (!sh) return [];
-
-    const vals = sh.getDataRange().getValues();
-    if (!vals.length) return [];
-
-    // locate header "Assigned Rep" (case/substring tolerant)
-    const H = vals[0].map(h => String(h || '').trim().toLowerCase());
-    let idx = H.indexOf('assigned rep');
-    if (idx < 0) {
-      // fallback: find a header that contains both words
-      idx = H.findIndex(h => h.includes('assigned') && h.includes('rep'));
+    if (typeof swReadCanonicalWorkflowPeople_ === 'function') {
+      return swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, activeOnly: true })
+        .filter(u => typeof swWorkflowUserHasSchedulableRole_ === 'function'
+          ? swWorkflowUserHasSchedulableRole_(u, 'Client Advisor')
+          : String(u.scheduleRole || '').indexOf('Client Advisor') >= 0)
+        .map(u => u.name)
+        .filter(Boolean)
+        .sort((a,b)=>a.localeCompare(b));
     }
-    if (idx < 0) return [];
-
-    // unique, trimmed, non-blank reps from that column
-    const uniq = new Set();
-    for (let r = 1; r < vals.length; r++) {
-      const v = String(vals[r][idx] || '').trim();
-      if (v) uniq.add(v);
-    }
-    return Array.from(uniq).sort((a,b)=>a.localeCompare(b));
+    return [];
   })();
 
   const dvRep = SpreadsheetApp.newDataValidation()
@@ -2279,7 +2266,7 @@ function ensureBrandRepDropdowns_() {
 
   // Notes (optional)
   dash.getRange(CELL_BRAND).setNote('Choose HPUSA or VVS. Leave blank for all.');
-  dash.getRange(CELL_REP).setNote('Pick from Dropdown!Assigned Rep. Leave blank for all.');
+  dash.getRange(CELL_REP).setNote('Pick from active Client Advisor workflow users. Leave blank for all.');
 
   // Clean up any legacy validations we no longer use
   // (safe no-ops if they don’t exist)

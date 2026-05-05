@@ -419,54 +419,14 @@ function swLookupEmailByName_(ss, name, ctx) {
   name = swNorm_(name);
   if (!name) return '';
   if (ctx && ctx.peopleIndex) return ctx.peopleIndex.emailByName[name] || '';
-  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
-  if (!sh || sh.getLastRow() < 2) return '';
-  var values = sh.getDataRange().getDisplayValues();
-  var headers = values[0].map(function (h) { return swTrim_(h); });
-  var H = swHeaderMapFromArray_(headers);
-  var pairs = [
-    [swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email'])],
-    [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
-  ];
-  for (var i = 1; i < values.length; i++) {
-    for (var p = 0; p < pairs.length; p++) {
-      var nameCol = pairs[p][0];
-      var emailCol = pairs[p][1];
-      if (nameCol >= 0 && emailCol >= 0 && swNorm_(values[i][nameCol]) === name) {
-        return swNormEmail_(values[i][emailCol]);
-      }
-    }
-  }
-  return '';
+  var peopleIndex = swReadPeopleIndex_(ss, null);
+  return peopleIndex.emailByName[name] || '';
 }
 
 function swLookupNameByEmail_(ss, email, ctx) {
   email = swNormEmail_(email);
   if (!email) return '';
   if (ctx && ctx.peopleIndex) return ctx.peopleIndex.nameByEmail[email] || '';
-  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
-  if (sh && sh.getLastRow() >= 2) {
-    var values = sh.getDataRange().getDisplayValues();
-    var headers = values[0].map(function (h) { return swTrim_(h); });
-    var H = swHeaderMapFromArray_(headers);
-    var pairs = [
-      [swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email'])],
-      [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
-    ];
-    for (var i = 1; i < values.length; i++) {
-      for (var p = 0; p < pairs.length; p++) {
-        var nameCol = pairs[p][0];
-        var emailCol = pairs[p][1];
-        if (nameCol >= 0 && emailCol >= 0 && swNormEmail_(values[i][emailCol]) === email) {
-          return swTrim_(values[i][nameCol]);
-        }
-      }
-    }
-  }
-
-  var config = swReadConfig_(ss);
-  for (var c = 0; c < config.length; c++) {
-    if (swNormEmail_(config[c]['Email']) === email) return swTrim_(config[c]['Name'] || config[c]['Key']);
-  }
-  return '';
+  var peopleIndex = swReadPeopleIndex_(ss, null);
+  return peopleIndex.nameByEmail[email] || '';
 }

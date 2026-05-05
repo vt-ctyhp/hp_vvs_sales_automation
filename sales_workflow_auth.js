@@ -23,7 +23,7 @@ function sw_login(email, password, options) {
 
     var row = swAuthFindUserRowForLogin_(ss, email);
     mark('userLookup', { found: !!row });
-    if (!row || !swTruthy_(row['Active?'] || '')) throw new Error('Login is not active for this email.');
+    if (!row || !swWorkflowUserActive_(row)) throw new Error('Login is not active for this email.');
     if (!row['Password Salt'] || !row['Password Hash']) throw new Error('Password is not set for this email.');
     var expected = swAuthHash_(password, row['Password Salt']);
     mark('passwordHash');
@@ -92,6 +92,10 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
     active: 'Y',
     temporary: 'Y'
   });
+  var rosterLink = swEnsureOrSyncRosterForWorkflowUser_(ss, out, swSystemUser_());
+  out.rosterLinked = rosterLink.linked;
+  out.rosterRowNumber = rosterLink.rowNumber;
+  out.warnings = rosterLink.warnings || [];
   try { if (typeof swClearAssignmentOptionsMemoryCache_ === 'function') swClearAssignmentOptionsMemoryCache_(ss); } catch (_) {}
   try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
   return out;
@@ -136,8 +140,12 @@ function sw_adminUpsertWorkflowUser(authToken, data) {
     temporary: generated ? 'Y' : (data.temporary || 'N'),
     notes: data.notes
   });
+  var rosterLink = swEnsureOrSyncRosterForWorkflowUser_(ss, out, user);
   out.password = password;
   out.generatedPassword = generated;
+  out.rosterLinked = rosterLink.linked;
+  out.rosterRowNumber = rosterLink.rowNumber;
+  out.warnings = rosterLink.warnings || [];
   try { if (typeof swClearAssignmentOptionsMemoryCache_ === 'function') swClearAssignmentOptionsMemoryCache_(ss); } catch (_) {}
   try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
   return out;
@@ -196,15 +204,9 @@ function swCurrentUserFromAuthToken_(ss, token) {
   var session = swParseJson_(cached, null);
   if (!session || !session.email) throw new Error('Session expired. Please sign in again.');
 
-  var sessionUser = swAuthUserFromSession_(session);
-  if (sessionUser) return sessionUser;
-
-  var apiUser = swAuthCachedApiUser_(ss, session.email);
-  if (apiUser) return apiUser;
-
   var row = swAuthFindUserRowReadOnly_(ss, session.email);
-  if (!row || !swTruthy_(row['Active?'] || '')) throw new Error('Login is no longer active.');
-  apiUser = swAuthUserFromRow_(row);
+  if (!row || !swWorkflowUserActive_(row)) throw new Error('Login is no longer active.');
+  var apiUser = swAuthUserFromRow_(row);
   swAuthCacheApiUser_(ss, apiUser);
   return apiUser;
 }
@@ -337,11 +339,20 @@ function swAuthSetWorkflowPassword_(ss, options) {
   var salt = swAuthNewSalt_();
   var hash = swAuthHash_(password, salt);
   var roles = swAuthRolesForWrite_(options.roles || (found && found['Roles']) || SW_OWNER_ROLES.SALES_REP);
+  var active = swTruthy_(options.active == null ? 'Y' : options.active);
+  var name = swTrim_(options.name) || (found && found['Name']) || email;
+  swValidateWorkflowUserIdentityForWrite_(ss, {
+    email: email,
+    name: name,
+    roles: roles,
+    active: active,
+    rowNumber: found && found.__rowNumber
+  });
   var next = {
     'Email': email,
-    'Name': swTrim_(options.name) || (found && found['Name']) || email,
+    'Name': name,
     'Roles': roles,
-    'Active?': swTruthy_(options.active == null ? 'Y' : options.active) ? 'Y' : 'N',
+    'Active?': active ? 'Y' : 'N',
     'Password Salt': salt,
     'Password Hash': hash,
     'Temporary Password?': swTruthy_(options.temporary || '') ? 'Y' : 'N',
@@ -366,6 +377,129 @@ function swAuthSetWorkflowPassword_(ss, options) {
     roles: next['Roles'],
     active: next['Active?']
   };
+}
+
+function swValidateWorkflowUserIdentityForWrite_(ss, options) {
+  options = options || {};
+  var email = swNormEmail_(options.email || '');
+  var name = swTrim_(options.name || '');
+  var active = options.active !== false;
+  var roles = swAuthRoles_(options.roles || '');
+  var scheduleRole = swWorkflowSchedulableRoleList_(roles);
+  var rowNumber = Number(options.rowNumber) || 0;
+  var rows = swAuthReadUserRows_(ss, false);
+  var duplicateActiveEmail = [];
+  var duplicateActiveName = [];
+  rows.forEach(function (row) {
+    if (!row || !row.__rowNumber || row.__rowNumber === rowNumber) return;
+    var rowEmail = swNormEmail_(row['Email']);
+    var rowName = swTrim_(row['Name']);
+    var rowActive = swWorkflowUserActive_(row);
+    var rowScheduleRole = swWorkflowSchedulableRoleList_(swAuthRoles_(row['Roles']));
+    if (active && rowActive && rowEmail && rowEmail === email) {
+      duplicateActiveEmail.push(rowEmail);
+    }
+    if (active && scheduleRole && rowActive && rowScheduleRole && name && swNorm_(rowName) === swNorm_(name)) {
+      duplicateActiveName.push(rowName + (rowEmail ? ' <' + rowEmail + '>' : ''));
+    }
+  });
+  if (duplicateActiveEmail.length) throw new Error('Another active workflow user already uses email: ' + email);
+  if (duplicateActiveName.length) {
+    throw new Error('Another active Client Advisor/JOC already uses name "' + name + '": ' + duplicateActiveName.join(', '));
+  }
+}
+
+function swEnsureOrSyncRosterForWorkflowUser_(ss, userData, actor) {
+  var warnings = [];
+  userData = userData || {};
+  var email = swNormEmail_(userData.email || userData.Email || '');
+  var name = swTrim_(userData.name || userData.Name || '') || email;
+  var roles = swAuthRoles_(userData.roles || userData.Roles || '');
+  var scheduleRole = swWorkflowSchedulableRoleList_(roles);
+  var activeValue = userData.active;
+  if (activeValue == null || activeValue === '') activeValue = userData['Active?'];
+  var active = swWorkflowUserActive_({ active: activeValue });
+  if (!email) return { linked: false, rowNumber: 0, warnings: ['No workflow user email to link.'] };
+
+  var sh = swEnsureEmployeeScheduleSheets_(ss).roster;
+  var headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map(function (h) {
+    return swTrim_(h);
+  });
+  var H = swHeaderMapFromArray_(headers);
+  var C = {
+    name: swPickIndex_(H, ['Rep', 'Name', 'Team Member']) + 1,
+    email: swPickIndex_(H, ['Email', 'Rep Email']) + 1,
+    role: swPickIndex_(H, ['Role', 'Roles']) + 1,
+    active: swPickIndex_(H, ['Active?', 'Active']) + 1,
+    updatedAt: swPickIndex_(H, ['Updated At']) + 1,
+    updatedBy: swPickIndex_(H, ['Updated By']) + 1
+  };
+  var rowNumber = swFindRosterRowForWorkflowUser_(sh, email, name);
+  if (!scheduleRole && !rowNumber) {
+    return { linked: false, rowNumber: 0, warnings: warnings };
+  }
+  if (!rowNumber) {
+    rowNumber = sh.getLastRow() + 1;
+    var defaults = swDefaultEmployeeScheduleDays_();
+    var newValuesByHeader = {
+      rep: name,
+      name: name,
+      teammember: name,
+      email: email,
+      repemail: email,
+      role: scheduleRole,
+      roles: scheduleRole,
+      active: active && scheduleRole ? 'Y' : 'N',
+      mon: defaults.Mon ? 'Y' : 'N',
+      tue: defaults.Tue ? 'Y' : 'N',
+      wed: defaults.Wed ? 'Y' : 'N',
+      thu: defaults.Thu ? 'Y' : 'N',
+      fri: defaults.Fri ? 'Y' : 'N',
+      sat: defaults.Sat ? 'Y' : 'N',
+      sun: defaults.Sun ? 'Y' : 'N',
+      defaultjoc: '',
+      linkedjoc: '',
+      jocpartner: '',
+      assistedcoverageenabled: 'Y',
+      coverageenabled: 'Y',
+      assistedcoveragepartner: '',
+      coveragepartner: '',
+      updatedat: swIso_(new Date()),
+      updatedby: actor ? (actor.name || actor.email || '') : ''
+    };
+    sh.getRange(rowNumber, 1, 1, headers.length).setValues([headers.map(function (header) {
+      var key = swHeaderKey_(header);
+      return newValuesByHeader[key] == null ? '' : newValuesByHeader[key];
+    })]);
+    return { linked: !!scheduleRole, rowNumber: rowNumber, warnings: warnings };
+  }
+
+  if (C.name > 0) sh.getRange(rowNumber, C.name).setValue(name);
+  if (C.email > 0) sh.getRange(rowNumber, C.email).setValue(email);
+  if (C.role > 0) sh.getRange(rowNumber, C.role).setValue(scheduleRole);
+  if (C.active > 0) sh.getRange(rowNumber, C.active).setValue(active && scheduleRole ? 'Y' : 'N');
+  if (C.updatedAt > 0) sh.getRange(rowNumber, C.updatedAt).setValue(swIso_(new Date()));
+  if (C.updatedBy > 0) sh.getRange(rowNumber, C.updatedBy).setValue(actor ? (actor.name || actor.email || '') : '');
+  if (!scheduleRole) warnings.push('Roster row was marked inactive because this user no longer has Client Advisor or JOC access.');
+  return { linked: !!scheduleRole, rowNumber: rowNumber, warnings: warnings };
+}
+
+function swFindRosterRowForWorkflowUser_(sh, email, name) {
+  if (!sh || sh.getLastRow() < 2) return 0;
+  email = swNormEmail_(email);
+  var targetName = swNorm_(name);
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var nameCol = swPickIndex_(H, ['Rep', 'Name', 'Team Member']);
+  var emailCol = swPickIndex_(H, ['Email', 'Rep Email']);
+  var nameMatches = [];
+  for (var i = 1; i < values.length; i++) {
+    if (emailCol >= 0 && email && swNormEmail_(values[i][emailCol]) === email) return i + 1;
+    if (nameCol >= 0 && targetName && swNorm_(values[i][nameCol]) === targetName) nameMatches.push(i + 1);
+  }
+  if (nameMatches.length > 1) throw new Error('Multiple roster rows match "' + name + '". Clean up duplicate roster names before saving this user.');
+  return nameMatches[0] || 0;
 }
 
 function swNormalizeWorkflowUserRoleLabels_(ss) {
@@ -493,14 +627,14 @@ function swAuthReadUserRows_(ss, readOnly) {
 
 function swAuthRolesForEmail_(ss, email) {
   var row = swAuthPublicUserForEmailCached_(ss, email);
-  if (!row || !swTruthy_(row.active || '')) return [];
+  if (!row || !swWorkflowUserActive_(row)) return [];
   return swAuthRoles_(row.roles);
 }
 
 function swAuthActiveUserCount_(ss) {
   var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   return swReadSheetObjectsExpectedHeaders_(sh, SW_AUTH_USER_HEADERS).filter(function (row) {
-    return swNormEmail_(row['Email']) && swTruthy_(row['Active?'] || '');
+    return swNormEmail_(row['Email']) && swWorkflowUserActive_(row);
   }).length;
 }
 

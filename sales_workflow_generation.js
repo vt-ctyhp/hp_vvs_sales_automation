@@ -289,8 +289,18 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
   }
 
   if (swWorkflowRoleMatches_(ownerRole, SW_OWNER_ROLES.SALES_REP)) {
-    var repName = rec.assignedRep || '';
-    var repEmail = swLookupEmailByName_(ss, repName, ctx) || '';
+    var rep = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assignedRep, rec.assignedRepEmail, SW_OWNER_ROLES.SALES_REP);
+    var repName = rep ? rep.name : swTrim_(rec.assignedRep || '');
+    var repEmail = rep ? rep.email : '';
+    if ((rec.assignedRep || rec.assignedRepEmail) && !rep) {
+      return {
+        intendedOwner: repName || swTrim_(rec.assignedRepEmail || ''),
+        intendedOwnerEmail: '',
+        currentOwner: 'Admin Review',
+        currentOwnerEmail: '',
+        coverageReason: 'UNRESOLVED_REP'
+      };
+    }
     return {
       intendedOwner: repName,
       intendedOwnerEmail: repEmail,
@@ -371,8 +381,9 @@ function swRoleQueueLabel_(ctx, ownerRole) {
 }
 
 function swResolveJocOwner_(ss, ctx, rec, dueAt, existing) {
-  var intendedName = rec.assistedRep || '';
-  var intendedEmail = swLookupEmailByName_(ss, intendedName, ctx) || swSchedulePersonEmailByName_(ctx, intendedName);
+  var joc = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assistedRep, rec.assistedRepEmail, SW_OWNER_ROLES.JOC);
+  var intendedName = joc ? joc.name : swTrim_(rec.assistedRep || '');
+  var intendedEmail = joc ? joc.email : '';
   if (!intendedName) {
     return {
       intendedOwner: '',
@@ -380,6 +391,15 @@ function swResolveJocOwner_(ss, ctx, rec, dueAt, existing) {
       currentOwner: 'JOC Coverage',
       currentOwnerEmail: '',
       coverageReason: 'NO_ASSISTED_REP'
+    };
+  }
+  if (!joc) {
+    return {
+      intendedOwner: intendedName,
+      intendedOwnerEmail: '',
+      currentOwner: 'JOC Coverage',
+      currentOwnerEmail: '',
+      coverageReason: 'UNRESOLVED_ASSISTED_REP'
     };
   }
 
@@ -462,6 +482,11 @@ function swScheduleOverride_(ss, personName, date, ctx) {
   var targetName = swNorm_(personName);
   ctx = ctx || {};
   var scheduleIndex = ctx.scheduleChangesIndex || swReadScheduleChangesIndex_(ss);
+  var rosterIndex = ctx.rosterIndex || swReadRosterAvailabilityIndex_(ss);
+  var rosterRow = rosterIndex.byName ? rosterIndex.byName[targetName] : null;
+  if (rosterRow && rosterRow.email && scheduleIndex.byEmailDate[rosterRow.email + '|' + targetDate]) {
+    return scheduleIndex.byEmailDate[rosterRow.email + '|' + targetDate];
+  }
   return scheduleIndex.byNameDate[targetName + '|' + targetDate] || null;
 }
 
@@ -540,14 +565,27 @@ function swAvailableScheduledPeopleForRole_(ss, ctx, role, date, excludeName) {
   return out;
 }
 
-function swSchedulePersonEmailByName_(ctx, name) {
-  var target = swNorm_(name);
-  if (!target) return '';
-  var people = (ctx && ctx.employeeSchedulePeople) || [];
-  for (var i = 0; i < people.length; i++) {
-    if (swNorm_(people[i].name) === target) return swNormEmail_(people[i].email || '');
+function swCanonicalWorkflowOwnerForRole_(ss, ctx, name, email, role) {
+  ctx = ctx || {};
+  if (!ctx.workflowOwnerIndexByRole) {
+    var index = {};
+    swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, activeOnly: true }).forEach(function (user) {
+      [SW_OWNER_ROLES.SALES_REP, SW_OWNER_ROLES.JOC].forEach(function (candidateRole) {
+        if (!swWorkflowUserHasSchedulableRole_(user, candidateRole)) return;
+        var key = swWorkflowRoleKey_(candidateRole);
+        if (!index[key]) index[key] = { byEmail: {}, byName: {} };
+        if (user.email && !index[key].byEmail[user.email]) index[key].byEmail[user.email] = user;
+        if (user.name && !index[key].byName[swNorm_(user.name)]) index[key].byName[swNorm_(user.name)] = user;
+      });
+    });
+    ctx.workflowOwnerIndexByRole = index;
   }
-  return '';
+  var bucket = ctx.workflowOwnerIndexByRole[swWorkflowRoleKey_(role)] || { byEmail: {}, byName: {} };
+  email = swNormEmail_(email || '');
+  name = swTrim_(name || '');
+  var user = email ? bucket.byEmail[email] : null;
+  if (!user && name) user = bucket.byName[swNorm_(name)] || null;
+  return user ? { name: user.name, email: user.email, role: user.scheduleRole || user.role || '' } : null;
 }
 
 function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
@@ -574,17 +612,20 @@ function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
   if (!enabled) return state;
 
   (appointments || []).forEach(function (rec) {
-    if (!rec || !rec.assignedRep) return;
+    if (!rec || (!rec.assignedRep && !rec.assignedRepEmail)) return;
     var visitAt = swVisitDateTime_(rec, ctx.tz);
     if (!visitAt) return;
+    var existingOwner = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assignedRep, rec.assignedRepEmail, SW_OWNER_ROLES.SALES_REP);
+    if (!existingOwner) return;
     var dateKey = swDateKey_(visitAt);
-    var ownerKey = swNorm_(rec.assignedRep);
+    var ownerKey = swNorm_(existingOwner.name);
     if (!state.countsByDate[dateKey]) state.countsByDate[dateKey] = {};
     state.countsByDate[dateKey][ownerKey] = (state.countsByDate[dateKey][ownerKey] || 0) + 1;
+    var existingJoc = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assistedRep, rec.assistedRepEmail, SW_OWNER_ROLES.JOC);
     if (rec.root) state.assignedByRoot[rec.root] = {
-      name: rec.assignedRep,
-      email: rec.assignedRepEmail || swLookupEmailByName_(ss, rec.assignedRep, ctx),
-      defaultJoc: rec.assistedRep || ''
+      name: existingOwner.name,
+      email: existingOwner.email,
+      defaultJoc: existingJoc ? existingJoc.name : ''
     };
   });
   return state;
@@ -597,16 +638,17 @@ function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
   if (!visitAt) return false;
 
   var currentUnavailable = false;
-  if (rec.assignedRep) {
-    var currentAvail = swAvailabilityFor_(ss, rec.assignedRep, visitAt, ctx);
-    currentUnavailable = currentAvail.known && !currentAvail.available;
+  if (rec.assignedRep || rec.assignedRepEmail) {
+    var currentOwner = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assignedRep, rec.assignedRepEmail, SW_OWNER_ROLES.SALES_REP);
+    var currentAvail = currentOwner ? swAvailabilityFor_(ss, currentOwner.name, visitAt, ctx) : null;
+    currentUnavailable = !currentOwner || (currentAvail.known && !currentAvail.available);
     if (!currentUnavailable) {
-      var existingAdvisor = swRoundRobinAdvisorByName_(rr, rec.assignedRep);
+      var existingAdvisor = swRoundRobinAdvisorByName_(rr, currentOwner.name);
       if (existingAdvisor && existingAdvisor.defaultJoc && !rec.assistedRep) {
-        var existingLinkedEmail = swLookupEmailByName_(ss, existingAdvisor.defaultJoc, ctx) || swSchedulePersonEmailByName_(ctx, existingAdvisor.defaultJoc);
-        if (swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, existingAdvisor, existingAdvisor.defaultJoc, existingLinkedEmail)) {
-          rec.assistedRep = existingAdvisor.defaultJoc;
-          rec.assistedRepEmail = existingLinkedEmail;
+        var existingLinkedJoc = swCanonicalWorkflowOwnerForRole_(ss, ctx, existingAdvisor.defaultJoc, '', SW_OWNER_ROLES.JOC);
+        if (existingLinkedJoc && swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, existingAdvisor, existingLinkedJoc.name, existingLinkedJoc.email)) {
+          rec.assistedRep = existingLinkedJoc.name;
+          rec.assistedRepEmail = existingLinkedJoc.email;
           summary.autoLinkedJocFromAdvisor = (summary.autoLinkedJocFromAdvisor || 0) + 1;
           return true;
         }
@@ -624,12 +666,12 @@ function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
   }
 
   var linkedJoc = swTrim_(chosen.defaultJoc || '');
-  var linkedJocEmail = linkedJoc ? (swLookupEmailByName_(ss, linkedJoc, ctx) || swSchedulePersonEmailByName_(ctx, linkedJoc)) : '';
-  if (!swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, chosen, linkedJoc, linkedJocEmail)) return false;
+  var linkedJocUser = linkedJoc ? swCanonicalWorkflowOwnerForRole_(ss, ctx, linkedJoc, '', SW_OWNER_ROLES.JOC) : null;
+  if (!swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, chosen, linkedJocUser ? linkedJocUser.name : '', linkedJocUser ? linkedJocUser.email : '')) return false;
   rec.assignedRep = chosen.name;
   rec.assignedRepEmail = chosen.email || '';
-  rec.assistedRep = linkedJoc || rec.assistedRep || '';
-  rec.assistedRepEmail = linkedJoc ? linkedJocEmail : rec.assistedRepEmail;
+  rec.assistedRep = linkedJocUser ? linkedJocUser.name : rec.assistedRep || '';
+  rec.assistedRepEmail = linkedJocUser ? linkedJocUser.email : rec.assistedRepEmail;
   if (root) rr.assignedByRoot[root] = chosen;
   var dateKey = swDateKey_(visitAt);
   if (!rr.countsByDate[dateKey]) rr.countsByDate[dateKey] = {};
@@ -702,8 +744,9 @@ function swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, advisor, linkedJoc,
   master.getRange(row, headers.assignedRep).setValue(advisor.name || '');
   master.getRange(row, headers.assignedRepEmail).setValue(advisor.email || '');
   if (linkedJoc) {
+    var canonicalJoc = linkedJocEmail ? null : swCanonicalWorkflowOwnerForRole_(ss, {}, linkedJoc, '', SW_OWNER_ROLES.JOC);
     master.getRange(row, headers.assistedRep).setValue(linkedJoc);
-    master.getRange(row, headers.assistedRepEmail).setValue(linkedJocEmail || swLookupEmailByName_(ss, linkedJoc, {}) || '');
+    master.getRange(row, headers.assistedRepEmail).setValue(linkedJocEmail || (canonicalJoc ? canonicalJoc.email : ''));
   }
   return true;
 }

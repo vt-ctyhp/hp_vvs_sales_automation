@@ -3969,10 +3969,10 @@
             '<div>',
               '<div class="eyebrow">Admin / Schedules</div>',
               '<h2>Team roster and coverage</h2>',
-              '<div class="meta">Working days, roles, skills, linked JOC partners, and one-off changes feed queue ownership during refresh.</div>',
+              '<div class="meta">Workflow users are the source of truth. Working days, skills, linked JOC partners, and one-off changes feed queue ownership during refresh.</div>',
             '</div>',
             '<div class="schedule-hero-actions">',
-              '<button class="js-schedule-add-row" type="button">Add Person</button>',
+              '<button class="js-schedule-add-row" type="button">Add Workflow User</button>',
               '<button class="primary js-schedule-save" type="button">Save Changes</button>',
             '</div>',
           '</div>',
@@ -4041,7 +4041,7 @@
                 return renderEmployeeScheduleRow(person, days, jocNames, index);
               }).join(''),
             '</div>'
-          ].join('') : '<div class="empty">No employees found. Add workflow users or add a schedule row here.</div>',
+          ].join('') : '<div class="empty">No schedulable workflow users found. Add a Client Advisor or JOC user in Manage Users.</div>',
         '</section>'
       ].join('');
     }
@@ -4056,8 +4056,8 @@
           '<div class="schedule-person-cell">',
             '<div class="schedule-avatar" style="--avatar-bg:' + escapeAttrValue(employeeScheduleAvatarColor(name || person.email || index)) + '">' + escapeHtml(employeeScheduleInitials(name || person.email || 'New')) + '</div>',
             '<div class="schedule-person-fields">',
-              '<input class="schedule-name" type="text" aria-label="Person name" placeholder="Person name" value="' + escapeAttrValue(name) + '">',
-              '<input class="schedule-email" type="email" aria-label="Email" placeholder="email@company.com" value="' + escapeAttrValue(person.email || '') + '">',
+              '<input class="schedule-name" type="text" aria-label="Person name" placeholder="Person name" value="' + escapeAttrValue(name) + '" readonly>',
+              '<input class="schedule-email" type="email" aria-label="Email" placeholder="email@company.com" value="' + escapeAttrValue(person.email || '') + '" readonly>',
               '<label class="schedule-active-control"><input class="schedule-active" type="checkbox"' + (person.active !== false ? ' checked' : '') + '>Active</label>',
             '</div>',
           '</div>',
@@ -4078,8 +4078,8 @@
     function renderEmployeeScheduleRoleChecks(role) {
       return [
         '<div class="schedule-pill-row">',
-          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-role" type="checkbox" data-role="Client Advisor"' + (employeeScheduleHasRole(role, 'Client Advisor') ? ' checked' : '') + '><span>Advisor</span></label>',
-          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-role" type="checkbox" data-role="JOC"' + (employeeScheduleHasRole(role, 'JOC') ? ' checked' : '') + '><span>JOC</span></label>',
+          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-role" type="checkbox" data-role="Client Advisor"' + (employeeScheduleHasRole(role, 'Client Advisor') ? ' checked' : '') + ' disabled><span>Advisor</span></label>',
+          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-role" type="checkbox" data-role="JOC"' + (employeeScheduleHasRole(role, 'JOC') ? ' checked' : '') + ' disabled><span>JOC</span></label>',
         '</div>'
       ].join('');
     }
@@ -4305,22 +4305,8 @@
     }
 
     function addEmployeeScheduleRow() {
-      var res = appState.employeeSchedule || {};
-      if (!res.people) res.people = [];
-      appState.employeeScheduleFilter = 'all';
-      res.people.push({
-        name: '',
-        email: '',
-        role: 'Client Advisor',
-        active: true,
-        coverageEnabled: true,
-        defaultJoc: '',
-        coveragePartner: '',
-        skills: { labDiamond: false, naturalDiamond: 'None', generalAppointment: true },
-        days: { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true, Sat: false, Sun: false }
-      });
-      renderEmployeeSchedules(res);
-      renderEmployeeScheduleSummary(res);
+      setStatus('Add Client Advisor and JOC staff from Manage Users first.');
+      openUserAdminPanel();
     }
 
     function upsertEmployeeScheduleChange(sourceButton) {
@@ -7939,6 +7925,7 @@
               '<div><label for="userAdminPassword">Password</label><input id="userAdminPassword" type="text" placeholder="Leave blank to auto-generate"></div>',
               '<div class="actions"><button class="js-admin-generate-password" type="button">Generate Password</button></div>',
               '<div><label>Role Access</label><div class="role-grid">' + renderRoleOptions(roles) + '</div></div>',
+              '<label class="schedule-active-control"><input id="userAdminActive" type="checkbox" checked>Active</label>',
               '<div><label for="userAdminNotes">Notes</label><input id="userAdminNotes"></div>',
             '</div>',
             '<div class="actions"><button class="primary js-admin-save-user" type="button">Save User</button></div>',
@@ -7993,11 +7980,14 @@
         name: valueOf('userAdminName'),
         password: valueOf('userAdminPassword'),
         notes: valueOf('userAdminNotes'),
+        active: checkedOf('userAdminActive'),
         roles: [].slice.call(document.querySelectorAll('.user-role-option:checked')).map(function (el) { return el.value; })
       };
       serverCall('sw_adminUpsertWorkflowUser', [payload], function (res) {
         if (!isCurrentMainRequest(requestId, 'userAdmin')) return;
         var message = 'Saved ' + (res.email || payload.email) + '. Password: ' + (res.password || payload.password || 'unchanged');
+        if (res.rosterLinked) message += ' Roster linked.';
+        if (res.warnings && res.warnings.length) message += ' ' + res.warnings.join(' ');
         if (status) status.textContent = message;
         setStatus('Workflow user saved');
         serverCall('sw_adminListWorkflowUsers', [], function (list) {

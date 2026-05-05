@@ -21,7 +21,7 @@ function swCurrentUser_(ss, ctx) {
     name: name,
     isAdmin: isAdmin,
     isJoc: isJoc,
-    isRep: !!name,
+    isRep: swAuthHasRole_(authRoles, SW_OWNER_ROLES.SALES_REP),
     isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
     isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
@@ -35,7 +35,7 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
   var authUser = email && typeof swAuthPublicUserForEmailCached_ === 'function'
     ? swAuthPublicUserForEmailCached_(ss, email)
     : null;
-  var authRoles = authUser && swTruthy_(authUser.active || '') ? swAuthRoles_(authUser.roles) : (email ? swAuthRolesForEmail_(ss, email) : []);
+  var authRoles = authUser && swWorkflowUserActive_(authUser) ? swAuthRoles_(authUser.roles) : (email ? swAuthRolesForEmail_(ss, email) : []);
   var name = '';
   for (var i = 0; i < config.length; i++) {
     if (email && swNormEmail_(config[i]['Email']) === email) {
@@ -52,7 +52,7 @@ function swCurrentUserConfigOnly_(ss, readOnly) {
     name: name,
     isAdmin: isAdmin,
     isJoc: isJoc,
-    isRep: !!name,
+    isRep: swAuthHasRole_(authRoles, SW_OWNER_ROLES.SALES_REP),
     isDiamondOrderAdmin: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
     isDiamondOrderAssistant: swUserHasConfigRole_(config, email, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT) || swAuthHasRole_(authRoles, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
   };
@@ -203,142 +203,31 @@ function swReadPeopleIndex_(ss, config) {
     emailByName: {},
     assistedRoster: []
   };
-  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
-  var lastRow = sh ? sh.getLastRow() : 0;
-  if (sh && lastRow >= 2) {
-    var firstColumns = null;
-    try {
-      firstColumns = sh.getRange(1, 1, lastRow, 4).getDisplayValues();
-    } catch (_) {}
-    var useFastColumns = firstColumns && swPeopleIndexFastHeadersMatch_(firstColumns[0]);
-    var pairs = [];
-    var assistedNameCol = -1;
-    var assistedEmailCol = -1;
-    var neededCols = [];
-    var minCol = 0;
-    var maxCol = 0;
-    var uniqueCols = [];
-    var readSparse = false;
-    var values = [];
-    var sparseValues = {};
-
-    if (useFastColumns) {
-      pairs = [[0, 1], [2, 3]];
-      assistedNameCol = 2;
-      assistedEmailCol = 3;
-      neededCols = [0, 1, 2, 3];
-      uniqueCols = neededCols;
-      maxCol = 3;
-      values = firstColumns.slice(1);
-    } else {
-      var lastCol = sh.getLastColumn();
-      var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
-      var H = swHeaderMapFromArray_(headers);
-      pairs = [
-        [swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email'])],
-        [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
-      ];
-      assistedNameCol = swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']);
-      assistedEmailCol = swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']);
-      pairs.forEach(function (pair) {
-        if (pair[0] >= 0) neededCols.push(pair[0]);
-        if (pair[1] >= 0) neededCols.push(pair[1]);
-      });
-      if (assistedNameCol >= 0) neededCols.push(assistedNameCol);
-      if (assistedEmailCol >= 0) neededCols.push(assistedEmailCol);
+  swReadCanonicalWorkflowPeople_(ss, { activeOnly: true }).forEach(function (user) {
+    if (user.email && user.name) {
+      out.nameByEmail[user.email] = out.nameByEmail[user.email] || user.name;
+      out.emailByName[swNorm_(user.name)] = out.emailByName[swNorm_(user.name)] || user.email;
     }
-
-    var seenAssisted = {};
-    if (neededCols.length) {
-      if (!useFastColumns) {
-        minCol = Math.min.apply(null, neededCols);
-        maxCol = Math.max.apply(null, neededCols);
-        uniqueCols = swUniqueNumberList_(neededCols);
-        readSparse = (maxCol - minCol + 1) > uniqueCols.length + 2;
-        values = readSparse ? [] : sh.getRange(2, minCol + 1, lastRow - 1, maxCol - minCol + 1).getDisplayValues();
-        if (readSparse) {
-          uniqueCols.forEach(function (col) {
-            sparseValues[col] = sh.getRange(2, col + 1, lastRow - 1, 1).getDisplayValues();
-          });
-        }
-      }
-      var dropdownCell = function (row, originalCol) {
-        if (originalCol < 0) return '';
-        if (readSparse) return sparseValues[originalCol] && sparseValues[originalCol][row] ? sparseValues[originalCol][row][0] : '';
-        return originalCol >= 0 ? row[originalCol - minCol] : '';
-      };
-
-      for (var i = 0; i < lastRow - 1; i++) {
-        var row = readSparse ? i : values[i];
-        pairs.forEach(function (pair) {
-          var nameCol = pair[0];
-          var emailCol = pair[1];
-          if (nameCol < 0 || emailCol < 0) return;
-          var name = swTrim_(dropdownCell(row, nameCol));
-          var email = swNormEmail_(dropdownCell(row, emailCol));
-          if (name && email) {
-            out.emailByName[swNorm_(name)] = out.emailByName[swNorm_(name)] || email;
-            out.nameByEmail[email] = out.nameByEmail[email] || name;
-          }
-        });
-
-        if (assistedNameCol >= 0) {
-          var assistedName = swTrim_(dropdownCell(row, assistedNameCol));
-          var assistedEmail = assistedEmailCol >= 0 ? swNormEmail_(dropdownCell(row, assistedEmailCol)) : '';
-          var assistedKey = swNorm_(assistedName) + '|' + assistedEmail;
-          if (assistedName && !seenAssisted[assistedKey]) {
-            seenAssisted[assistedKey] = true;
-            out.assistedRoster.push({ name: assistedName, email: assistedEmail });
-          }
-        }
-      }
-    }
-  }
-
-  (config || []).forEach(function (row) {
-    var email = swNormEmail_(row['Email']);
-    var name = swTrim_(row['Name'] || row['Key']);
-    if (email && name) {
-      out.nameByEmail[email] = out.nameByEmail[email] || name;
-      out.emailByName[swNorm_(name)] = out.emailByName[swNorm_(name)] || email;
+    if (swWorkflowUserHasSchedulableRole_(user, SW_OWNER_ROLES.JOC)) {
+      out.assistedRoster.push({ name: user.name, email: user.email });
     }
   });
 
   return out;
 }
 
-function swPeopleIndexFastHeadersMatch_(headers) {
-  headers = headers || [];
-  var assignedNameKey = swHeaderKey_(headers[0]);
-  var assignedEmailKey = swHeaderKey_(headers[1]);
-  var assignedName = assignedNameKey === swHeaderKey_('Client Advisor') || assignedNameKey === swHeaderKey_('Assigned Rep');
-  var assignedEmail = assignedEmailKey === swHeaderKey_('Client Advisor Email') || assignedEmailKey === swHeaderKey_('Assigned Rep Email');
-  var assistedNameKey = swHeaderKey_(headers[2]);
-  var assistedEmailKey = swHeaderKey_(headers[3]);
-  var assistedName = assistedNameKey === swHeaderKey_('Assisted Rep') || assistedNameKey === swHeaderKey_('Assistant Rep');
-  var assistedEmail = assistedEmailKey === swHeaderKey_('Assisted Rep Email') || assistedEmailKey === swHeaderKey_('Assistant Rep Email');
-  return assignedName && assignedEmail && assistedName && assistedEmail;
-}
-
 function swReadAssistedRoster_(ss) {
-  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
   var out = [];
-  if (!sh || sh.getLastRow() < 2) return out;
-  var values = sh.getDataRange().getDisplayValues();
-  var headers = values[0].map(function (h) { return swTrim_(h); });
-  var H = swHeaderMapFromArray_(headers);
-  var nameCol = swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']);
-  var emailCol = swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']);
-  if (nameCol < 0) return out;
   var seen = {};
-  for (var i = 1; i < values.length; i++) {
-    var name = swTrim_(values[i][nameCol]);
-    var email = emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : '';
+  swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, activeOnly: true }).forEach(function (user) {
+    if (!swWorkflowUserHasSchedulableRole_(user, SW_OWNER_ROLES.JOC)) return;
+    var name = user.name;
+    var email = user.email;
     var key = swNorm_(name) + '|' + email;
-    if (!name || seen[key]) continue;
+    if (!name || seen[key]) return;
     seen[key] = true;
     out.push({ name: name, email: email });
-  }
+  });
   return out;
 }
 

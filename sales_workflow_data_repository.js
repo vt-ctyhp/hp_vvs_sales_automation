@@ -5,56 +5,58 @@
 var SW_APPOINTMENT_ROOT_ROW_CACHE_SECONDS = 5 * 60;
 
 function swReadRosterAvailabilityIndex_(ss) {
-  var out = { exists: false, schemaOk: false, byName: {} };
+  var out = { exists: false, schemaOk: false, byName: {}, byEmail: {} };
   var roster = ss.getSheetByName(SW_SHEETS.ROSTER);
-  if (!roster || roster.getLastRow() < 2) return out;
-  out.exists = true;
+  var rosterRows = swReadEmployeeRosterRows_(ss);
+  var rosterByEmail = {};
+  var rosterByName = {};
+  rosterRows.forEach(function (row) {
+    if (row.email && !rosterByEmail[row.email]) rosterByEmail[row.email] = row;
+    if (row.name && !rosterByName[swNorm_(row.name)]) rosterByName[swNorm_(row.name)] = row;
+  });
+  var users = swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, includeInactive: true });
+  if (!roster && !users.length) return out;
+  out.exists = !!(roster || users.length);
 
-  var values = roster.getDataRange().getDisplayValues();
-  var headers = values[0].map(function (h) { return swTrim_(h); });
-  var H = swHeaderMapFromArray_(headers);
-  var repCol = swPickIndex_(H, ['Rep', 'Name', 'Team Member']);
-  var emailCol = swPickIndex_(H, ['Email', 'Rep Email']);
-  var roleCol = swPickIndex_(H, ['Role', 'Roles']);
-  var activeCol = swPickIndex_(H, ['Active?', 'Active']);
-  var defaultJocCol = swPickIndex_(H, ['Default JOC', 'Linked JOC', 'JOC Partner']);
-  var coverageEnabledCol = swPickIndex_(H, ['Assisted Coverage Enabled?', 'Coverage Enabled?']);
-  var coveragePartnerCol = swPickIndex_(H, ['Assisted Coverage Partner', 'Coverage Partner']);
-  var dayCols = {
-    Sun: swPickIndex_(H, ['Sun']),
-    Mon: swPickIndex_(H, ['Mon']),
-    Tue: swPickIndex_(H, ['Tue']),
-    Wed: swPickIndex_(H, ['Wed']),
-    Thu: swPickIndex_(H, ['Thu']),
-    Fri: swPickIndex_(H, ['Fri']),
-    Sat: swPickIndex_(H, ['Sat'])
-  };
-  out.schemaOk = repCol >= 0 && Object.keys(dayCols).some(function (day) { return dayCols[day] >= 0; });
-  if (!out.schemaOk) return out;
-
-  for (var i = 1; i < values.length; i++) {
-    var rowName = swTrim_(values[i][repCol]);
-    if (!rowName) continue;
-    var row = {
-      name: rowName,
-      email: emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : '',
-      role: roleCol >= 0 ? swTrim_(values[i][roleCol]) : '',
-      active: activeCol < 0 || !swTrim_(values[i][activeCol]) || swTruthy_(values[i][activeCol]),
-      defaultJoc: defaultJocCol >= 0 ? swTrim_(values[i][defaultJocCol]) : '',
-      coverageEnabled: coverageEnabledCol < 0 || !swTrim_(values[i][coverageEnabledCol]) || swTruthy_(values[i][coverageEnabledCol]),
-      coveragePartner: coveragePartnerCol >= 0 ? swTrim_(values[i][coveragePartnerCol]) : '',
-      days: {}
+  out.schemaOk = true;
+  if (roster) {
+    var values = roster.getDataRange().getDisplayValues();
+    var headers = values[0].map(function (h) { return swTrim_(h); });
+    var H = swHeaderMapFromArray_(headers);
+    var repCol = swPickIndex_(H, ['Rep', 'Name', 'Team Member']);
+    var dayCols = {
+      Sun: swPickIndex_(H, ['Sun']),
+      Mon: swPickIndex_(H, ['Mon']),
+      Tue: swPickIndex_(H, ['Tue']),
+      Wed: swPickIndex_(H, ['Wed']),
+      Thu: swPickIndex_(H, ['Thu']),
+      Fri: swPickIndex_(H, ['Fri']),
+      Sat: swPickIndex_(H, ['Sat'])
     };
-    Object.keys(dayCols).forEach(function (day) {
-      row.days[day] = dayCols[day] >= 0 ? swTruthy_(values[i][dayCols[day]]) : null;
-    });
-    out.byName[swNorm_(rowName)] = row;
+    out.schemaOk = repCol >= 0 && Object.keys(dayCols).some(function (day) { return dayCols[day] >= 0; });
+    if (!out.schemaOk) return out;
   }
+
+  users.forEach(function (user) {
+    var rosterRow = (user.email && rosterByEmail[user.email]) || rosterByName[swNorm_(user.name)] || null;
+    var row = {
+      name: user.name,
+      email: user.email,
+      role: user.scheduleRole,
+      active: user.active !== false && (!rosterRow || rosterRow.active !== false),
+      defaultJoc: rosterRow ? rosterRow.defaultJoc || '' : '',
+      coverageEnabled: !rosterRow || rosterRow.coverageEnabled !== false,
+      coveragePartner: rosterRow ? rosterRow.coveragePartner || '' : '',
+      days: rosterRow && rosterRow.days ? rosterRow.days : swDefaultEmployeeScheduleDays_()
+    };
+    out.byName[swNorm_(row.name)] = row;
+    if (row.email) out.byEmail[row.email] = row;
+  });
   return out;
 }
 
 function swReadScheduleChangesIndex_(ss) {
-  var out = { byNameDate: {} };
+  var out = { byNameDate: {}, byEmailDate: {} };
   var sh = ss.getSheetByName(SW_SHEETS.SCHEDULE_CHANGES);
   if (!sh || sh.getLastRow() < 2) return out;
 
@@ -86,6 +88,9 @@ function swReadScheduleChangesIndex_(ss) {
       notes: notesCol >= 0 ? swTrim_(values[i][notesCol]) : '',
       rowNumber: i + 1
     };
+    if (out.byNameDate[name + '|' + date].email) {
+      out.byEmailDate[out.byNameDate[name + '|' + date].email + '|' + date] = out.byNameDate[name + '|' + date];
+    }
   }
   return out;
 }
@@ -121,21 +126,34 @@ function swReadEmployeeScheduleAdminData_(ss) {
 }
 
 function swReadEmployeeSchedulePeople_(ss) {
-  var byName = {};
+  var rosterByEmail = {};
+  var rosterByName = {};
   swReadEmployeeRosterRows_(ss).forEach(function (row) {
-    byName[swNorm_(row.name)] = row;
+    if (row.email && !rosterByEmail[row.email]) rosterByEmail[row.email] = row;
+    if (row.name && !rosterByName[swNorm_(row.name)]) rosterByName[swNorm_(row.name)] = row;
   });
 
-  var options = swReadAssignmentOptions_(ss);
-  swEmployeeScheduleSeedPeople_(byName, options.salesReps || [], SW_OWNER_ROLES.SALES_REP);
-  swEmployeeScheduleSeedPeople_(byName, options.jocReps || [], SW_OWNER_ROLES.JOC);
-
-  var qualifications = swReadRepQualificationMap_(ss);
-  var defaultJocByAdvisor = swReadDefaultJocByAdvisor_(ss);
-  Object.keys(byName).forEach(function (key) {
-    var row = byName[key];
-    if (!row.defaultJoc && defaultJocByAdvisor[key]) row.defaultJoc = defaultJocByAdvisor[key];
-    var q = qualifications[swNorm_(row.name)] || null;
+  var people = [];
+  var seenEmails = {};
+  var seenRosterRows = {};
+  var qualifications = swReadRepQualificationIndex_(ss);
+  swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, includeInactive: true }).forEach(function (user) {
+    var roster = (user.email && rosterByEmail[user.email]) || rosterByName[swNorm_(user.name)] || null;
+    var row = {
+      rowNumber: roster ? roster.rowNumber : 0,
+      name: user.name,
+      email: user.email,
+      role: user.scheduleRole,
+      active: user.active !== false && (!roster || roster.active !== false),
+      userActive: user.active !== false,
+      rosterActive: !roster || roster.active !== false,
+      identityStatus: 'canonical',
+      defaultJoc: roster ? roster.defaultJoc || '' : '',
+      coverageEnabled: !roster || roster.coverageEnabled !== false,
+      coveragePartner: roster ? roster.coveragePartner || '' : '',
+      days: roster && roster.days ? roster.days : swDefaultEmployeeScheduleDays_()
+    };
+    var q = (row.email && qualifications.byEmail[row.email]) || qualifications.byName[swNorm_(row.name)] || null;
     if (q) {
       row.email = row.email || q.email || '';
       row.skills = q.skills;
@@ -145,36 +163,31 @@ function swReadEmployeeSchedulePeople_(ss) {
       row.skills = row.skills || swDefaultRepSkills_();
       row.skillNotes = row.skillNotes || '';
     }
-    row.role = swNormalizeEmployeeRoleList_(row.role || row.inferredRole || '');
-    delete row.inferredRole;
+    people.push(row);
+    if (row.email) seenEmails[row.email] = true;
+    if (roster && roster.rowNumber) seenRosterRows[roster.rowNumber] = true;
   });
 
-  return Object.keys(byName).map(function (key) {
-    return byName[key];
-  }).sort(function (a, b) {
+  swReadEmployeeRosterRows_(ss).forEach(function (row) {
+    if (row.rowNumber && seenRosterRows[row.rowNumber]) return;
+    if (row.email && seenEmails[row.email]) return;
+    if (!row.role && row.active === false) return;
+    people.push(swMergeObjects_(row, {
+      active: false,
+      userActive: false,
+      rosterActive: row.active !== false,
+      identityStatus: 'orphan',
+      skills: swDefaultRepSkills_(),
+      skillNotes: 'No matching active workflow user.'
+    }));
+  });
+
+  return people.sort(function (a, b) {
     var ar = swEmployeePrimaryRoleRank_(a.role);
     var br = swEmployeePrimaryRoleRank_(b.role);
     if (ar !== br) return ar - br;
     return String(a.name || '').localeCompare(String(b.name || ''));
   });
-}
-
-function swReadDefaultJocByAdvisor_(ss) {
-  var out = {};
-  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
-  if (!sh || sh.getLastRow() < 2) return out;
-  var values = sh.getDataRange().getDisplayValues();
-  var headers = values[0].map(function (h) { return swTrim_(h); });
-  var H = swHeaderMapFromArray_(headers);
-  var advisorCol = swPickIndex_(H, ['Client Advisor', 'Assigned Rep']);
-  var jocCol = swPickIndex_(H, ['JOC', 'Assisted Rep', 'Assistant Rep']);
-  if (advisorCol < 0 || jocCol < 0) return out;
-  for (var i = 1; i < values.length; i++) {
-    var advisor = swTrim_(values[i][advisorCol]);
-    var joc = swTrim_(values[i][jocCol]);
-    if (advisor && joc && !out[swNorm_(advisor)]) out[swNorm_(advisor)] = joc;
-  }
-  return out;
 }
 
 function swReadEmployeeRosterRows_(ss) {
@@ -220,31 +233,79 @@ function swReadEmployeeRosterRows_(ss) {
   return out;
 }
 
-function swEmployeeScheduleSeedPeople_(byName, list, role) {
-  (list || []).forEach(function (item) {
-    var name = swTrim_(item && item.name);
-    if (!name) return;
-    var key = swNorm_(name);
-    var existing = byName[key];
-    if (!existing) {
-      existing = {
-        rowNumber: 0,
-        name: name,
-        email: swNormEmail_(item.email || ''),
-        role: '',
-        inferredRole: role,
-        active: true,
-        defaultJoc: '',
-        coverageEnabled: true,
-        coveragePartner: '',
-        days: swDefaultEmployeeScheduleDays_(),
-        skills: swDefaultRepSkills_()
-      };
-      byName[key] = existing;
+function swReadCanonicalWorkflowPeople_(ss, options) {
+  options = options || {};
+  var out = [];
+  var rows = [];
+  try {
+    rows = swAuthReadPublicUserRowsCached_(ss) || [];
+  } catch (_) {
+    var sh = ss.getSheetByName(SW_SHEETS.USERS);
+    rows = sh ? swReadSheetObjectsExpectedHeaders_(sh, SW_AUTH_USER_HEADERS).map(function (row) {
+      return swAuthPublicUserRow_(row);
+    }) : [];
+  }
+  rows.forEach(function (row) {
+    row = row || {};
+    var email = swNormEmail_(row.email || row['Email']);
+    if (!email) return;
+    var name = swTrim_(row.name || row['Name']) || email;
+    var roles = swAuthRoles_(row.roles || row['Roles']);
+    var scheduleRole = swWorkflowSchedulableRoleList_(roles);
+    var active = swWorkflowUserActive_(row);
+    if (options.activeOnly && !active) return;
+    if (options.schedulableOnly && !scheduleRole) return;
+    out.push({
+      email: email,
+      name: name,
+      roles: roles,
+      role: roles.join(','),
+      scheduleRole: scheduleRole,
+      active: active,
+      passwordSet: !!(row.passwordSet || row['Password Hash'])
+    });
+  });
+  return out;
+}
+
+function swCanonicalWorkflowPeopleIndex_(ss, options) {
+  var users = swReadCanonicalWorkflowPeople_(ss, options || {});
+  var out = {
+    users: users,
+    byEmail: {},
+    byName: {},
+    activeJocByName: {},
+    activeJocByEmail: {}
+  };
+  users.forEach(function (user) {
+    if (user.email && !out.byEmail[user.email]) out.byEmail[user.email] = user;
+    if (user.name && !out.byName[swNorm_(user.name)]) out.byName[swNorm_(user.name)] = user;
+    if (user.active !== false && swWorkflowUserHasSchedulableRole_(user, SW_OWNER_ROLES.JOC)) {
+      out.activeJocByName[swNorm_(user.name)] = user;
+      out.activeJocByEmail[user.email] = user;
     }
-    if (!existing.email && item.email) existing.email = swNormEmail_(item.email);
-    existing.inferredRole = swNormalizeEmployeeRoleList_([existing.inferredRole, role].filter(Boolean).join(','));
-    if (!existing.role) existing.role = existing.inferredRole;
+  });
+  return out;
+}
+
+function swWorkflowSchedulableRoleList_(roles) {
+  var out = [];
+  roles = Array.isArray(roles) ? roles : swAuthRoles_(roles || '');
+  if (swAuthHasRole_(roles, SW_OWNER_ROLES.SALES_REP)) out.push(SW_OWNER_ROLES.SALES_REP);
+  if (swAuthHasRole_(roles, SW_OWNER_ROLES.JOC)) out.push(SW_OWNER_ROLES.JOC);
+  return out.join(',');
+}
+
+function swWorkflowUserActive_(row) {
+  row = row || {};
+  var value = row.active;
+  if (value == null || value === '') value = row['Active?'];
+  return value == null || swTrim_(value) === '' || swTruthy_(value);
+}
+
+function swWorkflowUserHasSchedulableRole_(user, role) {
+  return swNormalizeEmployeeRoleList_((user && (user.scheduleRole || user.role || user.roles)) || '').split(',').some(function (item) {
+    return swWorkflowRoleMatches_(item, role);
   });
 }
 
@@ -286,9 +347,18 @@ function swEmployeePrimaryRoleRank_(role) {
 }
 
 function swReadRepQualificationMap_(ss) {
+  var index = swReadRepQualificationIndex_(ss);
   var out = {};
+  Object.keys(index.byName).forEach(function (key) { out[key] = index.byName[key]; });
+  Object.keys(index.byEmail).forEach(function (key) { out[key] = index.byEmail[key]; });
+  return out;
+}
+
+function swReadRepQualificationIndex_(ss) {
+  var out = {};
+  var indexed = { byName: {}, byEmail: {}, rows: [] };
   var sh = ss.getSheetByName(SW_SHEETS.REP_QUALIFICATIONS);
-  if (!sh || sh.getLastRow() < 2) return out;
+  if (!sh || sh.getLastRow() < 2) return indexed;
   var values = sh.getDataRange().getDisplayValues();
   var headers = values[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(headers);
@@ -301,11 +371,12 @@ function swReadRepQualificationMap_(ss) {
     active: swPickIndex_(H, ['Active?', 'Active']),
     notes: swPickIndex_(H, ['Notes', 'Note'])
   };
-  if (C.name < 0) return out;
+  if (C.name < 0) return indexed;
   for (var i = 1; i < values.length; i++) {
     var name = swTrim_(values[i][C.name]);
     if (!name) continue;
-    out[swNorm_(name)] = {
+    var item = {
+      rowNumber: i + 1,
       name: name,
       email: C.email >= 0 ? swNormEmail_(values[i][C.email]) : '',
       active: C.active < 0 || !swTrim_(values[i][C.active]) || swTruthy_(values[i][C.active]),
@@ -316,8 +387,11 @@ function swReadRepQualificationMap_(ss) {
         generalAppointment: C.general < 0 || !swTrim_(values[i][C.general]) || swTruthy_(values[i][C.general])
       }
     };
+    indexed.rows.push(item);
+    indexed.byName[swNorm_(name)] = item;
+    if (item.email) indexed.byEmail[item.email] = item;
   }
-  return out;
+  return indexed;
 }
 
 function swNormalizeNaturalSkill_(value) {
@@ -387,6 +461,61 @@ function swEmployeeScheduleToday_(ss, people) {
       availableUntil: override ? override.availableUntil || '' : ''
     };
   });
+}
+
+function swCanonicalizeEmployeeScheduleRowsForWrite_(ss, people) {
+  var index = swCanonicalWorkflowPeopleIndex_(ss, { schedulableOnly: true, includeInactive: true });
+  var activeJocs = swCanonicalWorkflowPeopleIndex_(ss, { schedulableOnly: true, activeOnly: true });
+  var out = [];
+  var seenEmails = {};
+  (people || []).forEach(function (person) {
+    person = person || {};
+    var email = swNormEmail_(person.email || '');
+    var name = swTrim_(person.name || '');
+    var user = email ? index.byEmail[email] : null;
+    if (!user && name) user = index.byName[swNorm_(name)] || null;
+    if (!email) throw new Error('Roster row for "' + (name || 'unnamed person') + '" is missing a workflow user email.');
+    if (!user) throw new Error('Roster row for "' + (name || email) + '" does not match an active workflow user.');
+    if (seenEmails[user.email]) throw new Error('Duplicate roster row for workflow user email: ' + user.email);
+    seenEmails[user.email] = true;
+    var role = user.scheduleRole || swWorkflowSchedulableRoleList_(user.roles);
+    if (!role) throw new Error('Workflow user "' + user.name + '" does not have Client Advisor or JOC access.');
+    var defaultJoc = swCanonicalJocNameForScheduleWrite_(activeJocs, person.defaultJoc, user);
+    var coveragePartner = swCanonicalJocNameForScheduleWrite_(activeJocs, person.coveragePartner, user);
+    var days = person.days || {};
+    out.push({
+      name: user.name,
+      email: user.email,
+      role: role,
+      active: user.active !== false && swTruthy_(person.active == null ? 'Y' : person.active),
+      days: {
+        Mon: swTruthy_(days.Mon),
+        Tue: swTruthy_(days.Tue),
+        Wed: swTruthy_(days.Wed),
+        Thu: swTruthy_(days.Thu),
+        Fri: swTruthy_(days.Fri),
+        Sat: swTruthy_(days.Sat),
+        Sun: swTruthy_(days.Sun)
+      },
+      defaultJoc: defaultJoc,
+      coverageEnabled: person.coverageEnabled == null ? true : swTruthy_(person.coverageEnabled),
+      coveragePartner: coveragePartner,
+      skills: person.skills || swDefaultRepSkills_(),
+      skillNotes: person.skillNotes || ''
+    });
+  });
+  return out;
+}
+
+function swCanonicalJocNameForScheduleWrite_(index, value, owner) {
+  var raw = swTrim_(value || '');
+  if (!raw) return '';
+  var user = index.activeJocByName[swNorm_(raw)] || index.activeJocByEmail[swNormEmail_(raw)] || null;
+  if (!user) throw new Error('JOC routing value "' + raw + '" must be an active workflow user with JOC access.');
+  if (owner && user.email && owner.email && user.email === owner.email) {
+    throw new Error('JOC routing value for "' + owner.name + '" cannot point to the same person.');
+  }
+  return user.name;
 }
 
 function swScheduleDateKey_(value) {

@@ -1063,8 +1063,9 @@ function sw_adminSaveEmployeeSchedules(authToken, data) {
 
     var people = data.people || data.rows || [];
     if (!Array.isArray(people)) throw new Error('Schedule rows must be an array.');
-    var written = swWriteEmployeeRosterRows_(ss, people, user);
-    swWriteRepQualificationRows_(ss, people, user);
+    var canonicalPeople = swCanonicalizeEmployeeScheduleRowsForWrite_(ss, people);
+    var written = swWriteEmployeeRosterRows_(ss, canonicalPeople, user);
+    swWriteRepQualificationRows_(ss, canonicalPeople, user);
     if (data.settings && data.settings.clientAdvisorRoundRobin != null) {
       swSetWorkflowConfigValue_(ss, 'SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN',
         swTruthy_(data.settings.clientAdvisorRoundRobin) ? 'Y' : 'N');
@@ -1117,6 +1118,69 @@ function sw_adminDeleteScheduleChange(authToken, name, date) {
   });
 }
 
+function sw_adminAuditWorkflowPeopleData(authToken) {
+  return swTimed_('sw_adminAuditWorkflowPeopleData', function () {
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!user.isAdmin) throw new Error('Admin access required.');
+    return swAuditWorkflowPeopleData_(ss);
+  });
+}
+
+function sw_adminMigrateWorkflowPeople(authToken, options) {
+  return swTimed_('sw_adminMigrateWorkflowPeople', function () {
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!user.isAdmin) throw new Error('Admin access required.');
+    options = options || {};
+    var dryRun = options.dryRun !== false;
+    var actions = [];
+    var warnings = [];
+    var before = swAuditWorkflowPeopleData_(ss);
+
+    swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, includeInactive: true }).forEach(function (person) {
+      actions.push('Ensure roster extension for ' + person.name + ' <' + person.email + '>');
+      if (!dryRun) {
+        try {
+          swEnsureOrSyncRosterForWorkflowUser_(ss, person, user);
+        } catch (err) {
+          warnings.push('Skipped roster extension for ' + person.name + ': ' + swTrim_(err && err.message || err));
+        }
+      }
+    });
+
+    swMigrateWorkflowIdentitySheet_(ss, SW_SHEETS.ROSTER, ['Rep', 'Name', 'Team Member'], ['Email', 'Rep Email'], ['Role', 'Roles'], '', dryRun, actions);
+    swMigrateWorkflowIdentitySheet_(ss, SW_SHEETS.REP_QUALIFICATIONS, ['Rep Name', 'Rep', 'Name'], ['Rep Email', 'Email'], [], SW_OWNER_ROLES.SALES_REP, dryRun, actions);
+    swMigrateWorkflowIdentitySheet_(ss, SW_SHEETS.SCHEDULE_CHANGES, ['Rep Name', 'Rep', 'Name'], ['Email', 'Rep Email'], ['Role', 'Roles'], '', dryRun, actions);
+    swMigrateDefaultJocPairsFromDropdown_(ss, dryRun, actions, warnings);
+
+    if (options.clearDropdownIdentityData) {
+      swBackupAndClearDropdownIdentityData_(ss, dryRun, actions, warnings);
+    }
+
+    if (!dryRun) {
+      try { if (typeof swClearAssignmentOptionsMemoryCache_ === 'function') swClearAssignmentOptionsMemoryCache_(ss); } catch (_) {}
+      try { CacheService.getScriptCache().remove('sw:assignmentOptions:v1:' + ss.getId()); } catch (_) {}
+    }
+    var generation = null;
+    if (!dryRun) {
+      try { generation = sw_generateSalesWorkflowTasks(); } catch (err) { generation = { ok: false, error: swTrim_(err && err.message || err) }; }
+    }
+    return {
+      ok: true,
+      dryRun: dryRun,
+      generatedAt: swIso_(new Date()),
+      actions: actions,
+      warnings: warnings,
+      generation: generation,
+      auditBefore: before,
+      auditAfter: dryRun ? null : swAuditWorkflowPeopleData_(ss)
+    };
+  });
+}
+
 /**
  * Read-only detail: returns task payload, rendered template data, and allowed actions.
  */
@@ -1142,6 +1206,8 @@ function sw_getTaskDetail(authToken, taskId) {
     var canAct = swCanActOnTask_(task, user);
 
     var payload = swParseJson_(task.payloadJson, {});
+    var appointmentAiBrief = swTaskDetailAppointmentAiBrief_(ss, task, payload);
+    payload = swTaskDetailHydrateAiBriefPayload_(task, payload, appointmentAiBrief);
     mark('payloadParse');
     var template = ctx.templates[task.taskType] || swDefaultTemplate_(task.taskType);
     var renderData = swRenderDataForTask_(task, payload);
@@ -1181,6 +1247,7 @@ function sw_getTaskDetail(authToken, taskId) {
       attachments: attachments,
       formOptions: formOptions,
       appointmentArtifacts: appointmentArtifacts,
+      appointmentAiBrief: appointmentAiBrief,
       appointmentUploadFolders: appointmentUploadFolders,
       assignmentOptions: assignmentOptions,
       missingFields: missingFields,
@@ -1190,6 +1257,35 @@ function sw_getTaskDetail(authToken, taskId) {
       canAdmin: user.isAdmin
     };
   });
+}
+
+function swTaskDetailAppointmentAiBrief_(ss, task, payload) {
+  if (!(task && (task.taskType === SW_TASKS.APPROVE || task.taskType === SW_TASKS.FINAL))) return null;
+  if (typeof swAppointmentAiBriefForRoot_ !== 'function') return null;
+  var root = swTrim_(task.root || task.appt ||
+    swDeepValue_(payload, ['appointment', 'root']) ||
+    swDeepValue_(payload, ['appointment', 'appt']) || '');
+  if (!root) return null;
+  return swAppointmentAiBriefForRoot_(ss, root);
+}
+
+function swTaskDetailHydrateAiBriefPayload_(task, payload, aiBrief) {
+  payload = payload || {};
+  if (!(task && aiBrief && aiBrief.hasAiBrief)) return payload;
+  payload.extra = payload.extra || {};
+  var extra = payload.extra;
+  extra.artifactId = extra.artifactId || aiBrief.artifactId || '';
+  extra.workflowStage = extra.workflowStage || aiBrief.workflowStage || '';
+  extra.transcriptDocUrl = extra.transcriptDocUrl || aiBrief.transcriptDocUrl || '';
+  extra.summaryDocUrl = extra.summaryDocUrl || aiBrief.summaryDocUrl || '';
+  extra.summaryJsonUrl = extra.summaryJsonUrl || aiBrief.summaryJsonUrl || '';
+  extra.salesBrief = aiBrief.salesBrief || extra.salesBrief || '';
+  extra.reviewFlags = (aiBrief.reviewFlags || []).length ? aiBrief.reviewFlags.join('\n') : (extra.reviewFlags || '');
+  if (task.taskType === SW_TASKS.APPROVE) {
+    extra.clientFollowUpDraft = aiBrief.clientFollowUpDraft || extra.clientFollowUpDraft || '';
+    extra.recapDraft = aiBrief.clientFollowUpDraft || extra.recapDraft || '';
+  }
+  return payload;
 }
 
 function swTaskDetailShouldLoadAppointmentArtifacts_(task) {
@@ -1599,12 +1695,14 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
   var values = master.getRange(row, 1, 1, master.getLastColumn()).getDisplayValues()[0];
   var root = headers.root ? swTrim_(values[headers.root - 1]) : '';
 
-  var assignedName = swTrim_(data.assignedRep);
-  var assistedName = swTrim_(data.assistedRep);
   var reason = swTrim_(data.reason);
   var options = swReadAssignmentOptions_(ss);
-  var assignedEmail = swTrim_(data.assignedRepEmail) || swAssignmentEmailForName_(assignedName, options.salesReps);
-  var assistedEmail = swTrim_(data.assistedRepEmail) || swAssignmentEmailForName_(assistedName, options.jocReps);
+  var assignedOwner = swAssignmentCanonicalOwner_(data.assignedRep, data.assignedRepEmail, options.salesReps, 'Client Advisor');
+  var assistedOwner = swAssignmentCanonicalOwner_(data.assistedRep, data.assistedRepEmail, options.jocReps, 'JOC');
+  var assignedName = assignedOwner.name;
+  var assignedEmail = assignedOwner.email;
+  var assistedName = assistedOwner.name;
+  var assistedEmail = assistedOwner.email;
 
   var targetRows = [row];
   if (root && headers.root) {
@@ -1696,28 +1794,12 @@ function swReadAssignmentOptions_(ss) {
     }
   } catch (_) {}
   var out = { salesReps: [], jocReps: [] };
-  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
-  if (sh && sh.getLastRow() >= 2 && sh.getLastColumn() >= 1) {
-    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
-    var H = swHeaderMapFromArray_(headers);
-    var C = {
-      salesName: swPickIndex_(H, ['Client Advisor', 'Assigned Rep']),
-      salesEmail: swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email']),
-      jocName: swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']),
-      jocEmail: swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email'])
-    };
-    var rowCount = sh.getLastRow() - 1;
-    var values = swReadSelectedRows_(sh, 2, rowCount, [C.salesName, C.salesEmail, C.jocName, C.jocEmail], 'display');
-    swPushAssignmentOptionsFromColumns_(out.salesReps, values, C.salesName, C.salesEmail, 0);
-    swPushAssignmentOptionsFromColumns_(out.jocReps, values, C.jocName, C.jocEmail, 0);
-  }
-
   try {
-    swAuthReadPublicUserRowsCached_(ss).forEach(function (row) {
-      var roles = swAuthRoles_(row['Roles'] || row.roles);
+    swReadCanonicalWorkflowPeople_(ss, { schedulableOnly: true, activeOnly: true }).forEach(function (row) {
+      var roles = row.roles || swAuthRoles_(row.role || '');
       var item = {
-        name: swTrim_(row['Name'] || row.name) || swNormEmail_(row['Email'] || row.email),
-        email: swNormEmail_(row['Email'] || row.email)
+        name: row.name || row.email,
+        email: row.email
       };
       if (swAuthHasRole_(roles, SW_OWNER_ROLES.SALES_REP)) swPushAssignmentOption_(out.salesReps, item);
       if (swAuthHasRole_(roles, 'JOC')) swPushAssignmentOption_(out.jocReps, item);
@@ -1743,16 +1825,6 @@ function swReadAssignmentOptions_(ss) {
   return out;
 }
 
-function swPushAssignmentOptionsFromColumns_(target, values, nameCol, emailCol, startIndex) {
-  if (nameCol < 0) return;
-  for (var i = Number(startIndex) || 0; i < values.length; i++) {
-    swPushAssignmentOption_(target, {
-      name: swTrim_(values[i][nameCol]),
-      email: emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : ''
-    });
-  }
-}
-
 function swPushAssignmentOption_(target, item) {
   if (!item || !item.name) return;
   for (var i = 0; i < target.length; i++) {
@@ -1764,12 +1836,26 @@ function swPushAssignmentOption_(target, item) {
   target.push({ name: item.name, email: item.email || '' });
 }
 
-function swAssignmentEmailForName_(name, options) {
-  name = swNorm_(name);
-  for (var i = 0; i < (options || []).length; i++) {
-    if (swNorm_(options[i].name) === name) return options[i].email || '';
+function swAssignmentCanonicalOwner_(name, email, options, label) {
+  name = swTrim_(name || '');
+  email = swNormEmail_(email || '');
+  if (!name && !email) return { name: '', email: '' };
+  var byName = null;
+  var byEmail = null;
+  (options || []).forEach(function (option) {
+    if (!option) return;
+    if (name && swNorm_(option.name) === swNorm_(name)) byName = byName || option;
+    if (email && swNormEmail_(option.email) === email) byEmail = byEmail || option;
+  });
+  if (byName && byEmail && swNormEmail_(byName.email) !== swNormEmail_(byEmail.email)) {
+    throw new Error(label + ' name/email conflict: "' + name + '" does not match ' + email + '.');
   }
-  return '';
+  var owner = byEmail || byName;
+  if (!owner) throw new Error(label + ' must be an active canonical workflow user: ' + (name || email));
+  return {
+    name: owner.name || name || email,
+    email: swNormEmail_(owner.email || email)
+  };
 }
 
 function swAssignmentOptionSort_(a, b) {
@@ -1890,8 +1976,13 @@ function swUpsertScheduleChangeRow_(ss, data, actor) {
   var date = swScheduleDateKey_(data.date || data.changeDate || data['Change Date']);
   if (!name) throw new Error('Select an employee.');
   if (!date) throw new Error('Select a valid change date.');
-  var role = swNormalizeEmployeeRoleList_(data.role || '');
-  var email = swNormEmail_(data.email || '') || swScheduleEmailForName_(ss, name);
+  var peopleIndex = swCanonicalWorkflowPeopleIndex_(ss, { schedulableOnly: true, includeInactive: true });
+  var email = swNormEmail_(data.email || '');
+  var canonicalUser = (email && peopleIndex.byEmail[email]) || peopleIndex.byName[swNorm_(name)] || null;
+  if (!canonicalUser) throw new Error('Schedule override employee must be a workflow user with Client Advisor or JOC access.');
+  name = canonicalUser.name;
+  email = canonicalUser.email;
+  var role = canonicalUser.scheduleRole || swWorkflowSchedulableRoleList_(canonicalUser.roles || '');
   var changeType = swTrim_(data.changeType || data.status || 'Full-day off');
   var now = swIso_(new Date());
   var actorLabel = actor ? (actor.name || actor.email || '') : '';
@@ -1958,6 +2049,376 @@ function swScheduleEmailForName_(ss, name) {
     if (swNorm_(people[i].name) === target) return swNormEmail_(people[i].email);
   }
   return '';
+}
+
+function swAuditWorkflowPeopleData_(ss) {
+  var userIndex = swWorkflowAuditUserIndex_(ss);
+  var out = {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    counts: {
+      users: userIndex.users.length,
+      activeSchedulableUsers: userIndex.users.filter(function (u) { return u.active && u.scheduleRole; }).length,
+      rosterRows: 0,
+      qualificationRows: 0,
+      scheduleChangeRows: 0,
+      dropdownIdentities: 0,
+      activeAppointments: 0
+    },
+    duplicateActiveEmails: [],
+    duplicateActiveNames: [],
+    conflicts: [],
+    orphanRosterRows: [],
+    orphanQualifications: [],
+    orphanScheduleChanges: [],
+    dropdownOnlyIdentities: [],
+    appointmentOwnersNotMapped: []
+  };
+
+  Object.keys(userIndex.activeEmails).forEach(function (email) {
+    if (userIndex.activeEmails[email].length > 1) out.duplicateActiveEmails.push({ email: email, users: userIndex.activeEmails[email] });
+  });
+  Object.keys(userIndex.activeScheduleNames).forEach(function (name) {
+    if (userIndex.activeScheduleNames[name].length > 1) out.duplicateActiveNames.push({ name: name, users: userIndex.activeScheduleNames[name] });
+  });
+
+  swReadEmployeeRosterRows_(ss).forEach(function (row) {
+    out.counts.rosterRows++;
+    var match = swAuditResolveCanonicalUser_(userIndex, row.email, row.name, '');
+    if (!match.user) out.orphanRosterRows.push(swAuditIdentityIssue_('roster', row, match.reason));
+    else swAuditPushIdentityConflict_(out, 'roster', row, match);
+  });
+
+  swReadRepQualificationIndex_(ss).rows.forEach(function (row) {
+    out.counts.qualificationRows++;
+    var match = swAuditResolveCanonicalUser_(userIndex, row.email, row.name, SW_OWNER_ROLES.SALES_REP);
+    if (!match.user) out.orphanQualifications.push(swAuditIdentityIssue_('qualification', row, match.reason));
+    else swAuditPushIdentityConflict_(out, 'qualification', row, match);
+  });
+
+  swReadEmployeeScheduleChanges_(ss).forEach(function (row) {
+    out.counts.scheduleChangeRows++;
+    var match = swAuditResolveCanonicalUser_(userIndex, row.email, row.name, '');
+    if (!match.user) out.orphanScheduleChanges.push(swAuditIdentityIssue_('scheduleChange', row, match.reason));
+    else swAuditPushIdentityConflict_(out, 'scheduleChange', row, match);
+  });
+
+  swReadDropdownIdentityEntries_(ss).forEach(function (entry) {
+    out.counts.dropdownIdentities++;
+    var match = swAuditResolveCanonicalUser_(userIndex, entry.email, entry.name, entry.role);
+    if (!match.user) out.dropdownOnlyIdentities.push(swAuditIdentityIssue_('dropdown', entry, match.reason));
+    else swAuditPushIdentityConflict_(out, 'dropdown', entry, match);
+  });
+
+  try {
+    swReadAppointments_(ss).forEach(function (rec) {
+      if (typeof swIsAppointmentActive_ === 'function' && !swIsAppointmentActive_(rec)) return;
+      out.counts.activeAppointments++;
+      swAuditAppointmentOwner_(out, userIndex, rec, SW_OWNER_ROLES.SALES_REP, rec.assignedRep, rec.assignedRepEmail);
+      swAuditAppointmentOwner_(out, userIndex, rec, SW_OWNER_ROLES.JOC, rec.assistedRep, rec.assistedRepEmail);
+    });
+  } catch (err) {
+    out.conflicts.push({ source: 'appointments', reason: 'APPOINTMENT_AUDIT_FAILED', message: swTrim_(err && err.message || err) });
+  }
+
+  return out;
+}
+
+function swWorkflowAuditUserIndex_(ss) {
+  var users = [];
+  var byEmail = {};
+  var byEmailAll = {};
+  var byName = {};
+  var activeEmails = {};
+  var activeScheduleNames = {};
+  swAuthReadUserRows_(ss, true).forEach(function (row) {
+    var email = swNormEmail_(row['Email']);
+    if (!email) return;
+    var roles = swAuthRoles_(row['Roles']);
+    var user = {
+      rowNumber: row.__rowNumber || 0,
+      email: email,
+      name: swTrim_(row['Name']) || email,
+      roles: roles,
+      role: roles.join(','),
+      scheduleRole: swWorkflowSchedulableRoleList_(roles),
+      active: swWorkflowUserActive_(row)
+    };
+    users.push(user);
+    if (!byEmail[email]) byEmail[email] = user;
+    if (!byEmailAll[email]) byEmailAll[email] = [];
+    byEmailAll[email].push(user);
+    if (!byName[swNorm_(user.name)]) byName[swNorm_(user.name)] = [];
+    byName[swNorm_(user.name)].push(user);
+    if (user.active) {
+      if (!activeEmails[email]) activeEmails[email] = [];
+      activeEmails[email].push({ name: user.name, email: user.email, roles: user.role });
+      if (user.scheduleRole) {
+        var nameKey = swNorm_(user.name);
+        if (!activeScheduleNames[nameKey]) activeScheduleNames[nameKey] = [];
+        activeScheduleNames[nameKey].push({ name: user.name, email: user.email, roles: user.role });
+      }
+    }
+  });
+  return { users: users, byEmail: byEmail, byEmailAll: byEmailAll, byName: byName, activeEmails: activeEmails, activeScheduleNames: activeScheduleNames };
+}
+
+function swAuditResolveCanonicalUser_(userIndex, email, name, requiredRole) {
+  email = swNormEmail_(email || '');
+  name = swTrim_(name || '');
+  var user = null;
+  if (email) {
+    var emailMatches = (userIndex.byEmailAll && userIndex.byEmailAll[email]) || (userIndex.byEmail[email] ? [userIndex.byEmail[email]] : []);
+    var activeEmailMatches = emailMatches.filter(function (candidate) { return candidate.active !== false; });
+    if (activeEmailMatches.length > 1) return { user: null, reason: 'DUPLICATE_EMAIL_MATCHES' };
+    if (activeEmailMatches.length === 1) user = activeEmailMatches[0];
+    else if (emailMatches.length === 1) user = emailMatches[0];
+    else if (emailMatches.length > 1) return { user: null, reason: 'DUPLICATE_EMAIL_MATCHES' };
+  }
+  var matchType = user ? 'email' : '';
+  if (!user && name) {
+    var matches = userIndex.byName[swNorm_(name)] || [];
+    var activeNameMatches = matches.filter(function (candidate) { return candidate.active !== false; });
+    if (activeNameMatches.length === 1) {
+      user = activeNameMatches[0];
+      matchType = 'name';
+    } else if (activeNameMatches.length > 1) {
+      return { user: null, reason: 'DUPLICATE_NAME_MATCHES' };
+    } else if (matches.length === 1) {
+      user = matches[0];
+      matchType = 'name';
+    } else if (matches.length > 1) {
+      return { user: null, reason: 'DUPLICATE_NAME_MATCHES' };
+    }
+  }
+  if (!user) return { user: null, reason: email ? 'EMAIL_NOT_FOUND' : 'NAME_NOT_FOUND' };
+  var roleMismatch = requiredRole && !swWorkflowUserHasSchedulableRole_(user, requiredRole);
+  return {
+    user: user,
+    matchType: matchType,
+    reason: '',
+    roleMismatch: !!roleMismatch,
+    inactive: user.active === false,
+    nameMismatch: name && swNorm_(name) !== swNorm_(user.name),
+    emailMismatch: email && email !== user.email
+  };
+}
+
+function swAuditIdentityIssue_(source, row, reason) {
+  return {
+    source: source,
+    rowNumber: row.rowNumber || row.sourceRow || '',
+    name: row.name || '',
+    email: row.email || '',
+    role: row.role || '',
+    reason: reason || 'NO_CANONICAL_USER'
+  };
+}
+
+function swAuditPushIdentityConflict_(out, source, row, match) {
+  var reasons = [];
+  if (match.roleMismatch) reasons.push('ROLE_MISMATCH');
+  if (match.inactive) reasons.push('INACTIVE_USER');
+  if (match.nameMismatch) reasons.push('NAME_MISMATCH');
+  if (match.emailMismatch) reasons.push('EMAIL_MISMATCH');
+  if (!reasons.length) return;
+  out.conflicts.push({
+    source: source,
+    rowNumber: row.rowNumber || row.sourceRow || '',
+    name: row.name || '',
+    email: row.email || '',
+    canonicalName: match.user.name,
+    canonicalEmail: match.user.email,
+    canonicalRoles: match.user.role,
+    reasons: reasons
+  });
+}
+
+function swAuditAppointmentOwner_(out, userIndex, rec, role, name, email) {
+  name = swTrim_(name || '');
+  email = swNormEmail_(email || '');
+  if (!name && !email) return;
+  var match = swAuditResolveCanonicalUser_(userIndex, email, name, role);
+  if (!match.user || match.roleMismatch || match.inactive || match.nameMismatch || match.emailMismatch) {
+    out.appointmentOwnersNotMapped.push({
+      rowNumber: rec.row,
+      root: rec.root || '',
+      appt: rec.appt || '',
+      customerName: rec.name || '',
+      role: role,
+      name: name,
+      email: email,
+      reason: !match.user ? match.reason : [match.roleMismatch && 'ROLE_MISMATCH', match.inactive && 'INACTIVE_USER', match.nameMismatch && 'NAME_MISMATCH', match.emailMismatch && 'EMAIL_MISMATCH'].filter(Boolean).join(',')
+    });
+  }
+}
+
+function swMigrateWorkflowIdentitySheet_(ss, sheetName, nameAliases, emailAliases, roleAliases, requiredRole, dryRun, actions) {
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var nameCol = swPickIndex_(H, nameAliases);
+  var emailCol = swPickIndex_(H, emailAliases);
+  var roleCol = roleAliases && roleAliases.length ? swPickIndex_(H, roleAliases) : -1;
+  if (nameCol < 0 && emailCol < 0) return 0;
+  var userIndex = swWorkflowAuditUserIndex_(ss);
+  var updated = 0;
+  for (var i = 1; i < values.length; i++) {
+    var name = nameCol >= 0 ? swTrim_(values[i][nameCol]) : '';
+    var email = emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : '';
+    if (!name && !email) continue;
+    var match = swAuditResolveCanonicalUser_(userIndex, email, name, requiredRole || '');
+    if (!match.user || match.roleMismatch || match.inactive) continue;
+    var changes = [];
+    if (nameCol >= 0 && name !== match.user.name) changes.push({ col: nameCol + 1, value: match.user.name, label: 'name' });
+    if (emailCol >= 0 && email !== match.user.email) changes.push({ col: emailCol + 1, value: match.user.email, label: 'email' });
+    if (roleCol >= 0 && swTrim_(values[i][roleCol]) !== match.user.scheduleRole) changes.push({ col: roleCol + 1, value: match.user.scheduleRole, label: 'role' });
+    if (!changes.length) continue;
+    updated++;
+    actions.push((dryRun ? 'Would update ' : 'Updated ') + sheetName + ' row ' + (i + 1) + ' identity to ' + match.user.name + ' <' + match.user.email + '>');
+    if (!dryRun) changes.forEach(function (change) { sh.getRange(i + 1, change.col).setValue(change.value); });
+  }
+  return updated;
+}
+
+function swMigrateDefaultJocPairsFromDropdown_(ss, dryRun, actions, warnings) {
+  var pairs = swReadDropdownAdvisorJocPairs_(ss);
+  if (!pairs.length) return 0;
+  var userIndex = swWorkflowAuditUserIndex_(ss);
+  var roster = swEnsureEmployeeScheduleSheets_(ss).roster;
+  var headers = roster.getRange(1, 1, 1, Math.max(1, roster.getLastColumn())).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var defaultJocCol = swPickIndex_(H, ['Default JOC', 'Linked JOC', 'JOC Partner']);
+  if (defaultJocCol < 0) return 0;
+  var updated = 0;
+  pairs.forEach(function (pair) {
+    var advisor = swAuditResolveCanonicalUser_(userIndex, pair.advisorEmail, pair.advisorName, SW_OWNER_ROLES.SALES_REP);
+    var joc = swAuditResolveCanonicalUser_(userIndex, pair.jocEmail, pair.jocName, SW_OWNER_ROLES.JOC);
+    if (!advisor.user || advisor.roleMismatch || advisor.inactive || !joc.user || joc.roleMismatch || joc.inactive) return;
+    var rowNumber = swFindRosterRowForWorkflowUser_(roster, advisor.user.email, advisor.user.name);
+    if (!rowNumber) {
+      if (!dryRun) swEnsureOrSyncRosterForWorkflowUser_(ss, advisor.user, swSystemUser_());
+      rowNumber = dryRun ? 0 : swFindRosterRowForWorkflowUser_(roster, advisor.user.email, advisor.user.name);
+    }
+    if (!rowNumber && !dryRun) return;
+    var current = rowNumber ? swTrim_(roster.getRange(rowNumber, defaultJocCol + 1).getDisplayValue()) : '';
+    if (current) return;
+    updated++;
+    actions.push((dryRun ? 'Would set ' : 'Set ') + advisor.user.name + ' default JOC to ' + joc.user.name + ' from Dropdown row ' + pair.sourceRow);
+    if (!dryRun && rowNumber) roster.getRange(rowNumber, defaultJocCol + 1).setValue(joc.user.name);
+  });
+  if (!updated && pairs.length) warnings.push('No default JOC pairs needed migration from Dropdown.');
+  return updated;
+}
+
+function swReadDropdownIdentityEntries_(ss) {
+  var out = [];
+  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
+  if (!sh || sh.getLastRow() < 2) return out;
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var groups = [
+    { role: SW_OWNER_ROLES.SALES_REP, names: ['Client Advisor', 'Assigned Rep'], emails: ['Client Advisor Email', 'Assigned Rep Email'] },
+    { role: SW_OWNER_ROLES.JOC, names: ['Assisted Rep', 'Assistant Rep', 'JOC'], emails: ['Assisted Rep Email', 'Assistant Rep Email', 'JOC Email'] }
+  ];
+  groups.forEach(function (group) {
+    var nameCol = swPickIndex_(H, group.names);
+    var emailCol = swPickIndex_(H, group.emails);
+    if (nameCol < 0 && emailCol < 0) return;
+    for (var i = 1; i < values.length; i++) {
+      var name = nameCol >= 0 ? swTrim_(values[i][nameCol]) : '';
+      var email = emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : '';
+      if (!name && !email) continue;
+      out.push({ sourceRow: i + 1, rowNumber: i + 1, role: group.role, name: name, email: email });
+    }
+  });
+  return out;
+}
+
+function swReadDropdownAdvisorJocPairs_(ss) {
+  var out = [];
+  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
+  if (!sh || sh.getLastRow() < 2) return out;
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var advisorCol = swPickIndex_(H, ['Client Advisor', 'Assigned Rep']);
+  var advisorEmailCol = swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email']);
+  var jocCol = swPickIndex_(H, ['JOC', 'Assisted Rep', 'Assistant Rep']);
+  var jocEmailCol = swPickIndex_(H, ['JOC Email', 'Assisted Rep Email', 'Assistant Rep Email']);
+  if (advisorCol < 0 || jocCol < 0) return out;
+  for (var i = 1; i < values.length; i++) {
+    var advisorName = swTrim_(values[i][advisorCol]);
+    var jocName = swTrim_(values[i][jocCol]);
+    if (!advisorName || !jocName) continue;
+    out.push({
+      sourceRow: i + 1,
+      advisorName: advisorName,
+      advisorEmail: advisorEmailCol >= 0 ? swNormEmail_(values[i][advisorEmailCol]) : '',
+      jocName: jocName,
+      jocEmail: jocEmailCol >= 0 ? swNormEmail_(values[i][jocEmailCol]) : ''
+    });
+  }
+  return out;
+}
+
+function swBackupAndClearDropdownIdentityData_(ss, dryRun, actions, warnings) {
+  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+  var identityCols = swDropdownIdentityColumnIndexes_(headers);
+  if (!identityCols.length) return 0;
+  var values = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getDisplayValues();
+  var backupRows = [];
+  values.forEach(function (row, i) {
+    var hasIdentity = identityCols.some(function (col) { return swTrim_(row[col]); });
+    if (!hasIdentity) return;
+    var backup = [swIso_(new Date()), i + 2];
+    identityCols.forEach(function (col) { backup.push(row[col]); });
+    backupRows.push(backup);
+  });
+  if (!backupRows.length) {
+    warnings.push('Dropdown identity columns were already empty.');
+    return 0;
+  }
+  actions.push((dryRun ? 'Would back up and clear ' : 'Backed up and cleared ') + backupRows.length + ' Dropdown identity row(s).');
+  if (dryRun) return backupRows.length;
+  var backupName = '_SW_DropdownIdentityBackup';
+  var backupSheet = ss.getSheetByName(backupName) || ss.insertSheet(backupName);
+  if (backupSheet.getLastRow() === 0) {
+    backupSheet.getRange(1, 1, 1, 2 + identityCols.length).setValues([['Backed Up At', 'Source Row'].concat(identityCols.map(function (col) {
+      return headers[col] || ('Column ' + (col + 1));
+    }))]);
+  }
+  backupSheet.getRange(backupSheet.getLastRow() + 1, 1, backupRows.length, backupRows[0].length).setValues(backupRows);
+  identityCols.forEach(function (col) {
+    sh.getRange(2, col + 1, sh.getLastRow() - 1, 1).clearContent();
+  });
+  swStyleSheet_(backupSheet);
+  return backupRows.length;
+}
+
+function swDropdownIdentityColumnIndexes_(headers) {
+  var H = swHeaderMapFromArray_(headers || []);
+  var names = [
+    'Client Advisor', 'Assigned Rep', 'Client Advisor Email', 'Assigned Rep Email',
+    'Assisted Rep', 'Assistant Rep', 'Assisted Rep Email', 'Assistant Rep Email',
+    'JOC', 'JOC Email'
+  ];
+  var seen = {};
+  var out = [];
+  names.forEach(function (name) {
+    var col = swPickIndex_(H, [name]);
+    if (col >= 0 && !seen[col]) {
+      seen[col] = true;
+      out.push(col);
+    }
+  });
+  out.sort(function (a, b) { return a - b; });
+  return out;
 }
 
 function swSetWorkflowConfigValue_(ss, section, key, value) {

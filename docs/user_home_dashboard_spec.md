@@ -131,10 +131,10 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 
 ## 14. Sales Workflow Web App Notes
 - The current Apps Script Sales Workflow dashboard uses an email/password login screen before showing the task queue.
-- Login users and role access are stored in `_SalesWorkflowUsers`.
+- Login users, active status, role access, and schedulable staff identity are stored in `_SalesWorkflowUsers`.
 - Diamond Order Admin and Diamond Order Assistant access is role-based; `_SalesWorkflowConfig` name/email cells are not required for those queues.
 - Client Advisor access is stored and displayed as `Client Advisor`; legacy `SALES_REP` values are still accepted as an alias and normalized during setup.
-- Client Advisor and JOC task ownership resolve from the appointment `Client Advisor`/legacy `Assigned Rep` and `Assisted Rep` names, then look up the current email by name; the outdated `Client Advisor Email`/legacy `Assigned Rep Email` and `Assisted Rep Email` columns on `00_Master Appointments` are ignored for generation.
+- Client Advisor and JOC task ownership resolve appointment owner names/emails against active canonical users in `_SalesWorkflowUsers`. Unresolved Client Advisor owners route to Admin Review; unavailable JOC owners route through JOC Coverage.
 - The dashboard has a shared `Calendar` tab for all users. It shows active upcoming appointments by month from `00_Master Appointments`, with appointment links and Client Advisor/JOC details in the side panel.
 - The dashboard has a shared `In-Stock Diamonds` tab for all users. It reads 200_ and shows currently delivered/in-stock diamonds with return due dates for proposal planning. It supports filtering by shape, carat size range, color, and clarity. Its healthy return-date bucket is labeled `Available > 7d`.
 - Diamond order admin/assistant/admin users also see a `Diamond Tracking` tab. It reads 200_ tracking ETA/status, highlights missing or concerning ETAs, and surfaces return-deadline issues.
@@ -143,8 +143,8 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - Opening a `PROPOSE_DIAMONDS` task from the queue uses a full-width three-step proposal workspace rather than the standard side detail panel: customer requirements, find/add stones, then review/submit. The workspace keeps the existing queue navigation/header and existing task completion/writeback path.
 - The proposal workspace's inventory matching uses the existing `sw_getInStockDiamonds` web-app API, filters the returned in-stock `200_` rows against the entered requirements, and can import selected matches into the proposal stone fields. Match rows show the diamond `Stone Type` so Client Advisors can see whether each matched stone is lab or natural before adding it. Pricing is intentionally omitted until the workflow has reliable price data.
 - JOC, diamond order admin, and Client Advisor diamond task cards receive the Sheet 100 customer requirements in their generated payloads so quote/order decisions are reviewed against the same brief.
-- Admins can add/update users from `Sales > Manage workflow users` in Sheets or `Manage Users` in the dashboard, with either auto-generated or admin-entered passwords.
-- Admins can manage team schedules from the dashboard `Schedules` tab. It writes weekly working days to `10_Roster_Schedule`, one-off overrides to `Schedule Changes`, and Client Advisor skills to `Rep Qualifications`.
+- Admins add/update Client Advisors and JOCs from `Sales > Manage workflow users` in Sheets or `Manage Users` in the dashboard, with either auto-generated or admin-entered passwords. Saving a schedulable user links or creates that user's `10_Roster_Schedule` extension row by email.
+- Admins manage schedules from the dashboard `Schedules` tab. It edits weekly working days in `10_Roster_Schedule`, one-off overrides in `Schedule Changes`, and Client Advisor skills in `Rep Qualifications`; names, emails, roles, and active login status remain canonical in `_SalesWorkflowUsers`.
 - Client Advisor auto-assignment can be enabled from the `Schedules` tab. When enabled, queue refresh assigns or reassigns active appointments by working-day availability, lab/natural/general qualification, and round-robin load. The selected Client Advisor's linked JOC is written to the appointment as the paired JOC.
 - Schedule changes support full-day off and partial-day availability windows. Saving a schedule or override refreshes the workflow so affected appointments/tasks are reassigned.
 - JOC coverage now preserves named queues: if the linked/intended JOC is unavailable, the workflow tries that JOC's coverage partner, then another working JOC, then the shared `JOC Coverage` queue.
@@ -163,7 +163,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
   - visibility for Calendar, In-Stock Diamonds, Diamond Tracking, Bulk Returns, Admin Dashboard, and Admin Review.
 
 ### B. Task Generation and Queue Refresh
-- `sw_generateSalesWorkflowTasks` is the central queue builder. It reads appointments from `00_Master Appointments`, supporting config/template sheets, owner lookup data, roster/schedule data, wax state, and diamond tracker data.
+- `sw_generateSalesWorkflowTasks` is the central queue builder. It reads appointments from `00_Master Appointments`, supporting config/template sheets, canonical workflow users, roster/schedule extension data, wax state, and diamond tracker data.
 - `sw_installSalesWorkflowTriggers` installs:
   - hourly queue refresh;
   - 5-minute appointment automation.
@@ -173,11 +173,11 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 
 ### C. Ownership Model
 - System tasks are auto-completed and used as dependency anchors.
-- Client Advisor tasks resolve from `Client Advisor` or legacy `Assigned Rep` on `00_Master Appointments`; the current email is looked up by advisor name instead of relying on the older email column.
-- JOC tasks resolve from `Assisted Rep` on `00_Master Appointments`; if there is no assisted rep or the assisted rep is unavailable, the task goes to `JOC Coverage`.
+- Client Advisor tasks resolve from `Client Advisor` or legacy `Assigned Rep` on `00_Master Appointments`; the owner must match one active canonical workflow user by email or unique name.
+- JOC tasks resolve from `Assisted Rep` on `00_Master Appointments`; the owner must match one active canonical JOC user by email or unique name. If there is no assisted rep or the assisted rep is unavailable, the task goes to `JOC Coverage`.
 - JOC Coverage tasks are visible to JOC users and admins and can be claimed.
 - Diamond Order Admin and Diamond Order Assistant tasks are shared role queues. Users with `DIAMOND_ORDER_ADMIN` or `DIAMOND_ORDER_ASSISTANT` in `_SalesWorkflowUsers` see the relevant role-owned tasks.
-- Admins can assign appointment owners from the task detail panel. Saving writes Client Advisor and JOC names/emails back to all `00_Master Appointments` rows with the same RootApptID and then refreshes workflow ownership.
+- Admins can assign appointment owners from the task detail panel. Saving requires active canonical Client Advisor/JOC users, writes canonical names/emails back to all `00_Master Appointments` rows with the same RootApptID, and then refreshes workflow ownership.
 - Admins can also reassign, block, or unblock individual tasks from Admin Review.
 
 ### D. Dashboard Navigation Groups
@@ -200,13 +200,17 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - **Manage Users**: add/update workflow users, roles, and passwords, visible to admins.
 - **Cleanup**: temporary one-time stale customer cleanup campaign tab, visible while `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED = Y`. Client Advisors see their assigned cleanup work; admins see all cleanup campaign tasks. JOC-side cleanup work routes through the shared `JOC Coverage` queue so any active JOC can claim and submit it. After campaign cases are resolved, future stale customers flow into the normal queue rather than this tab.
 
-### F. Standard Task Execution
+### F. People Data Cleanup APIs
+- `sw_adminAuditWorkflowPeopleData(authToken)` compares `_SalesWorkflowUsers`, `10_Roster_Schedule`, `Rep Qualifications`, `Schedule Changes`, `Dropdown`, and active appointment owners. It reports duplicate active emails, duplicate active Client Advisor/JOC names, orphan extension rows, Dropdown-only identities, and appointment owners that do not map to active canonical users.
+- `sw_adminMigrateWorkflowPeople(authToken, { dryRun, clearDropdownIdentityData })` defaults to `dryRun: true`. Mutating mode links extension rows by exact email first, then unique normalized name; migrates default JOC pairings from `Dropdown`; optionally backs up and clears legacy identity cells from `Dropdown`; then refreshes workflow tasks.
+
+### G. Standard Task Execution
 - A user opens a task card to load task detail, rendered instructions, copyable message/template text, links/attachments, checklists, and task-specific controls.
 - The user may copy a template, snooze a task, claim a coverage task, or complete the task.
 - Completion validates required fields and checklists, runs any task-specific writeback adapter, marks the task completed, logs the event, and immediately runs task generation again so downstream tasks appear.
 - Snoozed tasks are hidden from active queues until the snooze date and do not count as late during the snooze window.
 
-### G. Core Appointment Workflow
+### H. Core Appointment Workflow
 - When an appointment enters the workflow window, the system creates an auto-completed assignment task.
 - If the appointment is within 24 hours, JOC gets a Hybrid Welcome + Instructions task.
 - If the appointment is farther out, JOC gets a Welcome task now and a Map & Instructions task 48 hours before the appointment.
@@ -215,7 +219,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - After JOC submits the recap draft, the Client Advisor gets Approve/Edit Recap Message.
 - After approval, JOC gets Send Final Recap Text.
 
-### H. Post-Consult Operations
+### I. Post-Consult Operations
 - After the appointment checklist is complete, JOC gets Post-Consult Client Status Update.
 - That task writes the current client status and captures whether 3D and/or wax work is needed.
 - If 3D is needed and no SO/tracker exists yet, JOC gets Start 3D Design.
@@ -223,7 +227,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - If wax is needed and no active wax request exists, JOC gets Request Wax Print.
 - If existing wax requests need status or deadline updates, JOC gets Update Wax Request.
 
-### I. Diamond Viewing Workflow
+### J. Diamond Viewing Workflow
 - For Diamond Viewing appointments, the assigned Client Advisor gets Propose Diamonds and JOC gets Prepare Diamond Viewing Quotation.
 - Propose Diamonds captures the structured customer requirements brief and proposed stones, then writes requirements to Sheet 100 and proposed diamonds to `200_`.
 - If `200_` has proposed stones, Diamond Order Admin gets Order Diamonds.
@@ -233,11 +237,11 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - If ETA risk is detected, both assigned Client Advisor and JOC get ETA risk review tasks.
 - Bulk Returns lets admins or Diamond Order Admin users mark multiple eligible `200_` rows as `Return in Progress` in one shipment.
 
-### J. Admin and Diagnostics
+### K. Admin and Diagnostics
 - Admin Dashboard aggregates appointment metrics, payments when configured, customer pipeline columns, and admin-visible open task health.
 - Diagnostic helpers exist for setup review, task visibility troubleshooting, speed benchmarking, duplicate cleanup, and duplicate-safe generation testing.
 
-### K. Customer Data Cleanup
+### L. Customer Data Cleanup
 - Setup creates `_SalesDataCleanup` plus Master cleanup columns: `Lost Lead Reason`, `Lost Lead Reason Notes`, `Data Cleanup Reviewed At`, and `Data Cleanup Confirmed At`.
 - Config rows control the workflow: `DATA_CLEANUP_ENABLED`, `DATA_CLEANUP_STALE_DAYS` (default 30), `DATA_CLEANUP_CAMPAIGN_ID`, and `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED`.
 - Generation creates cleanup cases for active Lead / Hot Lead / Follow-Up customer roots with no meaningful touch for 30+ calendar days, excluding Won/Lost Lead and any root with an unresolved cleanup case.
@@ -249,7 +253,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 
 ### A. Ownership Gaps
 - **Spec owner for REST vs Apps Script architecture**: sections 2-13 describe REST routes, KPI cards, global search, recent activity, and quick actions, but the current implementation is an Apps Script `google.script.run` dashboard. Decide whether the REST dashboard is future scope or replace those sections with the Apps Script contract.
-- **Workflow user/roster owner**: user access lives in `_SalesWorkflowUsers`, Client Advisor identity still depends on name/email lookup data, and task ownership depends on `Client Advisor`/legacy `Assigned Rep` and `Assisted Rep` in `00_Master Appointments`. One operational owner should be accountable for keeping those sources aligned.
+- **Workflow people data owner**: `_SalesWorkflowUsers` is now canonical for schedulable staff, but one operational owner should still run the audit/migration tools and keep appointment owner names/emails aligned with active canonical users.
 - **Unassigned Client Advisor task owner**: missing Client Advisor/legacy `Assigned Rep` routes tasks to `Admin Review` with `UNASSIGNED_REP`, but there is no sales coverage queue or claim path equivalent to JOC Coverage.
 - **JOC coverage remediation owner**: JOC users can claim coverage tasks, but missing assisted rep, missing schedule data, or out-of-office routing still needs a defined admin/JOC process for fixing the source data.
 - **Shared diamond role queue owner**: Diamond Order Admin and Assistant tasks are role-owned shared queues. There is no claim/lock workflow to show who is actively working a shared diamond task before completion.
