@@ -506,14 +506,25 @@ function swTryReadTaskListStateFromReadModel_(ss, config) {
       };
     }
 
+    var cachedState = swReadCachedTaskListState_(ss);
+    if (cachedState && cachedState.tasks) {
+      return {
+        source: 'taskReadModelCache',
+        fallbackReason: '',
+        ageSeconds: status.ageSeconds || 0,
+        state: cachedState
+      };
+    }
+
     var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_TASKS);
     var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_TASK_READ_MODEL_HEADERS);
     var tasks = rows.map(swTaskFromReadModelRow_).filter(function (task) {
       return !!task.taskId;
     });
     var state = swBuildTaskStateFromTasks_(tasks, [], {});
+    try { swCacheTaskListState_(ss, state); } catch (_) {}
     return {
-      source: 'taskReadModel',
+      source: 'taskReadModelSheet',
       fallbackReason: '',
       ageSeconds: status.ageSeconds || 0,
       state: state
