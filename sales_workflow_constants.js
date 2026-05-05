@@ -196,6 +196,9 @@ var SW_CUSTOMER_READ_MODEL_HEADERS = [
   'DV Stones Summary',
   'Next Steps',
   'Updated At',
+  'AI Brief?',
+  'Review Flag Count',
+  'Latest AI Brief Updated At',
   'Source Rows JSON',
   'Search Text'
 ];

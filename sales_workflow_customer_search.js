@@ -4,58 +4,131 @@
 
 var SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN = 30;
 var SW_CUSTOMER_SEARCH_LOG_SCAN_ROWS = 500;
+var SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS = 10 * 60;
+var SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_ = {};
 
 function sw_searchCustomers(authToken, query, filters) {
   return swTimed_('sw_searchCustomers', function () {
+    var mark = swStepTimer_('sw_searchCustomers');
     var ss = swSpreadsheet_();
+    mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss, { templates: false });
+    mark('requiredSheets');
     var user = swAuthUserForApi_(ss, authToken);
+    mark('identity');
     swRequireCustomerSearchUser_(user);
 
     filters = swCustomerSearchNormalizeFilters_(filters);
     query = swTrim_(query || filters.query || '');
 
+    var config = swReadConfig_(ss, true);
+    mark('config');
+    var readModel = swCustomerSearchReadModelRows_(ss, config);
+    if (readModel && readModel.ok) {
+      mark('rows', {
+        source: readModel.source || 'customerReadModel',
+        rows: readModel.rows ? readModel.rows.length : 0,
+        ageSeconds: readModel.ageSeconds || 0
+      });
+      return swCustomerSearchBuildPayload_(ss, user, query, filters, readModel.rows || [], readModel.source || 'customerReadModel', mark);
+    }
+
     var appointments = swReadAppointments_(ss);
-    swCustomerSearchApplyDefaultOwnerFilters_(appointments, user, filters);
-    var rows = swCustomerSearchFilteredRows_(appointments, query, filters);
-    var groups = swAdminDashboardRowsByRoot_(rows);
-    var aiBriefByRoot = Object.keys(groups).length && typeof swAppointmentAiBriefIndex_ === 'function'
-      ? swAppointmentAiBriefIndex_(ss)
-      : {};
-    var master = ss.getSheetByName(SW_SHEETS.MASTER);
-    var masterGid = master ? master.getSheetId() : '';
-    var columnsByKey = {};
-    SW_ADMIN_DASHBOARD_COLUMNS.forEach(function (col) {
-      columnsByKey[col.key] = { key: col.key, label: col.label, count: 0, cards: [], hiddenCount: 0 };
+    mark('rows', {
+      source: 'appointments',
+      rows: appointments.length,
+      fallbackReason: readModel ? readModel.fallbackReason || '' : ''
     });
-
-    Object.keys(groups).forEach(function (root) {
-      var rootRows = groups[root];
-      var active = rootRows.filter(function (rec) { return swIsAppointmentActive_(rec); });
-      var rec = swAdminDashboardLatestRow_(active.length ? active : rootRows);
-      if (!rec) return;
-      var stage = swAdminDashboardPipelineStage_(rec, rootRows);
-      var column = columnsByKey[stage.key] || columnsByKey.lead;
-      var card = swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage, aiBriefByRoot[root]);
-      column.count++;
-      if (column.cards.length < SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN) {
-        column.cards.push(card);
-      } else {
-        column.hiddenCount++;
-      }
-    });
-
-    return {
-      ok: true,
-      generatedAt: swIso_(new Date()),
-      query: query,
-      filters: swCustomerSearchPublicFilters_(filters),
-      filterOptions: swCustomerSearchFilterOptions_(appointments),
-      kanban: {
-        columns: SW_ADMIN_DASHBOARD_COLUMNS.map(function (col) { return columnsByKey[col.key]; })
-      }
-    };
+    return swCustomerSearchBuildPayload_(ss, user, query, filters, appointments, 'appointments', mark);
   });
+}
+
+function swCustomerSearchBuildPayload_(ss, user, query, filters, sourceRows, source, mark) {
+  mark = mark || function () {};
+  sourceRows = sourceRows || [];
+  swCustomerSearchApplyDefaultOwnerFilters_(sourceRows, user, filters);
+  var rows = swCustomerSearchFilteredRows_(sourceRows, query, filters);
+  mark('filter', { source: source || '', rows: rows.length, query: !!query });
+
+  var kanban = swCustomerSearchKanbanFromRows_(ss, rows, source);
+  mark('cards', { source: source || '', cards: kanban.cards, hiddenCards: kanban.hiddenCards });
+
+  return {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    query: query,
+    source: source || '',
+    filters: swCustomerSearchPublicFilters_(filters),
+    filterOptions: swCustomerSearchFilterOptions_(sourceRows),
+    kanban: {
+      columns: kanban.columns
+    }
+  };
+}
+
+function swCustomerSearchKanbanFromRows_(ss, rows, source) {
+  var groups = swAdminDashboardRowsByRoot_(rows);
+  var aiBriefByRoot = Object.keys(groups).length && typeof swAppointmentAiBriefIndex_ === 'function'
+    && source !== 'customerReadModelSheet' && source !== 'customerReadModelCache'
+    ? swAppointmentAiBriefIndex_(ss)
+    : {};
+  var master = ss.getSheetByName(SW_SHEETS.MASTER);
+  var masterGid = master ? master.getSheetId() : '';
+  var columnsByKey = {};
+  SW_ADMIN_DASHBOARD_COLUMNS.forEach(function (col) {
+    columnsByKey[col.key] = { key: col.key, label: col.label, count: 0, cards: [], hiddenCount: 0 };
+  });
+
+  Object.keys(groups).forEach(function (root) {
+    var rootRows = groups[root];
+    var active = rootRows.filter(function (rec) { return swIsAppointmentActive_(rec); });
+    var rec = swAdminDashboardLatestRow_(active.length ? active : rootRows);
+    if (!rec) return;
+    var stage = swCustomerSearchStageForRecord_(rec, rootRows);
+    var column = columnsByKey[stage.key] || columnsByKey.lead;
+    var card = swCustomerSearchCardForRecord_(ss, masterGid, root, rec, rootRows, stage, aiBriefByRoot[root]);
+    column.count++;
+    if (column.cards.length < SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN) {
+      column.cards.push(card);
+    } else {
+      column.hiddenCount++;
+    }
+  });
+
+  return {
+    columns: SW_ADMIN_DASHBOARD_COLUMNS.map(function (col) { return columnsByKey[col.key]; }),
+    cards: SW_ADMIN_DASHBOARD_COLUMNS.reduce(function (sum, col) {
+      return sum + ((columnsByKey[col.key] && columnsByKey[col.key].cards) || []).length;
+    }, 0),
+    hiddenCards: SW_ADMIN_DASHBOARD_COLUMNS.reduce(function (sum, col) {
+      return sum + Number((columnsByKey[col.key] && columnsByKey[col.key].hiddenCount) || 0);
+    }, 0)
+  };
+}
+
+function swCustomerSearchStageForRecord_(rec, rootRows) {
+  if (rec && rec.__customerReadModel && rec.stageKey) {
+    return {
+      key: rec.stageKey,
+      label: rec.stageLabel || swCustomerSearchStageLabel_(rec.stageKey)
+    };
+  }
+  return swAdminDashboardPipelineStage_(rec, rootRows);
+}
+
+function swCustomerSearchStageLabel_(key) {
+  key = swTrim_(key);
+  for (var i = 0; i < SW_ADMIN_DASHBOARD_COLUMNS.length; i++) {
+    if (SW_ADMIN_DASHBOARD_COLUMNS[i].key === key) return SW_ADMIN_DASHBOARD_COLUMNS[i].label;
+  }
+  return key || 'Lead';
+}
+
+function swCustomerSearchCardForRecord_(ss, masterGid, root, rec, rootRows, stage, aiBrief) {
+  if (rec && rec.__customerReadModel) {
+    return swCustomerSearchCardFromReadModel_(ss, masterGid, rec, stage);
+  }
+  return swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage, aiBrief);
 }
 
 function sw_getCustomerSearchDetail(authToken, rootApptId) {
@@ -108,6 +181,7 @@ function sw_customerSearchUpdateStatus(authToken, rootApptId, payload) {
       });
       if (result && result.ok === false) throw new Error(result.error || 'Client status update failed.');
       swCustomerSearchLog_(ss, 'CUSTOMER_SEARCH_STATUS_UPDATE', target.rec, user, payload, result);
+      swCustomerSearchInvalidateReadModel_(ss, 'Customer Search status update changed appointment data.');
     } finally {
       try { lock.releaseLock(); } catch (_) {}
     }
@@ -134,6 +208,7 @@ function sw_customerSearchUpdate3DDeadline(authToken, rootApptId, payload) {
         : saveRecordDeadline({ kind: '3D', dateIso: deadline });
       if (result && result.ok === false) throw new Error(result.error || '3D deadline update failed.');
       swCustomerSearchLog_(ss, 'CUSTOMER_SEARCH_3D_DEADLINE', target.rec, user, { deadline3d: deadline, note: swTrim_(payload.note) }, result);
+      swCustomerSearchInvalidateReadModel_(ss, 'Customer Search 3D deadline update changed appointment data.');
     } finally {
       try { lock.releaseLock(); } catch (_) {}
     }
@@ -158,6 +233,7 @@ function sw_customerSearchSubmit3DRevision(authToken, rootApptId, payload) {
       var result = submit3DRevision({ form: form });
       if (result && result.ok === false) throw new Error(result.error || '3D revision failed.');
       swCustomerSearchLog_(ss, 'CUSTOMER_SEARCH_3D_REVISION', target.rec, user, form, result);
+      swCustomerSearchInvalidateReadModel_(ss, 'Customer Search 3D revision changed customer workflow data.');
     } finally {
       try { lock.releaseLock(); } catch (_) {}
     }
@@ -189,6 +265,7 @@ function sw_customerSearchRequestWax(authToken, rootApptId, payload) {
       });
       if (result && result.ok === false) throw new Error(result.error || 'Wax request failed.');
       swCustomerSearchLog_(ss, 'CUSTOMER_SEARCH_WAX_REQUEST', target.rec, user, payload, result);
+      swCustomerSearchInvalidateReadModel_(ss, 'Customer Search wax request changed customer workflow data.');
     } finally {
       try { lock.releaseLock(); } catch (_) {}
     }
@@ -200,6 +277,18 @@ function swRequireCustomerSearchUser_(user) {
   if (!(user && (user.isAdmin || user.isJoc || user.isRep))) {
     throw new Error('Customer Search access requires Client Advisor, JOC, or Admin role.');
   }
+}
+
+function swCustomerSearchInvalidateReadModel_(ss, reason) {
+  try {
+    if (typeof swMarkWorkflowReadModelsStale_ === 'function') {
+      swMarkWorkflowReadModelsStale_(ss, reason || 'Customer Search changed customer data.', 'customers');
+      return;
+    }
+    if (typeof swInvalidateCustomerSearchReadModelCache_ === 'function') {
+      swInvalidateCustomerSearchReadModelCache_(ss);
+    }
+  } catch (_) {}
 }
 
 function swCustomerSearchNormalizeFilters_(filters) {
@@ -234,6 +323,224 @@ function swCustomerSearchPublicFilters_(filters) {
   };
 }
 
+function swCustomerSearchReadModelRows_(ss, config) {
+  if (typeof swCustomerReadModelServingEnabled_ === 'function' &&
+      !swCustomerReadModelServingEnabled_(config || [])) {
+    return { ok: false, fallbackReason: 'disabled' };
+  }
+  if (typeof swCustomerReadModelStatus_ !== 'function') {
+    return { ok: false, fallbackReason: 'statusUnavailable' };
+  }
+
+  try {
+    var status = swCustomerReadModelStatus_(ss);
+    if (!status.fresh) {
+      return {
+        ok: false,
+        fallbackReason: status.reason || 'notFresh',
+        ageSeconds: status.ageSeconds || 0
+      };
+    }
+
+    var cachedRows = swReadCachedCustomerSearchReadModelRows_(ss, status);
+    if (cachedRows) {
+      return {
+        ok: true,
+        source: 'customerReadModelCache',
+        rows: cachedRows,
+        ageSeconds: status.ageSeconds || 0
+      };
+    }
+
+    var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_CUSTOMERS);
+    var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_CUSTOMER_READ_MODEL_HEADERS)
+      .map(swCustomerSearchReadModelRecord_)
+      .filter(function (rec) { return !!rec.root; });
+    swCacheCustomerSearchReadModelRows_(ss, rows, status);
+    return {
+      ok: true,
+      source: 'customerReadModelSheet',
+      rows: rows,
+      ageSeconds: status.ageSeconds || 0
+    };
+  } catch (err) {
+    try {
+      Logger.log('SW_CUSTOMER_SEARCH_READ_MODEL_FALLBACK ' + JSON.stringify({
+        reason: err && err.message ? err.message : String(err)
+      }));
+    } catch (_) {}
+    return {
+      ok: false,
+      fallbackReason: err && err.message ? err.message : String(err)
+    };
+  }
+}
+
+function swCustomerSearchReadModelRecord_(row) {
+  row = row || {};
+  var active = swTrim_(row['Active?']) === 'Y';
+  return {
+    __customerReadModel: true,
+    row: Number(row['Master Row'] || 0) || '',
+    root: swTrim_(row['RootApptID']),
+    appt: swTrim_(row['Latest APPT_ID']),
+    name: swTrim_(row['Customer Name']),
+    email: swNormEmail_(row['Email']),
+    phone: swNormPhone_(row['Phone']),
+    brand: swTrim_(row['Brand']),
+    assignedRep: swTrim_(row['Client Advisor']),
+    assignedRepEmail: swNormEmail_(row['Client Advisor Email']),
+    assistedRep: swTrim_(row['JOC']),
+    assistedRepEmail: swNormEmail_(row['JOC Email']),
+    visitDate: swTrim_(row['Latest Visit Date']),
+    visitTime: swFormatAppointmentTime_(row['Latest Visit Time'] || ''),
+    visitType: swTrim_(row['Latest Visit Type']),
+    nextVisit: swTrim_(row['Next Visit']),
+    lastVisit: swTrim_(row['Last Visit']),
+    appointmentCount: Number(row['Appointment Count'] || 0) || 0,
+    activeAppointmentCount: Number(row['Active Appointment Count'] || 0) || 0,
+    active: active ? 'Yes' : 'No',
+    activeNorm: active ? 'yes' : 'no',
+    status: '',
+    statusNorm: '',
+    stageKey: swTrim_(row['Stage Key']) || 'lead',
+    stageLabel: swTrim_(row['Stage Label']),
+    salesStage: swTrim_(row['Sales Stage']),
+    convStatus: swTrim_(row['Conversion Status']),
+    customOrder: swTrim_(row['Custom Order Status']),
+    inProduction: swTrim_(row['In Production Status']),
+    centerStoneStatus: swTrim_(row['Center Stone Status']),
+    so: swTrim_(row['SO#']),
+    orderTotal: swTrim_(row['Order Total']),
+    paidToDate: swTrim_(row['Paid-to-Date']),
+    remainingBalance: swTrim_(row['Remaining Balance']),
+    lastPaymentDate: swTrim_(row['Last Payment Date']),
+    quotationUrl: swTrim_(row['Quotation URL']),
+    clientFolder: swTrim_(row['Client Folder']),
+    reportUrl: swTrim_(row['Client Status Report URL']),
+    tracker3dUrl: swTrim_(row['3D Tracker URL']),
+    deadline3d: swTrim_(row['3D Deadline']),
+    productionDeadline: swTrim_(row['Production Deadline']),
+    waxStatus: swTrim_(row['Wax Print Status']),
+    waxDeadlineAdmin: swTrim_(row['Wax Deadline (Admin)']),
+    dvStonesSummary: swTrim_(row['DV Stones Summary']),
+    nextSteps: swTrim_(row['Next Steps']),
+    updatedAt: swTrim_(row['Updated At']),
+    hasAiBrief: swTrim_(row['AI Brief?']) === 'Y',
+    reviewFlagCount: Number(row['Review Flag Count'] || 0) || 0,
+    latestAiBriefUpdatedAt: swTrim_(row['Latest AI Brief Updated At']),
+    sourceRowsJson: swTrim_(row['Source Rows JSON']),
+    searchText: swTrim_(row['Search Text'])
+  };
+}
+
+function swCustomerSearchCardFromReadModel_(ss, masterGid, rec, stage) {
+  var paid = swAdminDashboardNumberOrBlank_(rec.paidToDate);
+  var balance = swAdminDashboardNumberOrBlank_(rec.remainingBalance);
+  var orderTotal = swAdminDashboardNumberOrBlank_(rec.orderTotal);
+  var card = {
+    root: rec.root || '',
+    appt: rec.appt || '',
+    row: rec.row || '',
+    customerName: rec.name || '',
+    brand: rec.brand || '',
+    clientAdvisor: rec.assignedRep || '',
+    joc: rec.assistedRep || '',
+    visitType: rec.visitType || '',
+    visitDate: rec.visitDate || '',
+    visitTime: rec.visitTime || '',
+    nextVisit: rec.nextVisit || '',
+    lastVisit: rec.lastVisit || '',
+    salesStage: rec.salesStage || '',
+    conversionStatus: rec.convStatus || '',
+    customOrderStatus: rec.customOrder || '',
+    inProductionStatus: rec.inProduction || '',
+    stageKey: stage.key,
+    stageLabel: stage.label,
+    so: rec.so || '',
+    nextSteps: rec.nextSteps || '',
+    paymentCount: 0,
+    paidNet: paid === '' ? 0 : paid,
+    balanceDue: balance === 0 ? 0 : (balance || ''),
+    orderTotal: orderTotal === 0 ? 0 : (orderTotal || ''),
+    lastPaymentDate: rec.lastPaymentDate || '',
+    source: 'customerReadModel',
+    remainingBalance: rec.remainingBalance || '',
+    updatedAt: rec.updatedAt || '',
+    clientFolder: rec.clientFolder || '',
+    reportUrl: rec.reportUrl || '',
+    quotationUrl: rec.quotationUrl || '',
+    tracker3dUrl: rec.tracker3dUrl || '',
+    masterUrl: masterGid && rec.row ? ('https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit#gid=' + masterGid + '&range=A' + rec.row) : '',
+    email: rec.email || '',
+    phone: rec.phone || '',
+    deadline3d: rec.deadline3d || '',
+    productionDeadline: rec.productionDeadline || '',
+    waxStatus: rec.waxStatus || '',
+    waxDeadlineAdmin: rec.waxDeadlineAdmin || '',
+    centerStoneStatus: rec.centerStoneStatus || '',
+    badges: swCustomerSearchBadges_(rec),
+    hasAiBrief: !!rec.hasAiBrief,
+    reviewFlagCount: Number(rec.reviewFlagCount || 0),
+    latestAiBriefUpdatedAt: rec.latestAiBriefUpdatedAt || ''
+  };
+  if (card.hasAiBrief) {
+    card.badges = card.badges || [];
+    card.badges.push('AI Brief');
+    if (card.reviewFlagCount) card.badges.push('Flags: ' + card.reviewFlagCount);
+  }
+  return card;
+}
+
+function swReadCachedCustomerSearchReadModelRows_(ss, status) {
+  var key = swCustomerSearchReadModelCacheKey_(ss);
+  try {
+    var memory = SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime() &&
+        memory.modelBuiltAt === status.builtAt) {
+      return memory.rows || [];
+    }
+  } catch (_) {}
+
+  var payload = swTaskListCacheGet_(key);
+  if (!payload || payload.modelBuiltAt !== status.builtAt || !payload.rows) return null;
+  try {
+    SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS * 1000,
+      modelBuiltAt: payload.modelBuiltAt || '',
+      rows: payload.rows || []
+    };
+  } catch (_) {}
+  return payload.rows || [];
+}
+
+function swCacheCustomerSearchReadModelRows_(ss, rows, status) {
+  var key = swCustomerSearchReadModelCacheKey_(ss);
+  var payload = {
+    cachedAt: swIso_(new Date()),
+    modelBuiltAt: status && status.builtAt || '',
+    rows: rows || []
+  };
+  try {
+    SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS * 1000,
+      modelBuiltAt: payload.modelBuiltAt,
+      rows: payload.rows
+    };
+  } catch (_) {}
+  swTaskListCachePut_(key, payload);
+}
+
+function swInvalidateCustomerSearchReadModelCache_(ss) {
+  var key = swCustomerSearchReadModelCacheKey_(ss);
+  try { delete SW_CUSTOMER_SEARCH_READ_MODEL_MEMORY_CACHE_[key]; } catch (_) {}
+  try { swTaskListCacheRemove_(key); } catch (_) {}
+}
+
+function swCustomerSearchReadModelCacheKey_(ss) {
+  return 'sw:customerSearchReadModel:v1:' + ss.getId();
+}
+
 function swCustomerSearchFilteredRows_(appointments, query, filters) {
   query = swTrim_(query);
   var q = swNorm_(query);
@@ -259,6 +566,7 @@ function swCustomerSearchFilteredRows_(appointments, query, filters) {
 }
 
 function swCustomerSearchRecordMatches_(rec, q, qPhone) {
+  if (rec.searchText && swNorm_(rec.searchText).indexOf(q) >= 0) return true;
   var fields = [
     rec.name, rec.email, rec.phone, rec.root, rec.appt, rec.so, rec.brand,
     rec.assignedRep, rec.assistedRep, rec.visitType, rec.visitDate,

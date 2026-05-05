@@ -47,6 +47,13 @@ function swMarkWorkflowReadModelsStale_(ss, reason, modelName) {
   if (!modelName || modelName === 'tasks') {
     try { swInvalidateTaskDashboardProjectionCache_(ss); } catch (_) {}
   }
+  if (!modelName || modelName === 'customers') {
+    try {
+      if (typeof swInvalidateCustomerSearchReadModelCache_ === 'function') {
+        swInvalidateCustomerSearchReadModelCache_(ss);
+      }
+    } catch (_) {}
+  }
   var key = ss.getId() + ':' + (modelName || 'all');
   if (SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_[key]) {
     return {
@@ -189,6 +196,9 @@ function swBuildCustomerReadModel_(ss, builtAt) {
     var groups = swAdminDashboardRowsByRoot_(appointments);
     var master = ss.getSheetByName(SW_SHEETS.MASTER);
     var masterGid = master ? master.getSheetId() : '';
+    var aiBriefByRoot = typeof swAppointmentAiBriefIndex_ === 'function'
+      ? swAppointmentAiBriefIndex_(ss)
+      : {};
     var rows = [];
     Object.keys(groups).sort().forEach(function (root) {
       var rootRows = groups[root] || [];
@@ -196,7 +206,7 @@ function swBuildCustomerReadModel_(ss, builtAt) {
       var rec = swAdminDashboardLatestRow_(activeRows.length ? activeRows : rootRows);
       if (!rec) return;
       var stage = swAdminDashboardPipelineStage_(rec, rootRows);
-      rows.push(swCustomerReadModelRow_(ss, masterGid, root, rec, rootRows, activeRows, stage));
+      rows.push(swCustomerReadModelRow_(ss, masterGid, root, rec, rootRows, activeRows, stage, aiBriefByRoot[root]));
     });
     var write = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_CUSTOMERS, SW_CUSTOMER_READ_MODEL_HEADERS, rows);
     write.sourceRows = appointments.length;
@@ -241,12 +251,15 @@ function swTaskReadModelRow_(task, nowMs) {
   return values;
 }
 
-function swCustomerReadModelRow_(ss, masterGid, root, rec, rootRows, activeRows, stage) {
+function swCustomerReadModelRow_(ss, masterGid, root, rec, rootRows, activeRows, stage, aiBrief) {
   var visit = swAdminDashboardVisitSummary_(rootRows);
   var sourceRows = (rootRows || []).map(function (row) { return row.row || ''; }).filter(Boolean);
   var masterUrl = masterGid && rec.row
     ? 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit#gid=' + masterGid + '&range=A' + rec.row
     : '';
+  var aiBriefCompact = typeof swAppointmentAiBriefCompact_ === 'function'
+    ? swAppointmentAiBriefCompact_(aiBrief)
+    : { hasAiBrief: false, reviewFlagCount: 0, latestAiBriefUpdatedAt: '' };
   var values = [
     root || '',
     rec.appt || '',
@@ -290,6 +303,9 @@ function swCustomerReadModelRow_(ss, masterGid, root, rec, rootRows, activeRows,
     rec.dvStonesSummary || '',
     rec.nextSteps || '',
     rec.updatedAt || '',
+    aiBriefCompact.hasAiBrief ? 'Y' : '',
+    aiBriefCompact.reviewFlagCount || 0,
+    aiBriefCompact.latestAiBriefUpdatedAt || '',
     swStringify_(sourceRows),
     ''
   ];
@@ -589,6 +605,41 @@ function swTaskReadModelStatus_(ss) {
     expiresAt: meta['Expires At'] || '',
     rows: Math.max(0, sh.getLastRow() - 1)
   };
+}
+
+function swCustomerReadModelStatus_(ss) {
+  var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_CUSTOMERS);
+  if (!sh) return { fresh: false, reason: 'missingSheet' };
+  var meta = null;
+  var rows = swReadModelMetaRows_(ss);
+  for (var i = 0; i < rows.length; i++) {
+    if (swTrim_(rows[i]['Model']) === 'customers') {
+      meta = rows[i];
+      break;
+    }
+  }
+  if (!meta) return { fresh: false, reason: 'missingMeta' };
+  if (swTrim_(meta['Version']) !== SW_READ_MODEL_VERSION) return { fresh: false, reason: 'versionMismatch' };
+  if (swTrim_(meta['Status']) !== 'OK') return { fresh: false, reason: 'status:' + swTrim_(meta['Status']) };
+  if (swTrim_(meta['Invalidated At'])) return { fresh: false, reason: 'invalidated' };
+  var builtAtMs = swReadModelDateMs_(meta['Built At']);
+  var expiresAtMs = swReadModelDateMs_(meta['Expires At']);
+  var nowMs = new Date().getTime();
+  var ageSeconds = builtAtMs ? Math.max(0, Math.round((nowMs - builtAtMs) / 1000)) : 0;
+  if (!builtAtMs || !expiresAtMs) return { fresh: false, reason: 'missingDates', ageSeconds: ageSeconds };
+  if (expiresAtMs < nowMs) return { fresh: false, reason: 'expired', ageSeconds: ageSeconds };
+  return {
+    fresh: true,
+    reason: '',
+    ageSeconds: ageSeconds,
+    builtAt: meta['Built At'] || '',
+    expiresAt: meta['Expires At'] || '',
+    rows: Math.max(0, sh.getLastRow() - 1)
+  };
+}
+
+function swCustomerReadModelServingEnabled_(config) {
+  return swNorm_(swConfigValue_(config || [], 'SYSTEM', 'READ_MODEL_SERVE_CUSTOMERS', 'Y')) !== 'n';
 }
 
 function swTaskFromReadModelRow_(row) {
