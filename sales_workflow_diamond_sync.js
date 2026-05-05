@@ -2,8 +2,9 @@
  * One-time Loupe360 diamond sync for the 200_ tracker.
  *
  * The upload flow converts a spreadsheet upload into a temporary Google Sheet,
- * previews the tracker delta, then applies by Certificate No. It intentionally
- * preserves customer/workflow ownership and manual decision fields.
+ * previews the tracker delta, then applies by Certificate No. The uploaded
+ * source is treated as current for shipment, status, and spec facts while
+ * customer/advisor/JOC assignment fields remain manual workflow data.
  */
 
 var SW_LOUPE360_VENDOR = 'Loupe360';
@@ -67,7 +68,7 @@ function sw_applyLoupe360DiamondSync(authToken, syncId) {
           updated: result.updated,
           appended: result.appended,
           skipped: result.skipped,
-          protectedConflicts: plan.stats.protectedConflicts,
+          statusOverwrites: plan.stats.statusOverwrites,
           duplicateSourceCerts: plan.stats.duplicateSourceCerts,
           duplicateTrackerCerts: plan.stats.duplicateTrackerCerts
         });
@@ -83,7 +84,7 @@ function sw_applyLoupe360DiamondSync(authToken, syncId) {
         updated: result.updated,
         appended: result.appended,
         skipped: result.skipped,
-        protectedConflicts: plan.stats.protectedConflicts,
+        statusOverwrites: plan.stats.statusOverwrites,
         duplicateSourceCerts: plan.stats.duplicateSourceCerts,
         duplicateTrackerCerts: plan.stats.duplicateTrackerCerts,
         assignmentMissing: swLoupe360CountMissingAssignments_(),
@@ -371,7 +372,8 @@ function swLoupe360ReadTarget_() {
 }
 
 function swLoupe360BuildPlan_(sourceRows, target) {
-  var sourceSeen = {};
+  var sourceByCert = {};
+  var sourceOrder = [];
   var duplicateSource = 0;
   var plan = {
     updates: [],
@@ -384,8 +386,7 @@ function swLoupe360BuildPlan_(sourceRows, target) {
       updated: 0,
       appended: 0,
       skippedInactiveMissing: 0,
-      skippedDuplicateTarget: 0,
-      protectedConflicts: 0,
+      statusOverwrites: 0,
       duplicateSourceCerts: 0,
       duplicateTrackerCerts: 0
     }
@@ -396,18 +397,17 @@ function swLoupe360BuildPlan_(sourceRows, target) {
 
   sourceRows.forEach(function (src) {
     if (!src.certKey) return;
-    if (sourceSeen[src.certKey]) {
+    if (sourceByCert[src.certKey]) {
       duplicateSource++;
-      plan.skipped.push({ certNo: src.certNo, reason: 'Duplicate certificate in source upload' });
-      return;
+    } else {
+      sourceOrder.push(src.certKey);
     }
-    sourceSeen[src.certKey] = true;
+    sourceByCert[src.certKey] = src;
+  });
+
+  sourceOrder.forEach(function (certKey) {
+    var src = sourceByCert[certKey];
     var matches = target.byCert[src.certKey] || [];
-    if (matches.length > 1) {
-      plan.stats.skippedDuplicateTarget++;
-      plan.conflicts.push({ certNo: src.certNo, reason: 'Duplicate certificate rows in 200_' });
-      return;
-    }
     if (!matches.length) {
       if (swLoupe360IsActiveSource_(src)) {
         plan.appends.push(src);
@@ -417,13 +417,12 @@ function swLoupe360BuildPlan_(sourceRows, target) {
       }
       return;
     }
-    plan.stats.matched++;
-    var update = swLoupe360BuildUpdate_(src, matches[0], target.columns);
-    if (update.protectedConflict) {
-      plan.stats.protectedConflicts++;
-      plan.conflicts.push({ certNo: src.certNo, rowIndex: matches[0].rowIndex, reason: update.protectedConflict });
-    }
-    if (update.changes.length) plan.updates.push(update);
+    plan.stats.matched += matches.length;
+    matches.forEach(function (match) {
+      var update = swLoupe360BuildUpdate_(src, match, target.columns);
+      if (update.statusOverwrite) plan.stats.statusOverwrites++;
+      if (update.changes.length) plan.updates.push(update);
+    });
   });
 
   plan.stats.duplicateSourceCerts = duplicateSource;
@@ -435,16 +434,11 @@ function swLoupe360BuildPlan_(sourceRows, target) {
 function swLoupe360BuildUpdate_(src, targetRow, C) {
   var current = targetRow.row;
   var changes = [];
-  var protectedRow = swLoupe360ProtectedWorkflowRow_(current, C);
   var desired = swLoupe360DesiredStatus_(src);
-  var protectedConflict = '';
+  var statusOverwrite = swLoupe360WorkflowStatusConflict_(current, C, desired);
 
-  if (protectedRow && (desired.orderStatus || desired.stoneStatus)) {
-    protectedConflict = 'Source status conflicts with protected purchase/return workflow fields; status preserved';
-  } else {
-    swLoupe360MaybeChange_(changes, current, C.orderStatus, desired.orderStatus);
-    swLoupe360MaybeChange_(changes, current, C.stoneStatus, desired.stoneStatus);
-  }
+  swLoupe360MaybeChange_(changes, current, C.orderStatus, desired.orderStatus);
+  swLoupe360MaybeChange_(changes, current, C.stoneStatus, desired.stoneStatus);
   swLoupe360MaybeChange_(changes, current, C.vendor, SW_LOUPE360_VENDOR);
   swLoupe360MaybeChange_(changes, current, C.stoneType, src.stoneType);
   swLoupe360MaybeChange_(changes, current, C.shape, src.shape);
@@ -472,7 +466,7 @@ function swLoupe360BuildUpdate_(src, targetRow, C) {
     certNo: src.certNo,
     source: src,
     changes: changes,
-    protectedConflict: protectedConflict
+    statusOverwrite: statusOverwrite
   };
 }
 
@@ -623,9 +617,7 @@ function swLoupe360PreviewResponse_(temp, source, target, plan) {
       skipped: plan.skipped.slice(0, 8),
       conflicts: plan.conflicts.slice(0, 8)
     },
-    assignmentMissing: swLoupe360CountMissingAssignments_() + plan.appends.filter(function (row) {
-      return row.sourceStatus === 'DELIVERED';
-    }).length
+    assignmentMissing: swLoupe360CountMissingAssignmentsAfterPlan_(target, plan)
   };
 }
 
@@ -655,7 +647,7 @@ function swLoupe360CountMissingAssignments_() {
     var rows = sh.getRange(3, 1, sh.getLastRow() - 2, sh.getLastColumn()).getDisplayValues();
     var count = 0;
     rows.forEach(function (row) {
-      if (!swLoupe360IsAssignableStockRow_(row, C)) return;
+      if (!swLoupe360NeedsAssignmentStatus_(row, C)) return;
       if (!swDiamondCell_(row, C.customerName) || !swDiamondCell_(row, C.root) ||
           !swDiamondCell_(row, C.assignedRep) || !swDiamondCell_(row, C.joc)) {
         count++;
@@ -667,24 +659,72 @@ function swLoupe360CountMissingAssignments_() {
   }
 }
 
+function swLoupe360CountMissingAssignmentsAfterPlan_(target, plan) {
+  var C = target.columns;
+  var updatesByRow = {};
+  plan.updates.forEach(function (item) {
+    if (!updatesByRow[item.rowIndex]) updatesByRow[item.rowIndex] = [];
+    Array.prototype.push.apply(updatesByRow[item.rowIndex], item.changes || []);
+  });
+  var count = 0;
+  target.rows.forEach(function (rec) {
+    var row = rec.row.slice();
+    (updatesByRow[rec.rowIndex] || []).forEach(function (change) {
+      if (change.col) row[change.col - 1] = change.value;
+    });
+    if (!swLoupe360NeedsAssignmentStatus_(row, C)) return;
+    if (!swDiamondCell_(row, C.customerName) || !swDiamondCell_(row, C.root) ||
+        !swDiamondCell_(row, C.assignedRep) || !swDiamondCell_(row, C.joc)) {
+      count++;
+    }
+  });
+  plan.appends.forEach(function (src) {
+    var desired = swLoupe360DesiredStatus_(src);
+    if (swLoupe360SourceNeedsAssignment_(src, desired)) count++;
+  });
+  return count;
+}
+
 function swLoupe360IsAssignableStockRow_(row, C) {
+  return swLoupe360NeedsAssignmentStatus_(row, C);
+}
+
+function swLoupe360NeedsAssignmentStatus_(row, C) {
   var orderStatus = swDiamondCell_(row, C.orderStatus);
   var stoneStatus = swDiamondCell_(row, C.stoneStatus);
   var decision = swDiamondCell_(row, C.decision);
   var orderNorm = swNorm_(orderStatus);
   var stoneNorm = swNorm_(stoneStatus);
   var decisionNorm = swNorm_(decision);
-  var isInStock = stoneNorm.indexOf('in stock') >= 0 || orderNorm === 'delivered';
-  var unavailable = /return in progress|returned|sold|customer purchased|unavailable/.test(stoneNorm) ||
+  var inactive = orderNorm === 'returned' || orderNorm === 'cancelled' || orderNorm === 'not available' ||
+    /returned|return in progress|unavailable|cancelled/.test(stoneNorm) ||
+    decisionNorm === 'return' || decisionNorm === 'returned';
+  if (inactive) return false;
+  return orderNorm === 'on the way' || orderNorm === 'delivered' ||
+    stoneNorm.indexOf('in stock') >= 0 ||
+    /purchased|customer purchased/.test(stoneNorm) ||
     decisionNorm === 'purchase' || decisionNorm === 'purchased';
-  return isInStock && !unavailable;
 }
 
-function swLoupe360ProtectedWorkflowRow_(row, C) {
+function swLoupe360WorkflowStatusConflict_(row, C, desired) {
+  if (!desired || (!desired.orderStatus && !desired.stoneStatus)) return false;
+  var orderNorm = swNorm_(swDiamondCell_(row, C.orderStatus));
   var stoneNorm = swNorm_(swDiamondCell_(row, C.stoneStatus));
   var decisionNorm = swNorm_(swDiamondCell_(row, C.decision));
-  return /return in progress|sold|customer purchased/.test(stoneNorm) ||
+  var protectedRow = /return in progress|returned|sold|customer purchased|purchased/.test(stoneNorm) ||
+    orderNorm === 'returned' || orderNorm === 'cancelled' || orderNorm === 'not available' ||
     decisionNorm === 'purchase' || decisionNorm === 'purchased' || decisionNorm === 'return';
+  return protectedRow && (
+    (desired.orderStatus && swNorm_(desired.orderStatus) !== orderNorm) ||
+    (desired.stoneStatus && swNorm_(desired.stoneStatus) !== stoneNorm)
+  );
+}
+
+function swLoupe360SourceNeedsAssignment_(src, desired) {
+  var status = src && src.sourceStatus;
+  return status === 'SHIPPED' || status === 'IN_CUSTOMS' || status === 'DELIVERED' ||
+    swNorm_(desired && desired.orderStatus) === 'on the way' ||
+    swNorm_(desired && desired.orderStatus) === 'delivered';
 }
 
 function swLoupe360IsActiveSource_(src) {

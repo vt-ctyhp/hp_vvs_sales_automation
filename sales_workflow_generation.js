@@ -181,8 +181,21 @@ function swUpsertTask_(ss, state, nextTask, summary) {
   }
 
   if (existing.status === SW_STATUSES.COMPLETED || existing.claimedBy) return;
+  if (existing.status === SW_STATUSES.BLOCKED && !swShouldReviveGeneratedTask_(existing)) return;
 
   var changed = false;
+  var revivedFromBlocked = false;
+  var previousBlockReason = '';
+
+  if (swShouldReviveGeneratedTask_(existing)) {
+    previousBlockReason = existing.coverageReason || '';
+    existing.status = SW_STATUSES.PENDING;
+    existing.coverageReason = nextTask.coverageReason || '';
+    existing.lastEvent = 'UNBLOCK';
+    revivedFromBlocked = true;
+    changed = true;
+  }
+
   [
     'customerName', 'brand', 'visitDate', 'visitTime', 'visitType', 'taskTitle',
     'ownerRole', 'intendedOwner', 'intendedOwnerEmail', 'coverageReason',
@@ -206,6 +219,13 @@ function swUpsertTask_(ss, state, nextTask, summary) {
     changed = true;
   }
 
+  if (revivedFromBlocked) {
+    swAppendTaskLog_(ss, 'UNBLOCK', existing, swSystemUser_(), existing.currentOwner, existing.currentOwner, {
+      reason: 'Appointment is active/current again.',
+      previousReason: previousBlockReason || ''
+    });
+  }
+
   if (changed) {
     existing.updatedAt = swIso_(new Date());
     swWriteTaskRow_(ss, existing);
@@ -217,7 +237,7 @@ function swBlockTasksForAppointment_(ss, state, rec, reason) {
   var count = 0;
   Object.keys(state.byId).forEach(function (taskId) {
     var t = state.byId[taskId];
-    if (t.root !== rec.root && t.appt !== rec.appt) return;
+    if (!swTaskMatchesAppointmentInstance_(t, rec)) return;
     if (t.status === SW_STATUSES.COMPLETED || t.status === SW_STATUSES.BLOCKED) return;
     t.status = SW_STATUSES.BLOCKED;
     t.coverageReason = reason;
@@ -228,6 +248,25 @@ function swBlockTasksForAppointment_(ss, state, rec, reason) {
     count++;
   });
   return count;
+}
+
+function swTaskMatchesAppointmentInstance_(task, rec) {
+  var recAppt = swTrim_(rec && rec.appt);
+  var taskAppt = swTrim_(task && task.appt);
+  if (recAppt && taskAppt) return taskAppt === recAppt;
+  if (recAppt) return !taskAppt && swTrim_(task && task.root) === recAppt;
+
+  var recRoot = swTrim_(rec && rec.root);
+  if (!recRoot) return false;
+  return swTrim_(task && task.root) === recRoot;
+}
+
+function swShouldReviveGeneratedTask_(task) {
+  if (!task || task.status !== SW_STATUSES.BLOCKED) return false;
+  var reason = swTrim_(task.coverageReason);
+  if (reason === SW_INACTIVE_APPOINTMENT_BLOCK_REASON) return true;
+  // Older refreshes could clear the auto-block reason while reassigning a blocked row.
+  return !reason && task.lastEvent === 'ASSIGN';
 }
 
 function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {

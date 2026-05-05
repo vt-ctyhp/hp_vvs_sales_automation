@@ -21,6 +21,7 @@ var SW_STATUSES = {
   BLOCKED: 'Blocked',
   SNOOZED: 'Snoozed'
 };
+var SW_INACTIVE_APPOINTMENT_BLOCK_REASON = 'Appointment is no longer active/current.';
 var SW_TASKS = {
   ASSIGN: 'ASSIGN_APPOINTMENT',
   WELCOME: 'SEND_WELCOME',

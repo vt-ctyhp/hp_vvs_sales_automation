@@ -88,7 +88,7 @@ function sw_generateSalesWorkflowTasks() {
         }
 
         if (!swIsAppointmentActive_(rec)) {
-          summary.blocked += swBlockTasksForAppointment_(ss, taskState, rec, 'Appointment is no longer active/current.');
+          summary.blocked += swBlockTasksForAppointment_(ss, taskState, rec, SW_INACTIVE_APPOINTMENT_BLOCK_REASON);
           return;
         }
 
