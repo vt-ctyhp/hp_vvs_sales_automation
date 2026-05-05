@@ -610,7 +610,7 @@ function swCacheCustomerSearchDetailIndex_(ss, rows, status) {
         payload: payload
       };
     } catch (_) {}
-    var shardResult = swTaskListCachePut_(shardKey, payload) || {};
+    var shardResult = swCustomerSearchDetailCachePut_(shardKey, payload) || {};
     totalChunks += shardResult.chunks || 0;
     totalBytes += shardResult.bytes || 0;
     if (shardResult.ok === false) {
@@ -618,7 +618,7 @@ function swCacheCustomerSearchDetailIndex_(ss, rows, status) {
       if (!reason) reason = shardResult.reason || 'detailShardCacheFailed';
     }
   });
-  var metaResult = swTaskListCachePut_(swCustomerSearchDetailIndexCacheKey_(ss), meta) || {};
+  var metaResult = swCustomerSearchDetailCachePut_(swCustomerSearchDetailIndexCacheKey_(ss), meta) || {};
   totalChunks += metaResult.chunks || 0;
   totalBytes += metaResult.bytes || 0;
   if (metaResult.ok === false) {
@@ -706,7 +706,7 @@ function swReadCachedCustomerSearchDetailRecord_(ss, status, rootApptId) {
     }
   } catch (_) {}
   if (!payload) {
-    payload = swTaskListCacheGet_(key);
+    payload = swCustomerSearchDetailCacheGet_(key);
     if (!payload ||
         payload.modelBuiltAt !== status.builtAt ||
         payload.version !== expectedVersion ||
@@ -731,6 +731,30 @@ function swCustomerSearchDetailIndexCacheKey_(ss) {
 
 function swCustomerSearchDetailIndexShardCacheKey_(ss, shard) {
   return 'sw:customerSearchDetailIndex:v2:' + ss.getId() + ':' + shard;
+}
+
+function swCustomerSearchDetailCacheGet_(key) {
+  try {
+    var text = CacheService.getScriptCache().get(key);
+    if (text) return swParseJson_(text, null);
+  } catch (_) {}
+  return swTaskListCacheGet_(key);
+}
+
+function swCustomerSearchDetailCachePut_(key, payload) {
+  try {
+    var text = swStringify_(payload);
+    if (text.length <= 90000) {
+      CacheService.getScriptCache().put(key, text, SW_CUSTOMER_SEARCH_DETAIL_CACHE_SECONDS);
+      return { ok: true, chunks: 1, bytes: text.length };
+    }
+  } catch (_) {}
+  return swTaskListCachePut_(key, payload);
+}
+
+function swCustomerSearchDetailCacheRemove_(key) {
+  try { CacheService.getScriptCache().remove(key); } catch (_) {}
+  try { swTaskListCacheRemove_(key); } catch (_) {}
 }
 
 function swCustomerSearchDetailIndexShard_(id) {
@@ -1367,11 +1391,11 @@ function swInvalidateCustomerSearchDetailCaches_(ss) {
   try { delete SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_[detailIndexKey]; } catch (_) {}
   try { delete SW_CUSTOMER_SEARCH_PAYMENT_HISTORY_MEMORY_CACHE_[paymentKey]; } catch (_) {}
   try { delete SW_CUSTOMER_SEARCH_RECENT_LOG_MEMORY_CACHE_[logKey]; } catch (_) {}
-  try { swTaskListCacheRemove_(detailIndexKey); } catch (_) {}
+  swCustomerSearchDetailCacheRemove_(detailIndexKey);
   for (var shard = 0; shard < SW_CUSTOMER_SEARCH_DETAIL_INDEX_SHARDS; shard++) {
     var shardKey = swCustomerSearchDetailIndexShardCacheKey_(ss, shard);
     try { delete SW_CUSTOMER_SEARCH_DETAIL_INDEX_MEMORY_CACHE_[shardKey]; } catch (_) {}
-    try { swTaskListCacheRemove_(shardKey); } catch (_) {}
+    swCustomerSearchDetailCacheRemove_(shardKey);
   }
   try { swTaskListCacheRemove_(paymentKey); } catch (_) {}
   try { swTaskListCacheRemove_(logKey); } catch (_) {}
