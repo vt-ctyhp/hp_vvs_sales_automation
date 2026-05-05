@@ -2445,7 +2445,15 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'login-bootstrap-combined-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'client-load-timing-2026-05-05';
+
+    var swClientLoadTiming = {
+      startedAt: (window.performance && typeof window.performance.now === 'function') ? window.performance.now() : 0,
+      marks: {},
+      eventsSent: {},
+      mode: 'unknown',
+      tokenPresentOnInit: false
+    };
 
     var appState = {
       token: '',
@@ -2494,6 +2502,109 @@
       loginBusy: false,
       busy: false
     };
+
+    function swClientNow_() {
+      if (window.performance && typeof window.performance.now === 'function') return window.performance.now();
+      return Date.now();
+    }
+
+    function swClientRound_(value) {
+      value = Number(value || 0);
+      return isFinite(value) ? Math.round(value) : 0;
+    }
+
+    function swClientMark_(name, extra) {
+      if (!name || swClientLoadTiming.marks[name] != null) return;
+      swClientLoadTiming.marks[name] = swClientRound_(swClientNow_());
+      if (extra) {
+        swClientLoadTiming[name + 'Extra'] = extra;
+      }
+    }
+
+    function swClientMarkAfterPaint_(name, callback) {
+      var done = function () {
+        swClientMark_(name);
+        if (callback) callback();
+      };
+      if (window.requestAnimationFrame) window.requestAnimationFrame(done);
+      else window.setTimeout(done, 0);
+    }
+
+    function swClientDiff_(startName, endName) {
+      var marks = swClientLoadTiming.marks || {};
+      if (marks[startName] == null || marks[endName] == null) return 0;
+      return swClientRound_(marks[endName] - marks[startName]);
+    }
+
+    function swClientNavigationTiming_() {
+      if (!window.performance || !performance.getEntriesByType) return {};
+      var nav = performance.getEntriesByType('navigation');
+      nav = nav && nav.length ? nav[0] : null;
+      if (!nav) return {};
+      return {
+        startToResponseStartMs: swClientRound_(nav.responseStart),
+        responseMs: swClientRound_(nav.responseEnd - nav.responseStart),
+        domInteractiveMs: swClientRound_(nav.domInteractive),
+        domContentLoadedMs: swClientRound_(nav.domContentLoadedEventEnd),
+        loadEventMs: swClientRound_(nav.loadEventEnd)
+      };
+    }
+
+    function swClientLoadPayload_(eventName, extra) {
+      extra = extra || {};
+      var marks = swClientLoadTiming.marks || {};
+      var firstTasks = marks.firstTasksRendered || 0;
+      var loginScreen = marks.loginScreenVisible || 0;
+      var timings = {
+        scriptStartMs: swClientRound_(swClientLoadTiming.startedAt),
+        initToLoginScreenMs: swClientDiff_('initStart', 'loginScreenVisible'),
+        initToAppLoadingMs: swClientDiff_('initStart', 'appLoadingShown'),
+        appLoadingToBootstrapRequestMs: swClientDiff_('appLoadingShown', 'bootstrapRequestStart'),
+        bootstrapRoundTripMs: swClientDiff_('bootstrapRequestStart', 'bootstrapResponse'),
+        bootstrapApplyMs: swClientDiff_('bootstrapApplyStart', 'bootstrapApplyEnd'),
+        bootstrapResponseToFirstTasksMs: swClientDiff_('bootstrapResponse', 'firstTasksRendered'),
+        signInRoundTripMs: swClientDiff_('signInRequestStart', 'signInResponse'),
+        signInToFirstTasksMs: swClientDiff_('signInRequestStart', 'firstTasksRendered'),
+        totalToLoginScreenMs: loginScreen ? swClientRound_(loginScreen) : 0,
+        totalToFirstTasksMs: firstTasks ? swClientRound_(firstTasks) : 0
+      };
+      return {
+        event: eventName || '',
+        build: SW_DASHBOARD_BUILD,
+        clientAt: new Date().toISOString(),
+        mode: extra.mode || swClientLoadTiming.mode || 'unknown',
+        finalState: extra.finalState || '',
+        tokenPresentOnInit: !!swClientLoadTiming.tokenPresentOnInit,
+        tokenPresent: !!appState.token,
+        userEmail: (appState.user && appState.user.email) || extra.userEmail || '',
+        view: appState.view || '',
+        taskCount: Number(extra.taskCount || 0),
+        counts: extra.counts || {},
+        timings: timings,
+        marks: marks,
+        navigation: swClientNavigationTiming_(),
+        viewport: {
+          width: window.innerWidth || 0,
+          height: window.innerHeight || 0,
+          devicePixelRatio: window.devicePixelRatio || 1
+        },
+        userAgent: window.navigator ? window.navigator.userAgent || '' : ''
+      };
+    }
+
+    function swLogClientLoadTiming_(eventName, extra) {
+      if (!eventName || swClientLoadTiming.eventsSent[eventName]) return;
+      swClientLoadTiming.eventsSent[eventName] = true;
+      var payload = swClientLoadPayload_(eventName, extra || {});
+      window.setTimeout(function () {
+        try {
+          if (!(window.google && google.script && google.script.run)) return;
+          google.script.run
+            .withFailureHandler(function () {})
+            .sw_logClientLoadTiming(appState.token || '', payload);
+        } catch (_) {}
+      }, 0);
+    }
 
     function bindEvents() {
       document.addEventListener('click', function (event) {
@@ -2977,23 +3088,30 @@
     }
 
     function init() {
+      swClientMark_('initStart');
       appState.token = sessionStorage.getItem('salesWorkflowToken') || '';
+      swClientLoadTiming.tokenPresentOnInit = !!appState.token;
       if (!appState.token) {
+        swClientLoadTiming.mode = 'loginScreen';
         showLogin();
         return;
       }
+      swClientLoadTiming.mode = 'returningSession';
       showAppLoading();
       bootstrap();
     }
 
     function bootstrap() {
       var requestId = beginMainRequest('mine');
+      swClientMark_('bootstrapRequestStart');
       serverCall('sw_getBootstrap', [], function (res) {
+        swClientMark_('bootstrapResponse');
         applyBootstrap(res, requestId);
       }, 'Opening dashboard');
     }
 
     function applyBootstrap(res, requestId) {
+      swClientMark_('bootstrapApplyStart');
       showApp();
       appState.user = res.user;
       renderUser(res);
@@ -3002,14 +3120,32 @@
       setActiveTab(appState.view);
       renderViewHeader(appState.view);
       renderTasks(res.tasks || []);
+      swClientMark_('bootstrapApplyEnd', {
+        taskCount: (res.tasks || []).length
+      });
+      swClientMarkAfterPaint_('firstTasksRendered', function () {
+        swLogClientLoadTiming_('dashboardVisible', {
+          finalState: 'dashboard',
+          taskCount: (res.tasks || []).length,
+          counts: res.counts || {},
+          userEmail: (res.user || {}).email || ''
+        });
+      });
       if (res.message) setStatus(res.message);
     }
 
     function showLogin() {
+      swClientMark_('loginScreenShowStart');
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('appShell').style.display = 'none';
       setLoginBusy(false);
       setLoginStatus('');
+      swClientMarkAfterPaint_('loginScreenVisible', function () {
+        swLogClientLoadTiming_('loginScreenVisible', {
+          finalState: 'loginScreen',
+          mode: swClientLoadTiming.mode || 'loginScreen'
+        });
+      });
       window.setTimeout(function () {
         var email = document.getElementById('loginEmail');
         var password = document.getElementById('loginPassword');
@@ -3019,12 +3155,15 @@
     }
 
     function showApp() {
+      swClientMark_('appShellShowStart');
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('appShell').style.display = '';
+      swClientMarkAfterPaint_('appShellVisible');
     }
 
     function showAppLoading() {
       showApp();
+      swClientMark_('appLoadingShown');
       setStatus('Opening dashboard');
       var taskList = document.getElementById('taskList');
       if (taskList) taskList.innerHTML = '<div class="loading">LOADING TASKS</div>';
@@ -3039,15 +3178,19 @@
       if (appState.loginBusy || appState.busy) return;
       var email = document.getElementById('loginEmail').value;
       var password = document.getElementById('loginPassword').value;
+      swClientLoadTiming.mode = 'signIn';
+      swClientMark_('signInRequestStart');
       setLoginBusy(true);
       setLoginStatus('Signing in');
       serverCall('sw_login', [email, password, { includeBootstrap: true }], function (res) {
+        swClientMark_('signInResponse');
         setLoginStatus('Opening dashboard');
         appState.token = res.token || '';
         appState.user = res.user || null;
         sessionStorage.setItem('salesWorkflowToken', appState.token);
         setLoginBusy(false);
         if (res.bootstrap && res.bootstrap.ok) {
+          swClientMark_('bootstrapResponse');
           applyBootstrap(res.bootstrap, beginMainRequest('mine'));
           return;
         }

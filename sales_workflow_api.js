@@ -1357,6 +1357,63 @@ function sw_logTemplateCopied(authToken, taskId) {
   return { ok: true };
 }
 
+/**
+ * Read-only client diagnostic: records browser-side startup timing from the
+ * HtmlService web app. This intentionally does not authenticate or touch sheets
+ * so the logging call cannot slow down startup.
+ */
+function sw_logClientLoadTiming(authToken, payload) {
+  if (authToken && typeof authToken === 'object' && payload == null) {
+    payload = authToken;
+    authToken = '';
+  }
+  var out = swSanitizeClientLoadTiming_(payload || {});
+  out.loggedAt = swIso_(new Date());
+  out.tokenPresent = !!authToken || !!out.tokenPresent;
+  Logger.log('SW_CLIENT_LOAD_TIMING ' + JSON.stringify(out));
+  return { ok: true };
+}
+
+function swSanitizeClientLoadTiming_(payload) {
+  payload = payload || {};
+  return {
+    event: swClientLoadString_(payload.event, 60),
+    build: swClientLoadString_(payload.build, 80),
+    clientAt: swClientLoadString_(payload.clientAt, 40),
+    mode: swClientLoadString_(payload.mode, 40),
+    finalState: swClientLoadString_(payload.finalState, 40),
+    tokenPresentOnInit: !!payload.tokenPresentOnInit,
+    tokenPresent: !!payload.tokenPresent,
+    userEmail: swClientLoadString_(payload.userEmail, 120),
+    view: swClientLoadString_(payload.view, 40),
+    taskCount: swClientLoadNumber_(payload.taskCount),
+    counts: swClientLoadNumberMap_(payload.counts, 12),
+    timings: swClientLoadNumberMap_(payload.timings, 24),
+    marks: swClientLoadNumberMap_(payload.marks, 40),
+    navigation: swClientLoadNumberMap_(payload.navigation, 12),
+    viewport: swClientLoadNumberMap_(payload.viewport, 8),
+    userAgent: swClientLoadString_(payload.userAgent, 220)
+  };
+}
+
+function swClientLoadString_(value, maxLen) {
+  return swTrim_(value).slice(0, maxLen || 120);
+}
+
+function swClientLoadNumber_(value) {
+  value = Number(value || 0);
+  return isFinite(value) ? Math.round(value) : 0;
+}
+
+function swClientLoadNumberMap_(map, maxKeys) {
+  var out = {};
+  map = map || {};
+  Object.keys(map).slice(0, maxKeys || 20).forEach(function (key) {
+    out[swClientLoadString_(key, 60)] = swClientLoadNumber_(map[key]);
+  });
+  return out;
+}
+
 // Admin actions.
 
 /**
