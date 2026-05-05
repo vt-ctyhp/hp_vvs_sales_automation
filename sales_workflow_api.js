@@ -1678,11 +1678,12 @@ function sw_reviewDiamondWorkflowSetup() {
 }
 
 /**
- * Read-only diagnostic: logs server-side speed for the major dashboard load
- * paths. Mutating actions are intentionally not executed.
+ * Read-only diagnostic: logs server-side speed for startup and the major
+ * dashboard load paths. Mutating workflow actions are intentionally not
+ * executed.
  *
  * Optional second argument:
- *   { detailLimit: 8, customerSearchQueries: [''], calendarMonths: ['2026-05'] }
+ *   { startupOnly: true, detailLimit: 8, customerSearchQueries: [''], calendarMonths: ['2026-05'] }
  */
 function sw_measureSalesWorkflowSpeed(authToken, options) {
   if (authToken && typeof authToken === 'object' && options == null) {
@@ -1697,10 +1698,15 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
     ok: true,
     generatedAt: swIso_(new Date()),
     readOnly: true,
-    note: 'Measures Apps Script server time only. Browser/network rendering time is not included. Mutating workflow actions are skipped.',
+    note: 'Measures Apps Script server time only, including HtmlService generation. Browser/network rendering time is not included. Mutating workflow actions are skipped.',
     options: {
+      startupOnly: options.startupOnly,
+      includeStartup: options.includeStartup,
+      bootstrapRepeats: options.bootstrapRepeats,
+      includeLoginBootstrap: !!(options.loginEmail && options.loginPassword),
       detailLimit: options.detailLimit,
       includeTaskDetails: options.includeTaskDetails,
+      includeCustomerDetail: options.includeCustomerDetail,
       customerSearchQueries: options.customerSearchQueries,
       calendarMonths: options.calendarMonths,
       adminDashboardFilters: options.adminDashboardFilters
@@ -1711,14 +1717,38 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
   var queueResponses = [];
   var customerSearchResponses = [];
 
-  swBenchmarkSalesWorkflowStep_(out, 'sw_getBootstrap', function () {
-    bootstrap = sw_getBootstrap(authToken);
-    return {
-      counts: bootstrap.counts || {},
-      views: bootstrap.views || {},
-      initialTasks: bootstrap.tasks ? bootstrap.tasks.length : 0
-    };
-  });
+  if (options.includeStartup) {
+    swBenchmarkSalesWorkflowStep_(out, 'webApp:taskQueueHtml', function () {
+      return swBenchmarkSalesWorkflowHtmlSummary_();
+    });
+  }
+
+  if (!bootstrap) {
+    swBenchmarkSalesWorkflowStep_(out, 'sw_getBootstrap', function () {
+      bootstrap = sw_getBootstrap(authToken);
+      return swBenchmarkSalesWorkflowBootstrapSummary_(bootstrap);
+    });
+  }
+
+  if (options.includeStartup) {
+    for (var repeat = 2; repeat <= options.bootstrapRepeats; repeat++) {
+      swBenchmarkSalesWorkflowStep_(out, 'sw_getBootstrap:warm' + repeat, function () {
+        return swBenchmarkSalesWorkflowBootstrapSummary_(sw_getBootstrap(authToken));
+      });
+    }
+
+    if (options.loginEmail && options.loginPassword) {
+      swBenchmarkSalesWorkflowStep_(out, 'sw_login+bootstrap', function () {
+        return swBenchmarkSalesWorkflowLoginBootstrapSummary_(options.loginEmail, options.loginPassword);
+      });
+    } else {
+      swBenchmarkSalesWorkflowSkip_(out, 'sw_login+bootstrap', 'Provide loginEmail and loginPassword in options to measure the password sign-in path.');
+    }
+
+    if (options.startupOnly) {
+      return swBenchmarkSalesWorkflowFinalize_(out, started);
+    }
+  }
 
   swBenchmarkSalesWorkflowQueueStep_(out, queueResponses, authToken, 'mine');
   ['cleanup', 'coverage', 'admin'].forEach(function (viewName) {
@@ -1836,11 +1866,14 @@ function sw_measureSalesWorkflowSpeed(authToken, options) {
     swBenchmarkSalesWorkflowSkip_(out, 'sw_adminListWorkflowUsers', 'Admin controls are not visible for this user.');
   }
 
-  out.totalMs = new Date().getTime() - started;
-  out.summary = swBenchmarkSalesWorkflowSummary_(out.steps);
-  out.ok = out.summary.failedSteps === 0;
-  Logger.log('SW_BENCHMARK_SUMMARY ' + JSON.stringify(swBenchmarkSalesWorkflowLogSummary_(out)));
-  return out;
+  return swBenchmarkSalesWorkflowFinalize_(out, started);
+}
+
+function sw_measureSalesWorkflowStartupSpeed(options) {
+  options = options || {};
+  options.startupOnly = true;
+  options.includeStartup = true;
+  return sw_measureSalesWorkflowSpeed('', options);
 }
 
 /**
@@ -1945,6 +1978,99 @@ function sw_testSalesWorkflowDryRun() {
   return { ok: true, setup: setup, first: first, second: second };
 }
 
+function swBenchmarkSalesWorkflowFinalize_(out, started) {
+  out.totalMs = new Date().getTime() - started;
+  out.summary = swBenchmarkSalesWorkflowSummary_(out.steps);
+  out.summary.startup = swBenchmarkSalesWorkflowStartupSummary_(out.steps);
+  out.ok = out.summary.failedSteps === 0;
+  Logger.log('SW_BENCHMARK_SUMMARY ' + JSON.stringify(swBenchmarkSalesWorkflowLogSummary_(out)));
+  return out;
+}
+
+function swBenchmarkSalesWorkflowHtmlSummary_() {
+  var html = typeof sw_taskQueueDoGet_ === 'function'
+    ? sw_taskQueueDoGet_({ parameter: {} })
+    : HtmlService.createHtmlOutputFromFile('Index');
+  var content = html && html.getContent ? html.getContent() : '';
+  var buildMatch = /SW_DASHBOARD_BUILD\s*=\s*['"]([^'"]+)['"]/.exec(content);
+  return {
+    bytes: content.length,
+    kb: Math.round(content.length / 1024),
+    build: buildMatch ? buildMatch[1] : '',
+    hasLoginScreen: content.indexOf('loginScreen') >= 0,
+    hasAppShell: content.indexOf('appShell') >= 0
+  };
+}
+
+function swBenchmarkSalesWorkflowBootstrapSummary_(bootstrap) {
+  bootstrap = bootstrap || {};
+  return {
+    counts: bootstrap.counts || {},
+    views: bootstrap.views || {},
+    initialTasks: bootstrap.tasks ? bootstrap.tasks.length : 0,
+    user: swBenchmarkSalesWorkflowUserSummary_(bootstrap.user)
+  };
+}
+
+function swBenchmarkSalesWorkflowLoginBootstrapSummary_(email, password) {
+  var res = sw_login(email, password, { includeBootstrap: true });
+  var bootstrap = res.bootstrap || {};
+  return {
+    user: swBenchmarkSalesWorkflowUserSummary_(res.user),
+    hasToken: !!res.token,
+    expiresInSeconds: res.expiresInSeconds || 0,
+    bootstrap: swBenchmarkSalesWorkflowBootstrapSummary_(bootstrap)
+  };
+}
+
+function swBenchmarkSalesWorkflowUserSummary_(user) {
+  user = user || {};
+  return {
+    email: user.email || '',
+    name: user.name || '',
+    roles: user.roles || [],
+    isAdmin: !!user.isAdmin,
+    isJoc: !!user.isJoc,
+    isRep: !!user.isRep,
+    isDiamondOrderAdmin: !!user.isDiamondOrderAdmin,
+    isDiamondOrderAssistant: !!user.isDiamondOrderAssistant
+  };
+}
+
+function swBenchmarkSalesWorkflowStartupSummary_(steps) {
+  var html = swBenchmarkSalesWorkflowStepByOperation_(steps, 'webApp:taskQueueHtml');
+  var bootstrap = swBenchmarkSalesWorkflowStepByOperation_(steps, 'sw_getBootstrap');
+  var login = swBenchmarkSalesWorkflowStepByOperation_(steps, 'sw_login+bootstrap');
+  var warm = (steps || []).filter(function (step) {
+    return step && step.ok && !step.skipped && /^sw_getBootstrap:warm/.test(step.operation || '');
+  }).map(function (step) {
+    return step.ms || 0;
+  }).filter(function (ms) {
+    return ms > 0;
+  });
+  var htmlMs = html && html.ok && !html.skipped ? html.ms || 0 : 0;
+  var bootstrapMs = bootstrap && bootstrap.ok && !bootstrap.skipped ? bootstrap.ms || 0 : 0;
+  var loginMs = login && login.ok && !login.skipped ? login.ms || 0 : 0;
+  return {
+    htmlMs: htmlMs,
+    htmlKb: html && html.result ? html.result.kb || 0 : 0,
+    returningSessionBootstrapMs: bootstrapMs,
+    returningSessionServerMs: htmlMs && bootstrapMs ? htmlMs + bootstrapMs : 0,
+    warmBootstrapBestMs: warm.length ? Math.min.apply(null, warm) : 0,
+    warmBootstrapWorstMs: warm.length ? Math.max.apply(null, warm) : 0,
+    signInBootstrapMs: loginMs,
+    firstSignInServerMs: htmlMs && loginMs ? htmlMs + loginMs : 0,
+    signInMeasured: !!(login && login.ok && !login.skipped)
+  };
+}
+
+function swBenchmarkSalesWorkflowStepByOperation_(steps, operation) {
+  for (var i = 0; i < (steps || []).length; i++) {
+    if (steps[i] && steps[i].operation === operation) return steps[i];
+  }
+  return null;
+}
+
 function swBenchmarkSalesWorkflowStep_(out, operation, fn) {
   var started = new Date().getTime();
   var timingCapture = typeof swTimingCaptureStart_ === 'function' ? swTimingCaptureStart_() : [];
@@ -1998,7 +2124,15 @@ function swBenchmarkSalesWorkflowOptions_(options) {
   var detailLimit = Number(options.detailLimit || options.maxDetailTasks || 8);
   if (!isFinite(detailLimit) || detailLimit < 0) detailLimit = 8;
   detailLimit = Math.min(Math.floor(detailLimit), 25);
+  var bootstrapRepeats = Number(options.bootstrapRepeats || options.startupRepeats || 2);
+  if (!isFinite(bootstrapRepeats) || bootstrapRepeats < 1) bootstrapRepeats = 1;
+  bootstrapRepeats = Math.min(Math.floor(bootstrapRepeats), 5);
   return {
+    startupOnly: !!options.startupOnly,
+    includeStartup: options.includeStartup !== false,
+    bootstrapRepeats: bootstrapRepeats,
+    loginEmail: swNormEmail_(options.loginEmail || options.email || ''),
+    loginPassword: String(options.loginPassword || options.password || ''),
     detailLimit: detailLimit,
     includeTaskDetails: options.includeTaskDetails !== false,
     includeCustomerDetail: options.includeCustomerDetail !== false,
