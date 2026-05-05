@@ -64,6 +64,7 @@ var SW_ARTIFACT_STAGES = {
   REVIEW_PENDING: 'REVIEW_PENDING',
   APPROVED: 'APPROVED',
   JOC_HANDOFF: 'JOC_HANDOFF',
+  DUPLICATE_SKIPPED: 'DUPLICATE_SKIPPED',
   ERROR: 'ERROR'
 };
 
@@ -185,6 +186,7 @@ function swArtifactStageRank_(stage) {
   rank[SW_ARTIFACT_STAGES.REVIEW_PENDING] = 70;
   rank[SW_ARTIFACT_STAGES.APPROVED] = 80;
   rank[SW_ARTIFACT_STAGES.JOC_HANDOFF] = 90;
+  rank[SW_ARTIFACT_STAGES.DUPLICATE_SKIPPED] = -2;
   rank[SW_ARTIFACT_STAGES.ERROR] = -1;
   return rank[stage] || 0;
 }
@@ -781,7 +783,8 @@ function sw_processAppointmentAutomation() {
 function swArtifactReadyForWorker_(row, now) {
   var stage = row['Workflow Stage'];
   if (stage === SW_ARTIFACT_STAGES.ERROR) return swArtifactCanRetryDriveSharingError_(row);
-  if (stage === SW_ARTIFACT_STAGES.REVIEW_PENDING ||
+  if (stage === SW_ARTIFACT_STAGES.DUPLICATE_SKIPPED ||
+      stage === SW_ARTIFACT_STAGES.REVIEW_PENDING ||
       stage === SW_ARTIFACT_STAGES.APPROVED || stage === SW_ARTIFACT_STAGES.JOC_HANDOFF) return false;
   if (!swArtifactNeedsTranscription_(row['Artifact Type'])) return false;
   var due = swTrim_(row['Next Poll At']);
@@ -821,6 +824,17 @@ function swProcessAppointmentArtifact_(ss, row, now) {
     return { refreshTasks: false };
   }
   if (stage === SW_ARTIFACT_STAGES.SUMMARY_QUEUED) {
+    var duplicate = swDuplicatePrimaryRecordingSummary_(ss, row);
+    if (duplicate) {
+      swPatchAppointmentArtifactRow_(ss, row, {
+        'Workflow Stage': SW_ARTIFACT_STAGES.DUPLICATE_SKIPPED,
+        'Next Poll At': '',
+        'Last Error': '',
+        'Updated At': swIso_(now)
+      });
+      Logger.log('Skipped duplicate appointment recording artifact ' + row['ArtifactID'] + '; primary is ' + duplicate.primaryArtifactId + '.');
+      return { refreshTasks: false };
+    }
     swGenerateAppointmentSummary_(ss, row, now);
     return { refreshTasks: true };
   }
@@ -832,6 +846,40 @@ function swProcessAppointmentArtifact_(ss, row, now) {
     return { refreshTasks: true };
   }
   return { refreshTasks: false };
+}
+
+function swDuplicatePrimaryRecordingSummary_(ss, row) {
+  if (!row || row['Artifact Type'] !== SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING) return null;
+  var currentId = swTrim_(row['ArtifactID']);
+  var root = swTrim_(row['RootApptID']);
+  if (!currentId || !root) return null;
+  var rows = swAppointmentArtifactRowsForRoot_(ss, root).filter(function (candidate) {
+    if (candidate['Artifact Type'] !== SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING) return false;
+    if (candidate['Workflow Stage'] === SW_ARTIFACT_STAGES.ERROR ||
+        candidate['Workflow Stage'] === SW_ARTIFACT_STAGES.DUPLICATE_SKIPPED) return false;
+    return swTrim_(candidate['Transcript Doc ID']) || swArtifactStageRank_(candidate['Workflow Stage']) >= swArtifactStageRank_(SW_ARTIFACT_STAGES.SUMMARY_QUEUED);
+  });
+  if (rows.length <= 1) return null;
+
+  var completed = rows.filter(function (candidate) {
+    return swTrim_(candidate['Summary Doc ID']) ||
+      swArtifactStageRank_(candidate['Workflow Stage']) >= swArtifactStageRank_(SW_ARTIFACT_STAGES.SUMMARY_READY);
+  });
+  var primary = (completed.length ? completed : rows).sort(swComparePrimaryRecordingArtifacts_)[0];
+  var primaryId = swTrim_(primary && primary['ArtifactID']);
+  return primaryId && primaryId !== currentId ? { primaryArtifactId: primaryId } : null;
+}
+
+function swComparePrimaryRecordingArtifacts_(a, b) {
+  var aTime = swArtifactTimeMs_(a);
+  var bTime = swArtifactTimeMs_(b);
+  if (aTime !== bTime) return aTime - bTime;
+  return String(a['ArtifactID'] || '').localeCompare(String(b['ArtifactID'] || ''));
+}
+
+function swArtifactTimeMs_(row) {
+  var d = new Date(row['Uploaded At'] || row['Updated At'] || '');
+  return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
 function swArtifactCanRetryDriveSharingError_(row) {
