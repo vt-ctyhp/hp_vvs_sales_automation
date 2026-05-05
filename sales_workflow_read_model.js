@@ -9,6 +9,8 @@ var SW_READ_MODEL_VERSION = 'phase1-v1';
 var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 10 * 60;
 var SW_READ_MODEL_REFRESH_HANDLER = 'sw_rebuildWorkflowReadModels';
 var SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_ = {};
+var SW_TASK_DASHBOARD_CACHE_SECONDS = 10 * 60;
+var SW_TASK_DASHBOARD_MEMORY_CACHE_ = {};
 
 function sw_rebuildWorkflowReadModels(options) {
   options = options || {};
@@ -42,6 +44,9 @@ function swMarkWorkflowReadModelsStale_(ss, reason, modelName) {
   var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_META);
   var now = swIso_(new Date());
   modelName = swTrim_(modelName || '');
+  if (!modelName || modelName === 'tasks') {
+    try { swInvalidateTaskDashboardProjectionCache_(ss); } catch (_) {}
+  }
   var key = ss.getId() + ':' + (modelName || 'all');
   if (SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_[key]) {
     return {
@@ -166,6 +171,11 @@ function swBuildTaskReadModel_(ss, builtAt) {
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
     try { swCacheTaskListState_(ss, state); } catch (_) {}
+    var projections = swBuildTaskDashboardProjections_(ss, state, builtAt);
+    write.projectionUsers = projections.users || 0;
+    write.projectionKeys = projections.keys || 0;
+    write.projectionMs = projections.buildMs || 0;
+    write.projectionError = projections.error || '';
     return write;
   } catch (err) {
     return swReadModelErrorResult_(err, started);
@@ -433,6 +443,9 @@ function swWorkflowReadModelLogSummary_(result) {
       sourceRows: model.sourceRows || 0,
       outputRows: model.outputRows || 0,
       buildMs: model.buildMs || 0,
+      projectionUsers: model.projectionUsers || 0,
+      projectionKeys: model.projectionKeys || 0,
+      projectionMs: model.projectionMs || 0,
       error: model.error || ''
     };
   });
@@ -605,4 +618,220 @@ function swTaskFromReadModelRow_(row) {
     snoozeReason: row['Snooze Reason'] || '',
     rowNumber: Number(row['Row Number'] || 0) || 0
   };
+}
+
+function swBuildTaskDashboardProjections_(ss, state, builtAt) {
+  var started = new Date().getTime();
+  try {
+    var config = swReadConfig_(ss, true);
+    var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
+      ? swDataCleanupCampaignTabEnabled_(config)
+      : false;
+    var users = swTaskDashboardProjectionUsers_(ss);
+    swClearTaskDashboardProjectionCaches_(ss);
+
+    var builtAtIso = swIso_(builtAt);
+    var expiresAtIso = swIso_(new Date(builtAt.getTime() + SW_TASK_DASHBOARD_CACHE_SECONDS * 1000));
+    var keys = [];
+    users.forEach(function (user) {
+      var buckets = swBuildVisibleTaskBuckets_(state, user, { cleanupCampaignTabEnabled: cleanupTabEnabled });
+      var counts = {
+        mine: buckets.mine.length,
+        cleanup: buckets.cleanup.length,
+        coverage: buckets.coverage.length,
+        admin: buckets.admin.length
+      };
+      var base = {
+        ok: true,
+        version: SW_READ_MODEL_VERSION,
+        builtAt: builtAtIso,
+        expiresAt: expiresAtIso,
+        email: user.email,
+        signature: swTaskDashboardUserSignature_(user, cleanupTabEnabled),
+        totalTasks: (state.tasks || []).length,
+        counts: counts,
+        ageSeconds: 0
+      };
+      keys.push(swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, 'bootstrap', swMergeObjects_(base, {
+        tasks: buckets.mine
+      })));
+      ['mine', 'cleanup', 'coverage', 'admin'].forEach(function (viewName) {
+        keys.push(swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, 'view:' + viewName, swMergeObjects_(base, {
+          view: viewName,
+          tasks: buckets[viewName] || []
+        })));
+      });
+    });
+    swPutTaskDashboardProjectionIndex_(ss, keys.filter(Boolean));
+    swClearTaskDashboardInvalidation_(ss);
+    return {
+      ok: true,
+      users: users.length,
+      keys: keys.filter(Boolean).length,
+      buildMs: new Date().getTime() - started,
+      error: ''
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      users: 0,
+      keys: 0,
+      buildMs: new Date().getTime() - started,
+      error: err && err.message ? err.message : String(err)
+    };
+  }
+}
+
+function swReadTaskDashboardBootstrapProjection_(ss, user, config) {
+  return swReadTaskDashboardProjection_(ss, user, config, 'bootstrap');
+}
+
+function swReadTaskDashboardViewProjection_(ss, user, viewName, config) {
+  viewName = swTrim_(viewName || 'mine');
+  if (['mine', 'cleanup', 'coverage', 'admin'].indexOf(viewName) < 0) return null;
+  return swReadTaskDashboardProjection_(ss, user, config, 'view:' + viewName);
+}
+
+function swReadTaskDashboardProjection_(ss, user, config, projectionType) {
+  if (!swTaskReadModelServingEnabled_(config)) return null;
+  var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
+    ? swDataCleanupCampaignTabEnabled_(config || [])
+    : false;
+  user = user || {};
+  if (!user.email) return null;
+  var key = swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType);
+  var payload = swTaskDashboardProjectionCacheGet_(key);
+  if (!payload || payload.version !== SW_READ_MODEL_VERSION) return null;
+  if (payload.signature !== swTaskDashboardUserSignature_(user, cleanupTabEnabled)) return null;
+  var nowMs = new Date().getTime();
+  var builtAtMs = swReadModelDateMs_(payload.builtAt);
+  var expiresAtMs = swReadModelDateMs_(payload.expiresAt);
+  if (!builtAtMs || !expiresAtMs || expiresAtMs < nowMs) return null;
+  var invalidatedAt = swTaskDashboardInvalidatedAt_(ss);
+  if (invalidatedAt && swReadModelDateMs_(invalidatedAt) > builtAtMs) return null;
+  payload.ageSeconds = Math.max(0, Math.round((nowMs - builtAtMs) / 1000));
+  payload.source = 'taskDashboardProjection';
+  return payload;
+}
+
+function swTaskDashboardProjectionUsers_(ss) {
+  var rows = [];
+  try {
+    rows = swAuthReadUserRows_(ss, true);
+  } catch (_) {}
+  var byEmail = {};
+  rows.forEach(function (row) {
+    if (!swTruthy_(row['Active?'] || '')) return;
+    var user = swAuthUserFromRow_(row);
+    if (!user.email || byEmail[user.email]) return;
+    byEmail[user.email] = user;
+  });
+  return Object.keys(byEmail).sort().map(function (email) { return byEmail[email]; });
+}
+
+function swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, projectionType, payload) {
+  var key = swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType);
+  swTaskDashboardProjectionCachePut_(key, payload);
+  return key;
+}
+
+function swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType) {
+  return 'sw:taskDashboard:v1:' + ss.getId() + ':' +
+    encodeURIComponent(swNormEmail_(user && user.email || '')) + ':' +
+    encodeURIComponent(swTaskDashboardUserSignature_(user, cleanupTabEnabled)) + ':' +
+    encodeURIComponent(swTrim_(projectionType || 'bootstrap'));
+}
+
+function swTaskDashboardUserSignature_(user, cleanupTabEnabled) {
+  user = user || {};
+  var parts = [
+    swNormEmail_(user.email || ''),
+    swNorm_(user.name || ''),
+    (user.roles || []).map(swNorm_).sort().join(','),
+    user.isAdmin ? 'admin' : '',
+    user.isJoc ? 'joc' : '',
+    user.isRep ? 'rep' : '',
+    user.isDiamondOrderAdmin ? 'diamondAdmin' : '',
+    user.isDiamondOrderAssistant ? 'diamondAssistant' : '',
+    cleanupTabEnabled ? 'cleanupY' : 'cleanupN'
+  ];
+  return parts.join('|').replace(/[^a-z0-9@._|,-]+/gi, '').slice(0, 220);
+}
+
+function swTaskDashboardProjectionCacheGet_(key) {
+  try {
+    var memory = SW_TASK_DASHBOARD_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.payload || null;
+  } catch (_) {}
+  var payload = swTaskListCacheGet_(key);
+  if (!payload) return null;
+  try {
+    SW_TASK_DASHBOARD_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_TASK_DASHBOARD_CACHE_SECONDS * 1000,
+      payload: payload
+    };
+  } catch (_) {}
+  return payload;
+}
+
+function swTaskDashboardProjectionCachePut_(key, payload) {
+  try {
+    SW_TASK_DASHBOARD_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_TASK_DASHBOARD_CACHE_SECONDS * 1000,
+      payload: payload
+    };
+  } catch (_) {}
+  swTaskListCachePut_(key, payload);
+}
+
+function swPutTaskDashboardProjectionIndex_(ss, keys) {
+  try {
+    CacheService.getScriptCache().put(swTaskDashboardProjectionIndexKey_(ss), swStringify_(keys || []), SW_TASK_DASHBOARD_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swClearTaskDashboardProjectionCaches_(ss) {
+  var keys = [];
+  try {
+    var text = CacheService.getScriptCache().get(swTaskDashboardProjectionIndexKey_(ss));
+    keys = text ? swParseJson_(text, []) : [];
+  } catch (_) {}
+  (keys || []).forEach(function (key) {
+    try { delete SW_TASK_DASHBOARD_MEMORY_CACHE_[key]; } catch (_) {}
+    try { swTaskListCacheRemove_(key); } catch (_) {}
+  });
+  try { CacheService.getScriptCache().remove(swTaskDashboardProjectionIndexKey_(ss)); } catch (_) {}
+}
+
+function swTaskDashboardProjectionIndexKey_(ss) {
+  return 'sw:taskDashboard:index:v1:' + ss.getId();
+}
+
+function swInvalidateTaskDashboardProjectionCache_(ss) {
+  swClearTaskDashboardProjectionCaches_(ss);
+  try {
+    CacheService.getScriptCache().put(swTaskDashboardInvalidationKey_(ss), swIso_(new Date()), SW_TASK_DASHBOARD_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swClearTaskDashboardInvalidation_(ss) {
+  try { CacheService.getScriptCache().remove(swTaskDashboardInvalidationKey_(ss)); } catch (_) {}
+}
+
+function swTaskDashboardInvalidatedAt_(ss) {
+  try {
+    return CacheService.getScriptCache().get(swTaskDashboardInvalidationKey_(ss)) || '';
+  } catch (_) {}
+  return '';
+}
+
+function swTaskDashboardInvalidationKey_(ss) {
+  return 'sw:taskDashboard:invalidated:v1:' + ss.getId();
+}
+
+function swMergeObjects_(base, extra) {
+  var out = {};
+  Object.keys(base || {}).forEach(function (key) { out[key] = base[key]; });
+  Object.keys(extra || {}).forEach(function (key) { out[key] = extra[key]; });
+  return out;
 }

@@ -199,6 +199,39 @@ function swBuildBootstrapResponse_(ss, user, mark) {
   var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
     ? swDataCleanupCampaignTabEnabled_(config)
     : false;
+  var projected = typeof swReadTaskDashboardBootstrapProjection_ === 'function'
+    ? swReadTaskDashboardBootstrapProjection_(ss, user, config)
+    : null;
+  if (projected && projected.ok) {
+    mark('taskListRead', {
+      tasks: projected.totalTasks || 0,
+      source: projected.source || 'taskDashboardProjection',
+      fallbackReason: '',
+      ageSeconds: projected.ageSeconds || 0
+    });
+    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+    mark('taskBuckets', {
+      mine: projected.counts.mine || 0,
+      cleanup: projected.counts.cleanup || 0,
+      coverage: projected.counts.coverage || 0,
+      admin: projected.counts.admin || 0,
+      source: projected.source || 'taskDashboardProjection'
+    });
+    return {
+      ok: true,
+      user: user,
+      tasks: projected.tasks || [],
+      counts: {
+        mine: projected.counts.mine || 0,
+        cleanup: projected.counts.cleanup || 0,
+        coverage: projected.counts.coverage || 0,
+        admin: user.isAdmin ? projected.counts.admin || 0 : 0
+      },
+      views: swBootstrapViewsForUser_(user, cleanupTabEnabled),
+      message: 'Connected. Use Refresh Queue to create or refresh the queue.'
+    };
+  }
+
   var taskRead = swReadTaskListStateForDashboard_(ss, config);
   var state = taskRead.state;
   mark('taskListRead', {
@@ -225,20 +258,25 @@ function swBuildBootstrapResponse_(ss, user, mark) {
       coverage: buckets.coverage.length,
       admin: user.isAdmin ? buckets.admin.length : 0
     },
-    views: {
-      mine: true,
-      customerSearch: user.isAdmin || user.isJoc || user.isRep,
-      calendar: true,
-      inStockDiamonds: true,
-      diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
-      bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
-      cleanup: cleanupTabEnabled,
-      coverage: user.isJoc || user.isAdmin,
-      adminDashboard: user.isAdmin,
-      employeeSchedules: user.isAdmin,
-      admin: user.isAdmin
-    },
+    views: swBootstrapViewsForUser_(user, cleanupTabEnabled),
     message: 'Connected. Use Refresh Queue to create or refresh the queue.'
+  };
+}
+
+function swBootstrapViewsForUser_(user, cleanupTabEnabled) {
+  user = user || {};
+  return {
+    mine: true,
+    customerSearch: user.isAdmin || user.isJoc || user.isRep,
+    calendar: true,
+    inStockDiamonds: true,
+    diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
+    bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
+    cleanup: !!cleanupTabEnabled,
+    coverage: user.isJoc || user.isAdmin,
+    adminDashboard: user.isAdmin,
+    employeeSchedules: user.isAdmin,
+    admin: user.isAdmin
   };
 }
 
@@ -264,6 +302,25 @@ function sw_getMyTasks(authToken, view) {
     var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
       ? swDataCleanupCampaignTabEnabled_(config)
       : false;
+    var projected = typeof swReadTaskDashboardViewProjection_ === 'function'
+      ? swReadTaskDashboardViewProjection_(ss, user, viewName, config)
+      : null;
+    if (projected && projected.ok) {
+      mark('taskListRead', {
+        tasks: projected.totalTasks || 0,
+        source: projected.source || 'taskDashboardProjection',
+        fallbackReason: '',
+        ageSeconds: projected.ageSeconds || 0
+      });
+      mark('filter', { view: viewName, tasks: (projected.tasks || []).length, source: projected.source || 'taskDashboardProjection' });
+      return {
+        ok: true,
+        view: viewName,
+        user: user,
+        tasks: projected.tasks || []
+      };
+    }
+
     var taskRead = swReadTaskListStateForDashboard_(ss, config);
     var state = taskRead.state;
     mark('taskListRead', {
