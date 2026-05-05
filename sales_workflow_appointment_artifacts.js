@@ -1367,6 +1367,7 @@ function swOpenAIAppointmentSummary_(transcriptText, artifact, appointment) {
     muteHttpExceptions: true
   });
   var parsed = swFetchJsonOrThrow_(response, 'OpenAI appointment summary');
+  if (parsed.usage) Logger.log('SW_OPENAI_APPOINTMENT_SUMMARY_USAGE ' + JSON.stringify(parsed.usage));
   if (parsed.status === 'incomplete') throw new Error('OpenAI response incomplete: ' + swStringify_(parsed.incomplete_details || {}));
   var summaryText = swExtractOpenAIText_(parsed);
   if (!summaryText) throw new Error('OpenAI did not return appointment summary text.');
