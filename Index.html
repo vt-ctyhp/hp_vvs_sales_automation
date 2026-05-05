@@ -2408,12 +2408,45 @@
       var workspace = document.getElementById('taskWorkspace');
       if (workspace) workspace.innerHTML = '';
       if (clearSelection) {
-        appState.selectedTaskId = '';
-        appState.detail = null;
-        appState.proposalInventoryMatches = [];
-        appState.proposalStep = 1;
-        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
+        clearTaskDetailSelection();
       }
+    }
+
+    function clearTaskDetailSelection(eyebrow, title, message) {
+      appState.selectedTaskId = '';
+      appState.detail = null;
+      appState.proposalInventoryMatches = [];
+      appState.proposalStep = 1;
+      appState.detailRequestId += 1;
+      renderTaskDetailPlaceholder(
+        eyebrow || 'Task Detail',
+        title || 'Select a task',
+        message || 'Open a task to see instructions, message templates, attachments, and completion controls.'
+      );
+    }
+
+    function renderTaskDetailPlaceholder(eyebrow, title, message) {
+      var panel = document.getElementById('detailPanel');
+      if (!panel) return;
+      panel.innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(eyebrow || 'Task Detail') + '</div>',
+          '<h2>' + escapeHtml(title || 'Select a task') + '</h2>',
+        '</div>',
+        '<div class="empty">' + escapeHtml(message || '') + '</div>'
+      ].join('');
+    }
+
+    function renderTaskDetailLoading(eyebrow, title, message) {
+      var panel = document.getElementById('detailPanel');
+      if (!panel) return;
+      panel.innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(eyebrow || 'Task Detail') + '</div>',
+          '<h2>' + escapeHtml(title || 'Loading') + '</h2>',
+        '</div>',
+        '<div class="loading">' + escapeHtml(message || 'LOADING') + '</div>'
+      ].join('');
     }
 
     function openLoupe360SyncPanel() {
@@ -2543,7 +2576,7 @@
       }, 'Applying diamond sync', sourceButton);
     }
 
-    function loadTasks(view) {
+    function loadTasks(view, options) {
       if (view === 'calendar') {
         loadCalendar(appState.calendarMonth);
         return;
@@ -2568,14 +2601,25 @@
         loadAdminDashboard();
         return;
       }
+      options = options || {};
       var viewName = view || 'mine';
+      var reopenTaskId = options.reopenTaskId || '';
       var requestId = beginMainRequest(viewName);
       setActiveTab(viewName);
       renderViewHeader(viewName);
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING</div>';
+      if (reopenTaskId) {
+        appState.selectedTaskId = reopenTaskId;
+        appState.detail = null;
+        appState.detailRequestId += 1;
+        renderTaskDetailLoading('Task Detail', 'Refreshing Task', 'LOADING TASK');
+      } else {
+        clearTaskDetailSelection();
+      }
       serverCall('sw_getMyTasks', [viewName], function (res) {
         if (!isCurrentMainRequest(requestId, viewName)) return;
         renderTasks(res.tasks || []);
+        if (reopenTaskId) openTask(reopenTaskId);
       });
     }
 
@@ -4515,6 +4559,9 @@
 
     function openTask(taskId) {
       appState.selectedTaskId = taskId;
+      appState.detail = null;
+      appState.proposalInventoryMatches = [];
+      appState.proposalStep = 1;
       appState.detailRequestId += 1;
       var detailRequestId = appState.detailRequestId;
       var mainRequestId = appState.mainRequestId;
@@ -6544,57 +6591,56 @@
 
     function claimTask() {
       if (!appState.selectedTaskId) return;
-      serverCall('sw_claimTask', [appState.selectedTaskId], function () {
+      var taskId = appState.selectedTaskId;
+      serverCall('sw_claimTask', [taskId], function () {
         setStatus('Task claimed');
-        openTask(appState.selectedTaskId);
-        loadTasks(appState.view);
+        loadTasks(appState.view, { reopenTaskId: taskId });
       });
     }
 
     function adminSaveAssignment() {
       if (!appState.selectedTaskId) return;
+      var taskId = appState.selectedTaskId;
       if (document.getElementById('adminAssignedRep') || document.getElementById('adminAssistedRep')) {
         var payload = {
           assignedRep: valueOf('adminAssignedRep'),
           assistedRep: valueOf('adminAssistedRep'),
           reason: valueOf('adminReason')
         };
-        serverCall('sw_adminAssignAppointmentOwners', [appState.selectedTaskId, payload], function (res) {
+        serverCall('sw_adminAssignAppointmentOwners', [taskId, payload], function (res) {
           setStatus('Assignment saved: ' + (res.rowsUpdated || 0) + ' appointment row(s) updated');
-          openTask(appState.selectedTaskId);
-          loadTasks(appState.view);
+          loadTasks(appState.view, { reopenTaskId: taskId });
         }, 'Saving assignment');
         return;
       }
       serverCall('sw_adminReassignTask', [
-        appState.selectedTaskId,
+        taskId,
         valueOf('adminOwnerName'),
         valueOf('adminOwnerEmail'),
         valueOf('adminReason')
       ], function () {
         setStatus('Assignment saved');
-        openTask(appState.selectedTaskId);
-        loadTasks(appState.view);
+        loadTasks(appState.view, { reopenTaskId: taskId });
       }, 'Saving assignment');
     }
 
     function adminBlock() {
       if (!appState.selectedTaskId) return;
+      var taskId = appState.selectedTaskId;
       var reason = document.getElementById('adminReason').value || 'Admin blocked';
-      serverCall('sw_adminBlockTask', [appState.selectedTaskId, reason], function () {
+      serverCall('sw_adminBlockTask', [taskId, reason], function () {
         setStatus('Task blocked');
-        openTask(appState.selectedTaskId);
-        loadTasks(appState.view);
+        loadTasks(appState.view, { reopenTaskId: taskId });
       });
     }
 
     function adminUnblock() {
       if (!appState.selectedTaskId) return;
+      var taskId = appState.selectedTaskId;
       var reason = document.getElementById('adminReason').value || '';
-      serverCall('sw_adminUnblockTask', [appState.selectedTaskId, reason], function () {
+      serverCall('sw_adminUnblockTask', [taskId, reason], function () {
         setStatus('Task unblocked');
-        openTask(appState.selectedTaskId);
-        loadTasks(appState.view);
+        loadTasks(appState.view, { reopenTaskId: taskId });
       });
     }
 
