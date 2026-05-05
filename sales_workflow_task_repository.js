@@ -192,15 +192,16 @@ function swBuildVisibleTaskBuckets_(state, user, options) {
     var cleanupCampaignTask = typeof swIsDataCleanupTaskType_ === 'function' &&
       swIsDataCleanupTaskType_(t.taskType) &&
       swNorm_(t.lifecycleStage) === swNorm_('Cleanup Campaign');
-    if (options.cleanupCampaignTabEnabled && cleanupCampaignTask && due && (user.isAdmin || swTaskOwnedByUser_(t, user))) {
+    var jocCoverageTask = t.ownerRole === 'JOC' &&
+      (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'));
+    if (options.cleanupCampaignTabEnabled && cleanupCampaignTask && due &&
+        (user.isAdmin || (swTaskOwnedByUser_(t, user) && !jocCoverageTask))) {
       buckets.cleanup.push(t);
     }
     if (due && swTaskOwnedByUser_(t, user) && !(options.cleanupCampaignTabEnabled && cleanupCampaignTask)) {
       buckets.mine.push(t);
     }
-    if ((user.isJoc || user.isAdmin) && t.ownerRole === 'JOC' &&
-      due &&
-      (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'))) {
+    if ((user.isJoc || user.isAdmin) && due && jocCoverageTask) {
       buckets.coverage.push(t);
     }
     if (user.isAdmin && t.status !== SW_STATUSES.COMPLETED) {
