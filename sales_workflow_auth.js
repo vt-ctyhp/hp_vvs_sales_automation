@@ -8,7 +8,8 @@
 var SW_AUTH_SESSION_SECONDS = 6 * 60 * 60;
 var SW_AUTH_USER_CACHE_SECONDS = 5 * 60;
 
-function sw_login(email, password) {
+function sw_login(email, password, options) {
+  options = options || {};
   var ss = swSpreadsheet_();
   email = swNormEmail_(email);
   password = String(password || '');
@@ -29,12 +30,21 @@ function sw_login(email, password) {
     issuedAt: swIso_(new Date())
   }), SW_AUTH_SESSION_SECONDS);
   swAuthCacheApiUser_(ss, user);
-  return {
+  var out = {
     ok: true,
     token: token,
     user: user,
     expiresInSeconds: SW_AUTH_SESSION_SECONDS
   };
+  if (options.includeBootstrap && typeof swBuildBootstrapResponse_ === 'function') {
+    swRequireWorkflowReadSheets_(ss, { templates: false });
+    var mark = typeof swStepTimer_ === 'function'
+      ? swStepTimer_('sw_loginBootstrap')
+      : function () {};
+    mark('requiredSheets');
+    out.bootstrap = swBuildBootstrapResponse_(ss, user, mark);
+  }
+  return out;
 }
 
 function sw_logout(token) {

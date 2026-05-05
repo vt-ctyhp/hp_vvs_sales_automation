@@ -169,45 +169,51 @@ function sw_getBootstrap(authToken) {
     mark('requiredSheets');
     var user = swAuthUserForApi_(ss, authToken);
     mark('identity', { mode: authToken ? 'passwordSession' : 'appsScriptIdentity' });
-    var config = swReadConfig_(ss, true);
-    var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
-      ? swDataCleanupCampaignTabEnabled_(config)
-      : false;
-    var state = swReadTaskListState_(ss, true);
-    mark('taskListRead', { tasks: state.tasks.length });
-    mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
-    var buckets = swBuildVisibleTaskBuckets_(state, user, { cleanupCampaignTabEnabled: cleanupTabEnabled });
-    mark('taskBuckets', {
+    return swBuildBootstrapResponse_(ss, user, mark);
+  });
+}
+
+function swBuildBootstrapResponse_(ss, user, mark) {
+  mark = mark || function () {};
+  var config = swReadConfig_(ss, true);
+  mark('config');
+  var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
+    ? swDataCleanupCampaignTabEnabled_(config)
+    : false;
+  var state = swReadTaskListState_(ss, true);
+  mark('taskListRead', { tasks: state.tasks.length });
+  mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
+  var buckets = swBuildVisibleTaskBuckets_(state, user, { cleanupCampaignTabEnabled: cleanupTabEnabled });
+  mark('taskBuckets', {
+    mine: buckets.mine.length,
+    cleanup: buckets.cleanup.length,
+    coverage: buckets.coverage.length,
+    admin: buckets.admin.length
+  });
+  return {
+    ok: true,
+    user: user,
+    tasks: buckets.mine,
+    counts: {
       mine: buckets.mine.length,
       cleanup: buckets.cleanup.length,
       coverage: buckets.coverage.length,
-      admin: buckets.admin.length
-    });
-    return {
-      ok: true,
-      user: user,
-      tasks: buckets.mine,
-      counts: {
-        mine: buckets.mine.length,
-        cleanup: buckets.cleanup.length,
-        coverage: buckets.coverage.length,
-        admin: user.isAdmin ? buckets.admin.length : 0
-      },
-      views: {
-        mine: true,
-        customerSearch: user.isAdmin || user.isJoc || user.isRep,
-        calendar: true,
-        inStockDiamonds: true,
-        diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
-        bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
-        cleanup: cleanupTabEnabled,
-        coverage: user.isJoc || user.isAdmin,
-        adminDashboard: user.isAdmin,
-        admin: user.isAdmin
-      },
-      message: 'Connected. Use Refresh Queue to create or refresh the queue.'
-    };
-  });
+      admin: user.isAdmin ? buckets.admin.length : 0
+    },
+    views: {
+      mine: true,
+      customerSearch: user.isAdmin || user.isJoc || user.isRep,
+      calendar: true,
+      inStockDiamonds: true,
+      diamondTracking: user.isAdmin || user.isDiamondOrderAdmin || user.isDiamondOrderAssistant,
+      bulkReturns: user.isAdmin || user.isDiamondOrderAdmin,
+      cleanup: cleanupTabEnabled,
+      coverage: user.isJoc || user.isAdmin,
+      adminDashboard: user.isAdmin,
+      admin: user.isAdmin
+    },
+    message: 'Connected. Use Refresh Queue to create or refresh the queue.'
+  };
 }
 
 /**

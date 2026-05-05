@@ -119,7 +119,7 @@ function swReadCachedTaskListState_(ss) {
 
 function swCacheTaskListState_(ss, state) {
   var key = swTaskListCacheKey_(ss);
-  var tasks = state && state.tasks ? state.tasks : [];
+  var tasks = (state && state.tasks ? state.tasks : []).map(swTaskListCacheTask_);
   try {
     SW_TASK_LIST_MEMORY_CACHE_[key] = {
       expiresAt: new Date().getTime() + SW_TASK_LIST_CACHE_SECONDS * 1000,
@@ -127,6 +127,43 @@ function swCacheTaskListState_(ss, state) {
     };
   } catch (_) {}
   swTaskListCachePut_(key, { cachedAt: swIso_(new Date()), tasks: tasks });
+}
+
+function swCacheTaskListStateFromTaskState_(ss, state) {
+  if (!state) return;
+  var tasks = state.byId
+    ? Object.keys(state.byId).map(function (id) { return state.byId[id]; })
+    : (state.tasks || []);
+  swCacheTaskListState_(ss, { tasks: tasks });
+}
+
+function swTaskListCacheTask_(t) {
+  t = t || {};
+  return {
+    taskId: t.taskId || '',
+    root: t.root || '',
+    appt: t.appt || '',
+    customerName: t.customerName || '',
+    brand: t.brand || '',
+    visitDate: t.visitDate || '',
+    visitTime: swFormatAppointmentTime_(t.visitTime || ''),
+    visitType: t.visitType || '',
+    lifecycleStage: t.lifecycleStage || '',
+    taskType: t.taskType || '',
+    taskTitle: t.taskTitle || '',
+    ownerRole: t.ownerRole || '',
+    intendedOwner: t.intendedOwner || '',
+    intendedOwnerEmail: swNormEmail_(t.intendedOwnerEmail || ''),
+    currentOwner: t.currentOwner || '',
+    currentOwnerEmail: swNormEmail_(t.currentOwnerEmail || ''),
+    coverageReason: t.coverageReason || '',
+    dueAt: t.dueAt || '',
+    status: t.status || SW_STATUSES.PENDING,
+    primaryAction: t.primaryAction || '',
+    snoozeUntil: t.snoozeUntil || '',
+    snoozeReason: t.snoozeReason || '',
+    rowNumber: t.rowNumber || 0
+  };
 }
 
 function swInvalidateTaskListCache_(ss) {
@@ -506,12 +543,10 @@ function swBeginDeferredTaskWrites_(ss, state) {
 
 function swFlushDeferredTaskWrites_(ss, state) {
   if (!state || !state.deferWrites) return;
-  var wroteTasks = false;
   if (state.pendingTaskRows && state.pendingTaskRows.length) {
     var taskSheet = swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
     taskSheet.getRange(state.taskAppendStartRow, 1, state.pendingTaskRows.length, SW_TASK_HEADERS.length)
       .setValues(state.pendingTaskRows);
-    wroteTasks = true;
   }
   if (state.pendingLogRows && state.pendingLogRows.length) {
     var logSheet = swEnsureSheet_(ss, SW_SHEETS.LOG, SW_LOG_HEADERS);
@@ -521,7 +556,7 @@ function swFlushDeferredTaskWrites_(ss, state) {
   state.deferWrites = false;
   state.pendingTaskRows = [];
   state.pendingLogRows = [];
-  if (wroteTasks) swInvalidateTaskListCache_(ss);
+  swCacheTaskListStateFromTaskState_(ss, state);
 }
 
 function swQueueOrAppendTaskRow_(ss, state, task) {

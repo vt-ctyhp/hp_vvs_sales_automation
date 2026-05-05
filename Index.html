@@ -1804,7 +1804,7 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'fast-session-loading-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'login-bootstrap-combined-2026-05-05';
 
     var appState = {
       token: '',
@@ -2290,16 +2290,20 @@
     function bootstrap() {
       var requestId = beginMainRequest('mine');
       serverCall('sw_getBootstrap', [], function (res) {
-        showApp();
-        appState.user = res.user;
-        renderUser(res);
-        if (!isCurrentMainRequest(requestId, 'mine')) return;
-        appState.view = 'mine';
-        setActiveTab(appState.view);
-        renderViewHeader(appState.view);
-        renderTasks(res.tasks || []);
-        if (res.message) setStatus(res.message);
+        applyBootstrap(res, requestId);
       }, 'Opening dashboard');
+    }
+
+    function applyBootstrap(res, requestId) {
+      showApp();
+      appState.user = res.user;
+      renderUser(res);
+      if (requestId && !isCurrentMainRequest(requestId, 'mine')) return;
+      appState.view = 'mine';
+      setActiveTab(appState.view);
+      renderViewHeader(appState.view);
+      renderTasks(res.tasks || []);
+      if (res.message) setStatus(res.message);
     }
 
     function showLogin() {
@@ -2338,11 +2342,16 @@
       var password = document.getElementById('loginPassword').value;
       setLoginBusy(true);
       setLoginStatus('Signing in');
-      serverCall('sw_login', [email, password], function (res) {
+      serverCall('sw_login', [email, password, { includeBootstrap: true }], function (res) {
         setLoginStatus('Opening dashboard');
         appState.token = res.token || '';
         appState.user = res.user || null;
         sessionStorage.setItem('salesWorkflowToken', appState.token);
+        setLoginBusy(false);
+        if (res.bootstrap && res.bootstrap.ok) {
+          applyBootstrap(res.bootstrap, beginMainRequest('mine'));
+          return;
+        }
         showApp();
         renderUser({
           user: appState.user || {},
