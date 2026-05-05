@@ -984,7 +984,7 @@ function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
     var user = swAuthUserForApi_(ss, authToken);
     var task = swReadTaskRowById_(ss, taskId, true);
     if (!task) throw new Error('Task not found: ' + taskId);
-    if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
+    if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this appointment task.');
 
     var payload = swParseJson_(task.payloadJson, {});
     var root = swTrim_(task.root || task.appt || (payload.appointment && (payload.appointment.root || payload.appointment.appt)) || '');
@@ -994,7 +994,9 @@ function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
       throw new Error('Appointment artifact folder helpers are not available.');
     }
 
-    var type = swTrim_(artifactType) || (typeof SW_ARTIFACT_TYPES !== 'undefined' ? SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING : 'APPOINTMENT_RECORDING');
+    var type = typeof swNormalizeDriveUploadArtifactType_ === 'function'
+      ? swNormalizeDriveUploadArtifactType_(artifactType)
+      : (swTrim_(artifactType) || 'APPOINTMENT_RECORDING');
     var folders = swEnsureAppointmentFolderForRoot_(ss, root);
     var folder = swArtifactDriveDropFolder_(folders, type);
     return {

@@ -709,15 +709,6 @@
       margin-top: 14px;
     }
 
-    .upload-slot {
-      border-bottom: 1px solid var(--rule);
-      padding-bottom: 12px;
-    }
-
-    .upload-slot input[type="file"] {
-      margin-bottom: 8px;
-    }
-
     .review-context {
       display: grid;
       gap: 12px;
@@ -4481,29 +4472,16 @@
               '<option value="No Show"' + (outcome === 'No Show' ? ' selected' : '') + '>No Show</option>',
             '</select></div>',
           '</div>',
-          '<form id="appointmentUploadForm" class="upload-grid">',
-            '<input type="hidden" id="appointmentUploadToken" name="swAuthToken" value="">',
-            '<input type="hidden" id="appointmentUploadTaskId" name="taskId" value="' + escapeAttrValue(task.taskId || '') + '">',
-            '<input type="hidden" id="appointmentUploadRoot" name="rootApptId" value="' + escapeAttrValue(task.root || task.appt || '') + '">',
-            appointmentFileInputHtml('appointmentRecording', 'appointmentRecordingDriveUrl', 'Appointment recording *', 'audio/*,video/*', 'For long voice memos, upload to Drive and paste the file link here.'),
-            appointmentFileInputHtml('advisorRecap', 'advisorRecapDriveUrl', 'Client Advisor recap', '.pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.heic', 'Optional Drive file link.'),
-            appointmentFileInputHtml('diamondViewingRecording', 'diamondViewingRecordingDriveUrl', 'Diamond viewing recording', 'audio/*,video/*', 'Optional Drive file link.'),
-            appointmentFileInputHtml('intakeMaterial', 'intakeMaterialDriveUrl', 'Client intake form / photo', '.pdf,.jpg,.jpeg,.png,.heic,.doc,.docx', 'Optional Drive file link.'),
-          '</form>',
-          '<div class="actions"><button class="js-open-appointment-upload-folder" type="button">Open Drive Folder</button><button class="js-upload-appointment-artifacts" type="button">Upload Files</button></div>',
+          '<div class="upload-grid">',
+            '<div><label for="appointmentDriveArtifactType">File Type</label><select id="appointmentDriveArtifactType">',
+              '<option value="APPOINTMENT_RECORDING">Initial consult recording</option>',
+              '<option value="DIAMOND_VIEWING_RECORDING">Diamond viewing recording</option>',
+              '<option value="CLIENT_ADVISOR_RECAP">Client Advisor recap</option>',
+            '</select></div>',
+          '</div>',
+          '<div class="actions"><button class="js-open-appointment-upload-folder" type="button">Open Drive Folder</button></div>',
           '<div class="meta">' + (primaryUploaded ? 'Appointment recording uploaded. Automation status is tracked below.' : 'Completed appointments require an appointment recording before this task can close.') + '</div>',
           renderArtifactStatus(artifacts),
-        '</div>'
-      ].join('');
-    }
-
-    function appointmentFileInputHtml(name, driveUrlName, label, accept, helperText) {
-      return [
-        '<div class="upload-slot">',
-          '<label for="' + escapeAttrValue(name) + '">' + escapeHtml(label) + '</label>',
-          '<input id="' + escapeAttrValue(name) + '" name="' + escapeAttrValue(name) + '" type="file" accept="' + escapeAttrValue(accept || '') + '">',
-          '<input class="js-appointment-drive-url" id="' + escapeAttrValue(driveUrlName) + '" name="' + escapeAttrValue(driveUrlName) + '" type="text" placeholder="Drive file link">',
-          helperText ? '<div class="meta">' + escapeHtml(helperText) + '</div>' : '',
         '</div>'
       ].join('');
     }

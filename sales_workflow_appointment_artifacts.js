@@ -470,6 +470,11 @@ function swDriveUploadArtifactTypes_() {
   ];
 }
 
+function swNormalizeDriveUploadArtifactType_(artifactType) {
+  var type = swTrim_(artifactType);
+  return swDriveUploadArtifactTypes_().indexOf(type) >= 0 ? type : SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING;
+}
+
 function swSyncAppointmentDriveUploads_(ss, rootApptId, taskId, user) {
   var root = swTrim_(rootApptId);
   if (!root) throw new Error('Missing RootApptID for Drive upload sync.');
@@ -498,6 +503,8 @@ function swSyncAppointmentDriveUploads_(ss, rootApptId, taskId, user) {
 function swRegisterAppointmentDriveFile_(ss, rootApptId, taskId, artifactType, file, user, options) {
   options = options || {};
   var now = new Date();
+  var parents = file.getParents ? file.getParents() : null;
+  var folderId = parents && parents.hasNext() ? parents.next().getId() : '';
   var originalName = swTrim_(options.originalName || file.getName() || 'drive-file');
   var canonicalName = swIsCanonicalArtifactFilename_(rootApptId, artifactType, originalName)
     ? originalName
@@ -521,7 +528,7 @@ function swRegisterAppointmentDriveFile_(ss, rootApptId, taskId, artifactType, f
     'Size Bytes': file.getSize ? file.getSize() : '',
     'Drive File ID': file.getId(),
     'Drive URL': file.getUrl(),
-    'Folder ID': file.getParents && file.getParents().hasNext() ? file.getParents().next().getId() : '',
+    'Folder ID': folderId,
     'Uploaded By': user.name || user.email || 'System',
     'Uploaded By Email': user.email || '',
     'Uploaded At': swIso_(now),
