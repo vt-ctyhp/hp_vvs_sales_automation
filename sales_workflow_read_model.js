@@ -240,7 +240,23 @@ function swBuildTaskReadModel_(ss, builtAt) {
     write.sourceRows = state.tasks ? state.tasks.length : 0;
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
-    try { swCacheTaskListState_(ss, state); } catch (_) {}
+    try { swCacheTaskListState_(ss, state, { skipLookupIndexes: true }); } catch (_) {}
+    var lookupIndexStarted = new Date().getTime();
+    try {
+      var lookupIndex = typeof swCacheTaskLookupIndexes_ === 'function'
+        ? swCacheTaskLookupIndexes_(ss, state)
+        : {};
+      write.detailIndexMs = new Date().getTime() - lookupIndexStarted;
+      write.detailIndexKeys = lookupIndex.keys || 0;
+      write.detailIndexRows = lookupIndex.rows || 0;
+      write.detailIndexBytes = lookupIndex.bytes || 0;
+      write.detailIndexOk = lookupIndex.ok !== false;
+      if (lookupIndex.reason) write.detailIndexError = lookupIndex.reason;
+    } catch (lookupIndexErr) {
+      write.detailIndexMs = new Date().getTime() - lookupIndexStarted;
+      write.detailIndexOk = false;
+      write.detailIndexError = lookupIndexErr && lookupIndexErr.message ? lookupIndexErr.message : String(lookupIndexErr);
+    }
     var detailCacheStarted = new Date().getTime();
     try {
       var detailCache = typeof swCacheTaskDetailRows_ === 'function'
@@ -698,7 +714,7 @@ function swReadTaskListStateForDashboard_(ss, config) {
   var readModel = swTryReadTaskListStateFromReadModel_(ss, config);
   if (readModel && readModel.state) return readModel;
 
-  var state = swReadTaskListState_(ss, true);
+  var state = swReadTaskListState_(ss, true, { skipReadModelFallback: true });
   return {
     source: 'taskQueue',
     fallbackReason: readModel ? readModel.fallbackReason || '' : '',
