@@ -198,7 +198,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - **Admin Dashboard / Customer Pipeline**: weekly metrics and customer pipeline, visible to admins.
 - **Admin Review**: all non-completed workflow tasks, visible to admins.
 - **Manage Users**: add/update workflow users, roles, and passwords, visible to admins.
-- **Cleanup**: temporary one-time stale customer cleanup campaign tab, visible while `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED = Y`. Client Advisors/JOC see their assigned cleanup work; admins see all cleanup campaign tasks. After campaign cases are resolved, future stale customers flow into the normal queue rather than this tab.
+- **Cleanup**: temporary one-time stale customer cleanup campaign tab, visible while `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED = Y`. Client Advisors see their assigned cleanup work; admins see all cleanup campaign tasks. JOC-side cleanup work routes through the shared `JOC Coverage` queue so any active JOC can claim and submit it. After campaign cases are resolved, future stale customers flow into the normal queue rather than this tab.
 
 ### F. Standard Task Execution
 - A user opens a task card to load task detail, rendered instructions, copyable message/template text, links/attachments, checklists, and task-specific controls.
@@ -241,7 +241,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - Setup creates `_SalesDataCleanup` plus Master cleanup columns: `Lost Lead Reason`, `Lost Lead Reason Notes`, `Data Cleanup Reviewed At`, and `Data Cleanup Confirmed At`.
 - Config rows control the workflow: `DATA_CLEANUP_ENABLED`, `DATA_CLEANUP_STALE_DAYS` (default 30), `DATA_CLEANUP_CAMPAIGN_ID`, and `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED`.
 - Generation creates cleanup cases for active Lead / Hot Lead / Follow-Up customer roots with no meaningful touch for 30+ calendar days, excluding Won/Lost Lead and any root with an unresolved cleanup case.
-- During the one-time campaign, initial cleanup review tasks appear in the temporary Cleanup tab for both Client Advisor and JOC. The first submitter proposes the update; the other owner receives a confirmation task.
+- During the one-time campaign, the Client Advisor side routes to the assigned Client Advisor and the JOC side routes to shared `JOC Coverage`, not the appointment's assigned JOC. The first submitter proposes the update; the opposite side receives confirmation. Customer data writes back only after one JOC-side submitter and one assigned Client Advisor-side submitter have participated.
 - Customer records are updated only after second-person confirmation. Returned confirmations create a revision task for the proposer and do not write back.
 - After unresolved campaign cases reach zero, the campaign tab is disabled by config. Ongoing stale customers continue to create cleanup tasks in the regular queue.
 

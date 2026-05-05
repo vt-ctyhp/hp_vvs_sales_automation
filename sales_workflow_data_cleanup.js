@@ -53,6 +53,8 @@ function swGenerateDataCleanupTasks_(ss, taskState, ctx, appointments, now, summ
   var rootIndex = swDataCleanupReadRootIndex_(ss);
   var caseState = swReadDataCleanupCaseState_(ss);
   var roots = Object.keys(currentByRoot);
+  out.existingJocTasksRerouted = swDataCleanupRerouteCampaignJocTasks_(ss, taskState, ctx, caseState, campaignId, now);
+  if (summary && out.existingJocTasksRerouted) summary.updated += out.existingJocTasksRerouted;
 
   roots.forEach(function (root) {
     out.scannedRoots++;
@@ -127,6 +129,7 @@ function swGenerateDataCleanupTasks_(ss, taskState, ctx, appointments, now, summ
     });
     var jocTask = swBuildDataCleanupTask_(ss, taskState, ctx, rec, cleanupCase, SW_TASKS.DATA_CLEANUP_REVIEW, SW_OWNER_ROLES.JOC, now, '', now, {
       phase: 'review',
+      sharedJocQueue: cleanupCase.campaignTab === 'Y',
       taskId: swDataCleanupTaskId_(caseId, 'REVIEW', 'JOC', 0)
     });
     swUpsertTask_(ss, taskState, repTask, summary);
@@ -146,7 +149,9 @@ function swGenerateDataCleanupTasks_(ss, taskState, ctx, appointments, now, summ
 function swBuildDataCleanupTask_(ss, state, ctx, rec, cleanupCase, taskType, ownerRole, dueAt, dependencyTaskId, now, options) {
   options = options || {};
   var template = (ctx.templates && ctx.templates[taskType]) || swDefaultTemplate_(taskType);
-  var owner = swResolveOwner_(ss, ctx, rec, ownerRole, dueAt || now, null);
+  var owner = options.sharedJocQueue && swWorkflowRoleMatches_(ownerRole, SW_OWNER_ROLES.JOC)
+    ? swDataCleanupSharedJocQueueOwner_(ss, ctx, rec)
+    : swResolveOwner_(ss, ctx, rec, ownerRole, dueAt || now, null);
   if (options.ownerName || options.ownerEmail) {
     owner.currentOwner = options.ownerName || owner.currentOwner;
     owner.currentOwnerEmail = swNormEmail_(options.ownerEmail || owner.currentOwnerEmail);
@@ -310,6 +315,7 @@ function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
   var confirmRole = swDataCleanupOppositeRole_(proposerRole);
   var confirmTask = swBuildDataCleanupTask_(ss, null, swBuildContext_(ss, true), rec, cleanupCase, SW_TASKS.DATA_CLEANUP_CONFIRM, confirmRole, now, task.taskId, now, {
     phase: 'confirm',
+    sharedJocQueue: cleanupCase.campaignTab === 'Y' && swWorkflowRoleMatches_(confirmRole, SW_OWNER_ROLES.JOC),
     taskId: swDataCleanupTaskId_(cleanupCase.caseId, 'CONFIRM', swDataCleanupRoleKey_(confirmRole), Number(cleanupCase.revisionCount) || 0)
   });
   swDataCleanupUpsertImmediateTask_(ss, confirmTask, user, 'CREATE');
@@ -668,6 +674,86 @@ function swDataCleanupPublicCase_(cleanupCase) {
     returnReason: cleanupCase.returnReason,
     revisionCount: cleanupCase.revisionCount
   };
+}
+
+function swDataCleanupSharedJocQueueName_() {
+  return 'JOC Coverage';
+}
+
+function swDataCleanupSharedJocQueueOwner_(ss, ctx, rec) {
+  rec = rec || {};
+  var intendedName = rec.assistedRep || '';
+  return {
+    intendedOwner: intendedName,
+    intendedOwnerEmail: swLookupEmailByName_(ss, intendedName, ctx) || rec.assistedRepEmail || '',
+    currentOwner: swDataCleanupSharedJocQueueName_(),
+    currentOwnerEmail: '',
+    coverageReason: 'DATA_CLEANUP_SHARED_JOC_QUEUE'
+  };
+}
+
+function swDataCleanupRerouteCampaignJocTasks_(ss, taskState, ctx, caseState, campaignId, now) {
+  var byId = (taskState && taskState.byId) || {};
+  var casesById = (caseState && caseState.byId) || {};
+  var count = 0;
+  Object.keys(byId).forEach(function (taskId) {
+    var task = byId[taskId];
+    if (!swDataCleanupShouldRerouteJocTask_(task, campaignId)) return;
+    var cleanupCase = casesById[swDataCleanupCaseIdFromTask_(task)] || {};
+    var payload = swParseJson_(task.payloadJson, {});
+    var rec = swDataCleanupRecFromTask_(task, payload, cleanupCase);
+    rec.assistedRep = rec.assistedRep || task.intendedOwner || '';
+    rec.assistedRepEmail = rec.assistedRepEmail || task.intendedOwnerEmail || '';
+    var owner = swDataCleanupSharedJocQueueOwner_(ss, ctx, rec);
+    if (swNorm_(task.currentOwner) === swNorm_(owner.currentOwner) &&
+        !task.currentOwnerEmail &&
+        task.coverageReason === owner.coverageReason) {
+      return;
+    }
+
+    var fromOwner = task.currentOwner;
+    task.intendedOwner = owner.intendedOwner;
+    task.intendedOwnerEmail = owner.intendedOwnerEmail;
+    task.currentOwner = owner.currentOwner;
+    task.currentOwnerEmail = owner.currentOwnerEmail;
+    task.coverageReason = owner.coverageReason;
+    task.updatedAt = swIso_(now || new Date());
+    task.lastEvent = 'ASSIGN';
+    swWriteTaskRow_(ss, task);
+    swAppendTaskLog_(ss, 'ASSIGN', task, swSystemUser_(), fromOwner, task.currentOwner, {
+      reason: 'One-time data cleanup JOC work uses the shared JOC queue.',
+      coverageReason: task.coverageReason
+    });
+    count++;
+  });
+  return count;
+}
+
+function swDataCleanupShouldRerouteJocTask_(task, campaignId) {
+  if (!task || task.claimedBy) return false;
+  if (task.status !== SW_STATUSES.PENDING && task.status !== SW_STATUSES.SNOOZED) return false;
+  if (!swWorkflowRoleMatches_(task.ownerRole, SW_OWNER_ROLES.JOC)) return false;
+  if (task.taskType !== SW_TASKS.DATA_CLEANUP_REVIEW && task.taskType !== SW_TASKS.DATA_CLEANUP_CONFIRM) return false;
+  if (swNorm_(task.lifecycleStage) !== swNorm_('Cleanup Campaign')) return false;
+  return swDataCleanupCampaignIdFromTask_(task) === campaignId;
+}
+
+function swDataCleanupCampaignIdFromTask_(task) {
+  var payload = swParseJson_(task && task.payloadJson, {});
+  var campaignId = swDeepValue_(payload, ['extra', 'cleanupCase', 'campaignId']);
+  if (campaignId) return campaignId;
+  var parts = String(task && task.taskId || '').split('|');
+  return parts.length >= 3 && parts[0] === 'SWC' && parts[1] === 'DC' ? parts[2] : '';
+}
+
+function swDataCleanupCaseIdFromTask_(task) {
+  var payload = swParseJson_(task && task.payloadJson, {});
+  var caseId = swDeepValue_(payload, ['extra', 'cleanupCase', 'caseId']);
+  if (caseId) return caseId;
+  var parts = String(task && task.taskId || '').split('|');
+  return parts.length >= 5 && parts[0] === 'SWC'
+    ? [parts[1], parts[2], parts[3], parts[4]].join('|')
+    : '';
 }
 
 function swDataCleanupUpsertImmediateTask_(ss, task, actor, eventType) {
