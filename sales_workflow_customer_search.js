@@ -91,9 +91,9 @@ function swCustomerSearchKanbanFromRows_(ss, rows, source) {
     if (!rec) return;
     var stage = swCustomerSearchStageForRecord_(rec, rootRows);
     var column = columnsByKey[stage.key] || columnsByKey.lead;
-    var card = swCustomerSearchCardForRecord_(ss, masterGid, root, rec, rootRows, stage, aiBriefByRoot[root]);
     column.count++;
     if (column.cards.length < SW_CUSTOMER_SEARCH_MAX_CARDS_PER_COLUMN) {
+      var card = swCustomerSearchCardForRecord_(ss, masterGid, root, rec, rootRows, stage, aiBriefByRoot[root]);
       column.cards.push(card);
     } else {
       column.hiddenCount++;
