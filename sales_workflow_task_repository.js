@@ -2,6 +2,10 @@
  * Sales workflow task repository: task state, queue projections, row writes, and task logs.
  */
 
+var SW_TASK_LIST_CACHE_SECONDS = 2 * 60;
+var SW_TASK_LIST_CACHE_CHUNK_SIZE = 75000;
+var SW_TASK_LIST_MEMORY_CACHE_ = {};
+
 function swReadTaskState_(ss, readOnly, options) {
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
@@ -18,6 +22,12 @@ function swReadTaskState_(ss, readOnly, options) {
 }
 
 function swReadTaskListState_(ss, readOnly, options) {
+  options = options || {};
+  if (readOnly && !options.includeDuplicates) {
+    var cached = swReadCachedTaskListState_(ss);
+    if (cached) return cached;
+  }
+
   var sh = readOnly
     ? swGetRequiredSheet_(ss, SW_SHEETS.TASKS)
     : swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
@@ -44,12 +54,21 @@ function swReadTaskListState_(ss, readOnly, options) {
     rawTasks.push(t);
   }
 
-  return swBuildTaskStateFromTasks_(rawTasks, [], options);
+  var state = swBuildTaskStateFromTasks_(rawTasks, [], options);
+  if (readOnly && !options.includeDuplicates) swCacheTaskListState_(ss, state);
+  return state;
 }
 
 function swReadTaskListForRoot_(ss, rootApptId) {
   var root = swTrim_(rootApptId);
   if (!root) return [];
+  var cached = swReadCachedTaskListState_(ss);
+  if (cached && cached.tasks) {
+    return cached.tasks.filter(function (task) {
+      return swTrim_(task.root) === root || swTrim_(task.appt) === root;
+    });
+  }
+
   var sh = swGetRequiredSheet_(ss, SW_SHEETS.TASKS);
   var lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
@@ -78,6 +97,89 @@ function swReadTaskListForRoot_(ss, rootApptId) {
     if (task.taskId) out.push(task);
   }
   return out;
+}
+
+function swReadCachedTaskListState_(ss) {
+  var key = swTaskListCacheKey_(ss);
+  try {
+    var memory = SW_TASK_LIST_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime()) return swBuildTaskStateFromTasks_(memory.tasks || [], [], {});
+  } catch (_) {}
+
+  var payload = swTaskListCacheGet_(key);
+  if (!payload || !payload.tasks) return null;
+  try {
+    SW_TASK_LIST_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_TASK_LIST_CACHE_SECONDS * 1000,
+      tasks: payload.tasks || []
+    };
+  } catch (_) {}
+  return swBuildTaskStateFromTasks_(payload.tasks || [], [], {});
+}
+
+function swCacheTaskListState_(ss, state) {
+  var key = swTaskListCacheKey_(ss);
+  var tasks = state && state.tasks ? state.tasks : [];
+  try {
+    SW_TASK_LIST_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_TASK_LIST_CACHE_SECONDS * 1000,
+      tasks: tasks
+    };
+  } catch (_) {}
+  swTaskListCachePut_(key, { cachedAt: swIso_(new Date()), tasks: tasks });
+}
+
+function swInvalidateTaskListCache_(ss) {
+  var key = swTaskListCacheKey_(ss);
+  try { delete SW_TASK_LIST_MEMORY_CACHE_[key]; } catch (_) {}
+  swTaskListCacheRemove_(key);
+}
+
+function swTaskListCacheKey_(ss) {
+  return 'sw:taskListState:v2:' + ss.getId();
+}
+
+function swTaskListCacheGet_(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var metaText = cache.get(key + ':meta');
+    var meta = metaText ? swParseJson_(metaText, null) : null;
+    if (!meta || !meta.chunks) return null;
+    var text = '';
+    for (var i = 0; i < meta.chunks; i++) {
+      var chunk = cache.get(key + ':' + i);
+      if (chunk == null) return null;
+      text += chunk;
+    }
+    return swParseJson_(text, null);
+  } catch (_) {}
+  return null;
+}
+
+function swTaskListCachePut_(key, payload) {
+  try {
+    var cache = CacheService.getScriptCache();
+    swTaskListCacheRemove_(key);
+    var text = swStringify_(payload);
+    var chunks = Math.ceil(text.length / SW_TASK_LIST_CACHE_CHUNK_SIZE);
+    if (!chunks || chunks > 20) return;
+    for (var i = 0; i < chunks; i++) {
+      cache.put(key + ':' + i, text.slice(i * SW_TASK_LIST_CACHE_CHUNK_SIZE, (i + 1) * SW_TASK_LIST_CACHE_CHUNK_SIZE), SW_TASK_LIST_CACHE_SECONDS);
+    }
+    cache.put(key + ':meta', swStringify_({ chunks: chunks }), SW_TASK_LIST_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swTaskListCacheRemove_(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var metaText = cache.get(key + ':meta');
+    var meta = metaText ? swParseJson_(metaText, null) : null;
+    var keys = [key + ':meta'];
+    var chunks = meta && meta.chunks ? Number(meta.chunks) : 20;
+    for (var i = 0; i < chunks; i++) keys.push(key + ':' + i);
+    cache.removeAll(keys);
+  } catch (_) {}
 }
 
 function swBuildTaskStateFromTasks_(rawTasks, rows, options) {
@@ -385,10 +487,12 @@ function swBeginDeferredTaskWrites_(ss, state) {
 
 function swFlushDeferredTaskWrites_(ss, state) {
   if (!state || !state.deferWrites) return;
+  var wroteTasks = false;
   if (state.pendingTaskRows && state.pendingTaskRows.length) {
     var taskSheet = swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
     taskSheet.getRange(state.taskAppendStartRow, 1, state.pendingTaskRows.length, SW_TASK_HEADERS.length)
       .setValues(state.pendingTaskRows);
+    wroteTasks = true;
   }
   if (state.pendingLogRows && state.pendingLogRows.length) {
     var logSheet = swEnsureSheet_(ss, SW_SHEETS.LOG, SW_LOG_HEADERS);
@@ -398,6 +502,7 @@ function swFlushDeferredTaskWrites_(ss, state) {
   state.deferWrites = false;
   state.pendingTaskRows = [];
   state.pendingLogRows = [];
+  if (wroteTasks) swInvalidateTaskListCache_(ss);
 }
 
 function swQueueOrAppendTaskRow_(ss, state, task) {
@@ -422,6 +527,7 @@ function swAppendTaskRow_(ss, task) {
   var row = swTaskToRow_(task);
   sh.appendRow(row);
   task.rowNumber = sh.getLastRow();
+  swInvalidateTaskListCache_(ss);
   return task.rowNumber;
 }
 
@@ -436,6 +542,7 @@ function swWriteTaskRow_(ss, task) {
     return;
   }
   sh.getRange(task.rowNumber, 1, 1, SW_TASK_HEADERS.length).setValues([swTaskToRow_(task)]);
+  swInvalidateTaskListCache_(ss);
 }
 
 function swTaskToRow_(task) {
