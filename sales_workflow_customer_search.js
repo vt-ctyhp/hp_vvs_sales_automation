@@ -16,9 +16,7 @@ function sw_searchCustomers(authToken, query, filters) {
     query = swTrim_(query || filters.query || '');
 
     var appointments = swReadAppointments_(ss);
-    if (filters.defaultAdvisor && !filters.clientAdvisor) {
-      filters.clientAdvisor = swCustomerSearchDefaultAdvisor_(appointments, user);
-    }
+    swCustomerSearchApplyDefaultOwnerFilters_(appointments, user, filters);
     var rows = swCustomerSearchFilteredRows_(appointments, query, filters);
     var groups = swAdminDashboardRowsByRoot_(rows);
     var master = ss.getSheetByName(SW_SHEETS.MASTER);
@@ -205,12 +203,17 @@ function swCustomerSearchNormalizeFilters_(filters) {
   filters = filters || {};
   var activeRaw = filters.activeOnly;
   var activeOnly = !(activeRaw === false || String(activeRaw || '').toLowerCase() === 'false');
+  var defaultAdvisor = filters.defaultAdvisor === true || String(filters.defaultAdvisor || '').toLowerCase() === 'true';
+  var defaultJoc = filters.defaultJoc === true || String(filters.defaultJoc || '').toLowerCase() === 'true';
+  var defaultOwner = filters.defaultOwner === true || String(filters.defaultOwner || '').toLowerCase() === 'true';
   return {
     query: swTrim_(filters.query || ''),
     brand: swTrim_(filters.brand || ''),
     clientAdvisor: swTrim_(filters.clientAdvisor || ''),
     joc: swTrim_(filters.joc || ''),
-    defaultAdvisor: filters.defaultAdvisor === true || String(filters.defaultAdvisor || '').toLowerCase() === 'true',
+    defaultAdvisor: defaultAdvisor,
+    defaultJoc: defaultJoc,
+    defaultOwner: defaultOwner || defaultAdvisor || defaultJoc,
     activeOnly: activeOnly
   };
 }
@@ -222,6 +225,8 @@ function swCustomerSearchPublicFilters_(filters) {
     clientAdvisor: filters.clientAdvisor || '',
     joc: filters.joc || '',
     defaultAdvisor: false,
+    defaultJoc: false,
+    defaultOwner: false,
     activeOnly: filters.activeOnly !== false
   };
 }
@@ -302,6 +307,17 @@ function swCustomerSearchAdvisorMatches_(value, filter) {
   return swNorm_(value).indexOf(want) >= 0;
 }
 
+function swCustomerSearchApplyDefaultOwnerFilters_(appointments, user, filters) {
+  if (!filters || !filters.defaultOwner || !user || user.isAdmin) return;
+  if (user.isJoc && !filters.joc) {
+    filters.joc = swCustomerSearchDefaultJoc_(appointments, user);
+    return;
+  }
+  if (user.isRep && !filters.clientAdvisor) {
+    filters.clientAdvisor = swCustomerSearchDefaultAdvisor_(appointments, user);
+  }
+}
+
 function swCustomerSearchDefaultAdvisor_(appointments, user) {
   user = user || {};
   if (!user.isRep) return '';
@@ -318,6 +334,24 @@ function swCustomerSearchDefaultAdvisor_(appointments, user) {
     for (var j = 0; j < parts.length; j++) {
       if (candidateMap[swNorm_(parts[j])]) return parts[j];
     }
+  }
+  return '';
+}
+
+function swCustomerSearchDefaultJoc_(appointments, user) {
+  user = user || {};
+  if (!user.isJoc) return '';
+  var candidates = swCustomerSearchUserAdvisorCandidates_(user);
+  if (!candidates.length) return '';
+  var candidateMap = {};
+  candidates.forEach(function (candidate) {
+    var key = swNorm_(candidate);
+    if (key) candidateMap[key] = true;
+  });
+  var active = (appointments || []).filter(function (rec) { return swIsAppointmentActive_(rec); });
+  for (var i = 0; i < active.length; i++) {
+    var joc = swTrim_(active[i].assistedRep);
+    if (joc && candidateMap[swNorm_(joc)]) return joc;
   }
   return '';
 }

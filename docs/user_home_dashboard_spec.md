@@ -190,7 +190,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 ### E. Dashboard Views
 - **My Queue**: due pending tasks owned by the current user, including role-owned diamond tasks.
 - **Calendar**: active upcoming appointments by month, visible to all workflow users.
-- **Customer Search**: active customer lookup, filters, detail review, and selected status/deadline/wax actions.
+- **Customer Search**: active customer lookup, filters, detail review, and selected status/deadline/wax actions. Client Advisors default to their own Client Advisor filter; JOC users default to their own JOC filter.
 - **In-Stock Diamonds**: delivered/in-stock diamonds from `200_`, visible to all workflow users for proposal planning.
 - **Diamond Tracking**: shipment, ETA, return, and tracking issues from `200_`, visible to admins and diamond order roles.
 - **Bulk Returns**: return-eligible in-stock diamonds from `200_`, visible to admins and Diamond Order Admin users.

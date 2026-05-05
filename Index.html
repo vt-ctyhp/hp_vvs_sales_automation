@@ -2694,7 +2694,7 @@
       employeeScheduleFilter: 'all',
       customerSearch: {
         query: '',
-        filters: { activeOnly: true, defaultAdvisor: true },
+        filters: { activeOnly: true, defaultOwner: true },
         result: null,
         detail: null,
         selectedRoot: ''
@@ -4613,7 +4613,7 @@
     }
 
     function defaultCustomerSearchFilters() {
-      return { activeOnly: true, defaultAdvisor: true };
+      return { activeOnly: true, defaultOwner: true };
     }
 
     function collectCustomerSearchFilters() {
