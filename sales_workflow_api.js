@@ -2439,7 +2439,7 @@ function swBenchmarkSalesWorkflowOptions_(options) {
     startupOnly: !!options.startupOnly,
     includeStartup: options.includeStartup !== false,
     bootstrapRepeats: bootstrapRepeats,
-    includeReadModelStatus: options.includeReadModelStatus !== false,
+    includeReadModelStatus: options.includeReadModelStatus === true || String(options.includeReadModelStatus || '').toLowerCase() === 'true',
     loginEmail: swNormEmail_(options.loginEmail || options.email || ''),
     loginPassword: String(options.loginPassword || options.password || ''),
     detailLimit: detailLimit,

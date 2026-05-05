@@ -6,7 +6,7 @@
  */
 
 var SW_READ_MODEL_VERSION = 'phase1-v1';
-var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 5 * 60;
+var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 10 * 60;
 var SW_READ_MODEL_REFRESH_HANDLER = 'sw_rebuildWorkflowReadModels';
 
 function sw_rebuildWorkflowReadModels(options) {
@@ -318,7 +318,7 @@ function swReadModelTtlSeconds_(ss, options) {
     }
   }
   if (!isFinite(ttl) || ttl <= 0) ttl = SW_READ_MODEL_DEFAULT_TTL_SECONDS;
-  return Math.max(60, Math.min(Math.floor(ttl), 30 * 60));
+  return Math.max(SW_READ_MODEL_DEFAULT_TTL_SECONDS, Math.min(Math.floor(ttl), 30 * 60));
 }
 
 function swWriteReadModelSheet_(ss, sheetName, headers, rows) {
