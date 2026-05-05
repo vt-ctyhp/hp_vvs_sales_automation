@@ -193,7 +193,7 @@ function sw_assignInStockDiamond(authToken, payload) {
 }
 
 function swRequireDiamondSyncUser_(user) {
-  if (!(user && (user.isAdmin || user.isDiamondOrderAdmin))) {
+  if (!(user && user.isDiamondOrderAdmin)) {
     throw new Error('Diamond order admin access required.');
   }
 }

@@ -1624,7 +1624,6 @@
       <div class="toolbar-actions">
         <button id="tab-cleanup" type="button" data-view="cleanup" style="display:none">Cleanup</button>
         <button id="manageUsersButton" type="button" style="display:none">Manage Users</button>
-        <button id="syncDiamondsButton" type="button" style="display:none">Sync Diamonds</button>
         <button id="refreshQueueButton" class="primary" type="button">Refresh Queue</button>
       </div>
     </section>
@@ -1655,7 +1654,7 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'diamond-sync-assignment-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'diamond-sync-inventory-2026-05-05';
 
     var appState = {
       token: '',
@@ -1716,8 +1715,6 @@
 
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
-      var syncDiamondsButton = document.getElementById('syncDiamondsButton');
-      if (syncDiamondsButton) syncDiamondsButton.addEventListener('click', openLoupe360SyncPanel);
 
       ['mine', 'calendar', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
@@ -1741,6 +1738,10 @@
           var stockClearButton = closestMatch_(event.target, '.js-stock-filter-clear');
           if (stockClearButton) {
             clearInStockDiamondFilters();
+            return;
+          }
+          if (closestMatch_(event.target, '.js-open-loupe360-sync')) {
+            openLoupe360SyncPanel();
             return;
           }
           var adminModeButton = closestMatch_(event.target, '.js-admin-dashboard-mode');
@@ -2108,7 +2109,6 @@
       document.getElementById('tab-adminDashboard').style.display = res.views && res.views.adminDashboard ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
-      document.getElementById('syncDiamondsButton').style.display = (user.isAdmin || user.isDiamondOrderAdmin) ? '' : 'none';
     }
 
     function userInitials(value) {
@@ -2139,6 +2139,10 @@
     }
 
     function openLoupe360SyncPanel() {
+      if (!canOpenDiamondSync()) {
+        setStatus('Diamond order admin access required.', true);
+        return;
+      }
       appState.selectedTaskId = '';
       appState.diamondSyncPreview = null;
       document.getElementById('detailPanel').innerHTML = [
@@ -3032,9 +3036,27 @@
           statCardHtml('Overdue', stats.returnOverdue || 0),
           statCardHtml('Needs Assignment', stats.assignmentMissing || 0),
         '</div>',
+        renderDiamondInventoryAdminActions(),
         renderInStockDiamondFilters(rows, filteredRows.length),
         '<div class="tracking-list">',
           list,
+        '</div>'
+      ].join('');
+    }
+
+    function canOpenDiamondSync() {
+      var user = appState.user || {};
+      return !!user.isDiamondOrderAdmin;
+    }
+
+    function renderDiamondInventoryAdminActions() {
+      if (!canOpenDiamondSync()) return '';
+      return [
+        '<div class="stock-filter-panel">',
+          '<div class="stock-filter-heading">',
+            '<div class="meta">Diamond Order Admin</div>',
+            '<button class="primary js-open-loupe360-sync" type="button">Sync Diamonds</button>',
+          '</div>',
         '</div>'
       ].join('');
     }
