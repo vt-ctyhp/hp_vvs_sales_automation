@@ -154,7 +154,13 @@
     .tabs {
       display: flex;
       flex-wrap: wrap;
-      gap: 22px;
+      gap: 34px;
+      min-width: 0;
+      position: relative;
+    }
+
+    .nav-group {
+      position: relative;
     }
 
     .toolbar-actions {
@@ -213,29 +219,106 @@
       pointer-events: none;
     }
 
-    .tabs button {
+    .nav-group-trigger {
       background: transparent;
       border: 0;
       border-bottom: 2px solid transparent;
       border-radius: 0;
       color: var(--ink-muted);
+      display: inline-flex;
+      gap: 9px;
+      align-items: center;
       font-size: 13px;
       letter-spacing: 0.14em;
       line-height: 1.15;
       min-height: 58px;
-      padding: 14px 8px 16px;
+      padding: 14px 0 16px;
       text-align: center;
     }
 
-    .tabs button:hover:not(:disabled) {
+    .nav-group-trigger::after {
+      border: solid currentColor;
+      border-width: 0 1px 1px 0;
+      content: '';
+      display: inline-block;
+      height: 6px;
+      margin-top: -4px;
+      transform: rotate(45deg);
+      width: 6px;
+    }
+
+    .nav-group-trigger:hover:not(:disabled) {
       background: transparent;
       color: var(--ink-primary);
     }
 
-    .tabs button.active {
+    .nav-group.active > .nav-group-trigger,
+    .nav-group.open > .nav-group-trigger {
       background: transparent;
       border-bottom-color: var(--ink-primary);
       color: var(--ink-primary);
+    }
+
+    .nav-menu {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      display: none;
+      gap: 4px;
+      left: 0;
+      min-width: 280px;
+      padding: 12px;
+      position: absolute;
+      top: calc(100% + 1px);
+      z-index: 20;
+    }
+
+    .nav-group:last-child .nav-menu {
+      left: auto;
+      right: 0;
+    }
+
+    .nav-group.open .nav-menu {
+      display: grid;
+    }
+
+    button.nav-menu-item {
+      background: transparent;
+      border: 0;
+      color: var(--ink-body);
+      display: block;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0;
+      line-height: 1.3;
+      min-height: 0;
+      padding: 14px;
+      text-align: left;
+      text-transform: none;
+      width: 100%;
+    }
+
+    button.nav-menu-item:hover:not(:disabled),
+    button.nav-menu-item.active {
+      background: var(--surface-inset);
+      color: var(--ink-primary);
+    }
+
+    .nav-item-label {
+      color: var(--ink-primary);
+      display: block;
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: 0;
+      line-height: 1.2;
+    }
+
+    .nav-item-description {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 13px;
+      letter-spacing: 0;
+      line-height: 1.35;
+      margin-top: 5px;
     }
 
     .masthead-actions button,
@@ -2044,12 +2127,24 @@
       }
 
       .tabs {
+        gap: 18px;
         width: 100%;
       }
 
-      .tabs button {
+      .nav-group {
+        position: static;
+      }
+
+      .nav-group-trigger {
         min-height: 50px;
-        padding: 12px 4px 14px;
+        padding: 12px 0 14px;
+      }
+
+      .nav-menu {
+        left: 0;
+        min-width: min(320px, calc(100vw - 40px));
+        right: auto;
+        width: min(320px, calc(100vw - 40px));
       }
 
       .user-chip {
@@ -2141,21 +2236,77 @@
     </header>
 
     <section class="toolbar">
-      <div class="tabs">
-        <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
-        <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
-        <button id="tab-customerSearch" type="button" data-view="customerSearch" style="display:none">Customer Search</button>
-        <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">Diamond Inventory</button>
-        <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
-        <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
-        <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
-        <button id="tab-adminDashboard" type="button" data-view="adminDashboard" style="display:none">Customer Pipeline</button>
-        <button id="tab-employeeSchedules" type="button" data-view="employeeSchedules" style="display:none">Schedules</button>
-        <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
-      </div>
+      <nav class="tabs" aria-label="Dashboard navigation">
+        <div class="nav-group active" data-nav-group="work">
+          <button class="nav-group-trigger" type="button" aria-expanded="false">Work</button>
+          <div class="nav-menu" role="menu">
+            <button id="tab-mine" class="nav-menu-item active" type="button" data-view="mine" role="menuitem">
+              <span class="nav-item-label">My Queue</span>
+              <span class="nav-item-description">Tasks assigned to you</span>
+            </button>
+            <button id="tab-calendar" class="nav-menu-item" type="button" data-view="calendar" role="menuitem">
+              <span class="nav-item-label">Calendar</span>
+              <span class="nav-item-description">Upcoming appointments</span>
+            </button>
+            <button id="tab-coverage" class="nav-menu-item" type="button" data-view="coverage" role="menuitem" style="display:none">
+              <span class="nav-item-label">JOC Coverage</span>
+              <span class="nav-item-description">Shared coverage queue</span>
+            </button>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group="customers" style="display:none">
+          <button class="nav-group-trigger" type="button" aria-expanded="false">Customers</button>
+          <div class="nav-menu" role="menu">
+            <button id="tab-customerSearch" class="nav-menu-item" type="button" data-view="customerSearch" role="menuitem" style="display:none">
+              <span class="nav-item-label">Customer Search</span>
+              <span class="nav-item-description">Find customers and update status</span>
+            </button>
+            <button id="tab-adminDashboard" class="nav-menu-item" type="button" data-view="adminDashboard" role="menuitem" style="display:none">
+              <span class="nav-item-label">Customer Pipeline</span>
+              <span class="nav-item-description">Admin kanban and health</span>
+            </button>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group="diamonds">
+          <button class="nav-group-trigger" type="button" aria-expanded="false">Diamonds</button>
+          <div class="nav-menu" role="menu">
+            <button id="tab-inStockDiamonds" class="nav-menu-item" type="button" data-view="inStockDiamonds" role="menuitem">
+              <span class="nav-item-label">Diamond Inventory</span>
+              <span class="nav-item-description">In-stock stones and return dates</span>
+            </button>
+            <button id="tab-diamondTracking" class="nav-menu-item" type="button" data-view="diamondTracking" role="menuitem" style="display:none">
+              <span class="nav-item-label">Diamond Tracking</span>
+              <span class="nav-item-description">Shipments, ETAs, and returns</span>
+            </button>
+            <button id="tab-bulkReturns" class="nav-menu-item" type="button" data-view="bulkReturns" role="menuitem" style="display:none">
+              <span class="nav-item-label">Bulk Returns</span>
+              <span class="nav-item-description">Return multiple stones together</span>
+            </button>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group="admin" style="display:none">
+          <button class="nav-group-trigger" type="button" aria-expanded="false">Admin</button>
+          <div class="nav-menu" role="menu">
+            <button id="tab-employeeSchedules" class="nav-menu-item" type="button" data-view="employeeSchedules" role="menuitem" style="display:none">
+              <span class="nav-item-label">Schedules</span>
+              <span class="nav-item-description">Roster, skills, and coverage</span>
+            </button>
+            <button id="tab-admin" class="nav-menu-item" type="button" data-view="admin" role="menuitem" style="display:none">
+              <span class="nav-item-label">Admin Review</span>
+              <span class="nav-item-description">All open workflow tasks</span>
+            </button>
+            <button id="manageUsersButton" class="nav-menu-item" type="button" role="menuitem" style="display:none">
+              <span class="nav-item-label">Manage Users</span>
+              <span class="nav-item-description">Users, roles, and passwords</span>
+            </button>
+            <button id="tab-cleanup" class="nav-menu-item" type="button" data-view="cleanup" role="menuitem" style="display:none">
+              <span class="nav-item-label">Cleanup</span>
+              <span class="nav-item-description">Temporary stale customer campaign</span>
+            </button>
+          </div>
+        </div>
+      </nav>
       <div class="toolbar-actions">
-        <button id="tab-cleanup" type="button" data-view="cleanup" style="display:none">Cleanup</button>
-        <button id="manageUsersButton" type="button" style="display:none">Manage Users</button>
         <button id="refreshQueueButton" class="primary" type="button">Refresh Queue</button>
       </div>
     </section>
@@ -2256,13 +2407,33 @@
       var logoutButton = document.getElementById('logoutButton');
       if (logoutButton) logoutButton.addEventListener('click', logout);
 
+      [].slice.call(document.querySelectorAll('.nav-group-trigger')).forEach(function (trigger) {
+        trigger.addEventListener('click', function () {
+          toggleNavigationMenu(trigger);
+        });
+      });
+
+      document.addEventListener('click', function (event) {
+        if (!closestMatch_(event.target, '.nav-group')) closeNavigationMenus();
+      });
+
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeNavigationMenus();
+      });
+
       var manageUsersButton = document.getElementById('manageUsersButton');
-      if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
+      if (manageUsersButton) {
+        manageUsersButton.addEventListener('click', function () {
+          closeNavigationMenus();
+          openUserAdminPanel();
+        });
+      }
 
       ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
+          closeNavigationMenus();
           if (view === 'calendar') loadCalendar();
           else if (view === 'customerSearch') loadCustomerSearch();
           else if (view === 'inStockDiamonds') loadInStockDiamonds();
@@ -2275,7 +2446,12 @@
       });
 
       var refreshQueueButton = document.getElementById('refreshQueueButton');
-      if (refreshQueueButton) refreshQueueButton.addEventListener('click', refreshQueue);
+      if (refreshQueueButton) {
+        refreshQueueButton.addEventListener('click', function () {
+          closeNavigationMenus();
+          refreshQueue();
+        });
+      }
 
       var taskList = document.getElementById('taskList');
       if (taskList) {
@@ -2473,6 +2649,37 @@
 
     function closestMatch_(target, selector) {
       return target && target.closest ? target.closest(selector) : null;
+    }
+
+    function toggleNavigationMenu(trigger) {
+      var group = closestMatch_(trigger, '.nav-group');
+      if (!group) return;
+      var shouldOpen = !group.classList.contains('open');
+      closeNavigationMenus();
+      group.classList.toggle('open', shouldOpen);
+      trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    }
+
+    function closeNavigationMenus() {
+      [].slice.call(document.querySelectorAll('.nav-group.open')).forEach(function (group) {
+        group.classList.remove('open');
+        var trigger = group.querySelector('.nav-group-trigger');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    function updateNavigationGroups() {
+      [].slice.call(document.querySelectorAll('.nav-group')).forEach(function (group) {
+        var items = [].slice.call(group.querySelectorAll('.nav-menu-item'));
+        var hasVisibleItem = items.some(function (item) {
+          return item.style.display !== 'none';
+        });
+        var hasActiveItem = items.some(function (item) {
+          return item.style.display !== 'none' && item.classList.contains('active');
+        });
+        group.style.display = hasVisibleItem ? '' : 'none';
+        group.classList.toggle('active', hasActiveItem);
+      });
     }
 
     function setStatus(message, isError) {
@@ -2808,6 +3015,7 @@
       document.getElementById('tab-employeeSchedules').style.display = res.views && res.views.employeeSchedules ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
+      updateNavigationGroups();
     }
 
     function userInitials(value) {
@@ -3052,8 +3260,9 @@
     function setActiveTab(view) {
       ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
-        if (el) el.className = v === view ? 'active' : '';
+        if (el) el.classList.toggle('active', v === view);
       });
+      updateNavigationGroups();
       updateAdminDashboardLayoutMode();
     }
 

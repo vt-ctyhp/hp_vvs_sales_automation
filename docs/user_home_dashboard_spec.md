@@ -180,25 +180,33 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - Admins can assign appointment owners from the task detail panel. Saving writes Client Advisor and JOC names/emails back to all `00_Master Appointments` rows with the same RootApptID and then refreshes workflow ownership.
 - Admins can also reassign, block, or unblock individual tasks from Admin Review.
 
-### D. Dashboard Views
+### D. Dashboard Navigation Groups
+- **Work**: My Queue for assigned tasks, Calendar for upcoming appointments, and JOC Coverage for shared coverage work.
+- **Customers**: Customer Search for finding/updating customer records and Customer Pipeline for the admin kanban/health dashboard.
+- **Diamonds**: Diamond Inventory, Diamond Tracking, and Bulk Returns as the diamond operations trio.
+- **Admin**: Schedules, Admin Review, Manage Users, and the temporary Cleanup campaign.
+- **Refresh Queue** remains a global action because it reruns task generation rather than opening a page.
+
+### E. Dashboard Views
 - **My Queue**: due pending tasks owned by the current user, including role-owned diamond tasks.
 - **Calendar**: active upcoming appointments by month, visible to all workflow users.
+- **Customer Search**: active customer lookup, filters, detail review, and selected status/deadline/wax actions.
 - **In-Stock Diamonds**: delivered/in-stock diamonds from `200_`, visible to all workflow users for proposal planning.
 - **Diamond Tracking**: shipment, ETA, return, and tracking issues from `200_`, visible to admins and diamond order roles.
 - **Bulk Returns**: return-eligible in-stock diamonds from `200_`, visible to admins and Diamond Order Admin users.
 - **JOC Coverage**: unclaimed or coverage-routed JOC tasks, visible to JOC users and admins.
-- **Admin Dashboard**: weekly metrics and customer pipeline, visible to admins.
+- **Admin Dashboard / Customer Pipeline**: weekly metrics and customer pipeline, visible to admins.
 - **Admin Review**: all non-completed workflow tasks, visible to admins.
 - **Manage Users**: add/update workflow users, roles, and passwords, visible to admins.
 - **Cleanup**: temporary one-time stale customer cleanup campaign tab, visible while `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED = Y`. Client Advisors/JOC see their assigned cleanup work; admins see all cleanup campaign tasks. After campaign cases are resolved, future stale customers flow into the normal queue rather than this tab.
 
-### E. Standard Task Execution
+### F. Standard Task Execution
 - A user opens a task card to load task detail, rendered instructions, copyable message/template text, links/attachments, checklists, and task-specific controls.
 - The user may copy a template, snooze a task, claim a coverage task, or complete the task.
 - Completion validates required fields and checklists, runs any task-specific writeback adapter, marks the task completed, logs the event, and immediately runs task generation again so downstream tasks appear.
 - Snoozed tasks are hidden from active queues until the snooze date and do not count as late during the snooze window.
 
-### F. Core Appointment Workflow
+### G. Core Appointment Workflow
 - When an appointment enters the workflow window, the system creates an auto-completed assignment task.
 - If the appointment is within 24 hours, JOC gets a Hybrid Welcome + Instructions task.
 - If the appointment is farther out, JOC gets a Welcome task now and a Map & Instructions task 48 hours before the appointment.
@@ -207,7 +215,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - After JOC submits the recap draft, the Client Advisor gets Approve/Edit Recap Message.
 - After approval, JOC gets Send Final Recap Text.
 
-### G. Post-Consult Operations
+### H. Post-Consult Operations
 - After the appointment checklist is complete, JOC gets Post-Consult Client Status Update.
 - That task writes the current client status and captures whether 3D and/or wax work is needed.
 - If 3D is needed and no SO/tracker exists yet, JOC gets Start 3D Design.
@@ -215,7 +223,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - If wax is needed and no active wax request exists, JOC gets Request Wax Print.
 - If existing wax requests need status or deadline updates, JOC gets Update Wax Request.
 
-### H. Diamond Viewing Workflow
+### I. Diamond Viewing Workflow
 - For Diamond Viewing appointments, the assigned Client Advisor gets Propose Diamonds and JOC gets Prepare Diamond Viewing Quotation.
 - Propose Diamonds captures the structured customer requirements brief and proposed stones, then writes requirements to Sheet 100 and proposed diamonds to `200_`.
 - If `200_` has proposed stones, Diamond Order Admin gets Order Diamonds.
@@ -225,11 +233,11 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - If ETA risk is detected, both assigned Client Advisor and JOC get ETA risk review tasks.
 - Bulk Returns lets admins or Diamond Order Admin users mark multiple eligible `200_` rows as `Return in Progress` in one shipment.
 
-### I. Admin and Diagnostics
+### J. Admin and Diagnostics
 - Admin Dashboard aggregates appointment metrics, payments when configured, customer pipeline columns, and admin-visible open task health.
 - Diagnostic helpers exist for setup review, task visibility troubleshooting, speed benchmarking, duplicate cleanup, and duplicate-safe generation testing.
 
-### J. Customer Data Cleanup
+### K. Customer Data Cleanup
 - Setup creates `_SalesDataCleanup` plus Master cleanup columns: `Lost Lead Reason`, `Lost Lead Reason Notes`, `Data Cleanup Reviewed At`, and `Data Cleanup Confirmed At`.
 - Config rows control the workflow: `DATA_CLEANUP_ENABLED`, `DATA_CLEANUP_STALE_DAYS` (default 30), `DATA_CLEANUP_CAMPAIGN_ID`, and `DATA_CLEANUP_CAMPAIGN_TAB_ENABLED`.
 - Generation creates cleanup cases for active Lead / Hot Lead / Follow-Up customer roots with no meaningful touch for 30+ calendar days, excluding Won/Lost Lead and any root with an unresolved cleanup case.
