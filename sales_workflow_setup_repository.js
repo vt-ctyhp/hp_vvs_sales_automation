@@ -25,6 +25,7 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'DIAMOND_RETURN_WARNING_DAYS', '7', '', '', '', 'Y', '', 'Show return tasks this many days before the 30-day return deadline.'],
     ['SYSTEM', 'SHARED_DIAMOND_ORDER_ADMIN_QUEUE', 'Diamond Order Admin', '', '', '', 'Y', '', 'Display label for DIAMOND_ORDER_ADMIN role-owned tasks.'],
     ['SYSTEM', 'SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE', 'Diamond Order Assistant', '', '', '', 'Y', '', 'Display label for DIAMOND_ORDER_ASSISTANT role-owned tasks.'],
+    ['SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN', 'N', '', '', '', 'Y', '', 'Set Y to assign or reassign Client Advisors by schedule, skills, and round robin during queue refresh.'],
     ['SYSTEM', 'DATA_CLEANUP_ENABLED', 'Y', '', '', '', 'Y', '', 'Set N to pause stale customer data cleanup task generation.'],
     ['SYSTEM', 'DATA_CLEANUP_STALE_DAYS', '30', '', '', '', 'Y', '', 'Open Lead / Hot Lead / Follow-Up customers become cleanup candidates after this many days without a meaningful touch.'],
     ['SYSTEM', 'DATA_CLEANUP_CAMPAIGN_ID', 'ONE_TIME_2026_05', '', '', '', 'Y', '', 'Identifier for the one-time cleanup campaign.'],

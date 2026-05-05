@@ -12,6 +12,7 @@ var SW_SHEETS = {
   DATA_CLEANUP: '_SalesDataCleanup',
   APPOINTMENT_ARTIFACTS: '_AppointmentArtifacts',
   ROSTER: '10_Roster_Schedule',
+  REP_QUALIFICATIONS: 'Rep Qualifications',
   SCHEDULE_CHANGES: 'Schedule Changes',
   DROPDOWN: 'Dropdown'
 };
@@ -166,6 +167,47 @@ var SW_AUTH_USER_HEADERS = [
   'Temporary Password?',
   'Last Login At',
   'Notes'
+];
+var SW_EMPLOYEE_SCHEDULE_HEADERS = [
+  'Rep',
+  'Email',
+  'Role',
+  'Active?',
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
+  'Default JOC',
+  'Assisted Coverage Enabled?',
+  'Assisted Coverage Partner',
+  'Updated At',
+  'Updated By'
+];
+var SW_SCHEDULE_CHANGE_HEADERS = [
+  'Rep Name',
+  'Email',
+  'Role',
+  'Change Date',
+  'Change Type',
+  'Available From',
+  'Available Until',
+  'Notes',
+  'Updated At',
+  'Updated By'
+];
+var SW_REP_QUALIFICATION_HEADERS = [
+  'Rep Name',
+  'Rep Email',
+  'Lab Diamond',
+  'Natural Diamond',
+  'General Appointment',
+  'Active?',
+  'Notes',
+  'Updated At',
+  'Updated By'
 ];
 var SW_DATA_CLEANUP_HEADERS = [
   'CaseID',

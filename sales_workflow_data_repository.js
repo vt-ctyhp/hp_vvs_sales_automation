@@ -10,10 +10,16 @@ function swReadRosterAvailabilityIndex_(ss) {
   if (!roster || roster.getLastRow() < 2) return out;
   out.exists = true;
 
-  var values = roster.getDataRange().getValues();
+  var values = roster.getDataRange().getDisplayValues();
   var headers = values[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(headers);
   var repCol = swPickIndex_(H, ['Rep', 'Name', 'Team Member']);
+  var emailCol = swPickIndex_(H, ['Email', 'Rep Email']);
+  var roleCol = swPickIndex_(H, ['Role', 'Roles']);
+  var activeCol = swPickIndex_(H, ['Active?', 'Active']);
+  var defaultJocCol = swPickIndex_(H, ['Default JOC', 'Linked JOC', 'JOC Partner']);
+  var coverageEnabledCol = swPickIndex_(H, ['Assisted Coverage Enabled?', 'Coverage Enabled?']);
+  var coveragePartnerCol = swPickIndex_(H, ['Assisted Coverage Partner', 'Coverage Partner']);
   var dayCols = {
     Sun: swPickIndex_(H, ['Sun']),
     Mon: swPickIndex_(H, ['Mon']),
@@ -29,7 +35,16 @@ function swReadRosterAvailabilityIndex_(ss) {
   for (var i = 1; i < values.length; i++) {
     var rowName = swTrim_(values[i][repCol]);
     if (!rowName) continue;
-    var row = { name: rowName, days: {} };
+    var row = {
+      name: rowName,
+      email: emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : '',
+      role: roleCol >= 0 ? swTrim_(values[i][roleCol]) : '',
+      active: activeCol < 0 || !swTrim_(values[i][activeCol]) || swTruthy_(values[i][activeCol]),
+      defaultJoc: defaultJocCol >= 0 ? swTrim_(values[i][defaultJocCol]) : '',
+      coverageEnabled: coverageEnabledCol < 0 || !swTrim_(values[i][coverageEnabledCol]) || swTruthy_(values[i][coverageEnabledCol]),
+      coveragePartner: coveragePartnerCol >= 0 ? swTrim_(values[i][coveragePartnerCol]) : '',
+      days: {}
+    };
     Object.keys(dayCols).forEach(function (day) {
       row.days[day] = dayCols[day] >= 0 ? swTruthy_(values[i][dayCols[day]]) : null;
     });
@@ -43,23 +58,346 @@ function swReadScheduleChangesIndex_(ss) {
   var sh = ss.getSheetByName(SW_SHEETS.SCHEDULE_CHANGES);
   if (!sh || sh.getLastRow() < 2) return out;
 
-  var values = sh.getDataRange().getValues();
+  var values = sh.getDataRange().getDisplayValues();
   var headers = values[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(headers);
   var nameCol = swPickIndex_(H, ['Rep Name', 'Rep', 'Name']);
+  var emailCol = swPickIndex_(H, ['Email', 'Rep Email']);
+  var roleCol = swPickIndex_(H, ['Role', 'Roles']);
   var dateCol = swPickIndex_(H, ['Change Date', 'Date']);
   var typeCol = swPickIndex_(H, ['Change Type', 'Status', 'Override Status']);
+  var fromCol = swPickIndex_(H, ['Available From', 'From']);
+  var untilCol = swPickIndex_(H, ['Available Until', 'Until']);
+  var notesCol = swPickIndex_(H, ['Notes', 'Note']);
   if (nameCol < 0 || dateCol < 0) return out;
 
   for (var i = 1; i < values.length; i++) {
     var name = swNorm_(values[i][nameCol]);
-    var date = swDateKey_(values[i][dateCol]);
+    var date = swScheduleDateKey_(values[i][dateCol]);
     if (!name || !date) continue;
     out.byNameDate[name + '|' + date] = {
-      changeType: typeCol >= 0 ? swTrim_(values[i][typeCol]) : 'Full-day off'
+      name: swTrim_(values[i][nameCol]),
+      email: emailCol >= 0 ? swNormEmail_(values[i][emailCol]) : '',
+      role: roleCol >= 0 ? swTrim_(values[i][roleCol]) : '',
+      date: date,
+      changeType: typeCol >= 0 ? swTrim_(values[i][typeCol]) : 'Full-day off',
+      availableFrom: fromCol >= 0 ? swTrim_(values[i][fromCol]) : '',
+      availableUntil: untilCol >= 0 ? swTrim_(values[i][untilCol]) : '',
+      notes: notesCol >= 0 ? swTrim_(values[i][notesCol]) : '',
+      rowNumber: i + 1
     };
   }
   return out;
+}
+
+function swEnsureEmployeeScheduleSheets_(ss) {
+  var roster = swEnsureSheet_(ss, SW_SHEETS.ROSTER, SW_EMPLOYEE_SCHEDULE_HEADERS);
+  var changes = swEnsureSheet_(ss, SW_SHEETS.SCHEDULE_CHANGES, SW_SCHEDULE_CHANGE_HEADERS);
+  var qualifications = swEnsureSheet_(ss, SW_SHEETS.REP_QUALIFICATIONS, SW_REP_QUALIFICATION_HEADERS);
+  swStyleSheet_(roster);
+  swStyleSheet_(changes);
+  swStyleSheet_(qualifications);
+  return { roster: roster, changes: changes, qualifications: qualifications };
+}
+
+function swReadEmployeeScheduleAdminData_(ss) {
+  swEnsureEmployeeScheduleSheets_(ss);
+  var config = swReadConfig_(ss, true);
+  var people = swReadEmployeeSchedulePeople_(ss);
+  return {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    changeTypes: ['Working', 'Full-day off', 'Late / partial day', 'PTO', 'Sick', 'Vacation'],
+    roleOptions: [SW_OWNER_ROLES.SALES_REP, SW_OWNER_ROLES.JOC],
+    naturalOptions: ['None', 'Primary', 'Backup'],
+    settings: {
+      clientAdvisorRoundRobin: swTruthy_(swConfigValue_(config, 'SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN', 'N'))
+    },
+    today: swEmployeeScheduleToday_(ss, people),
+    people: people,
+    changes: swReadEmployeeScheduleChanges_(ss)
+  };
+}
+
+function swReadEmployeeSchedulePeople_(ss) {
+  var byName = {};
+  swReadEmployeeRosterRows_(ss).forEach(function (row) {
+    byName[swNorm_(row.name)] = row;
+  });
+
+  var options = swReadAssignmentOptions_(ss);
+  swEmployeeScheduleSeedPeople_(byName, options.salesReps || [], SW_OWNER_ROLES.SALES_REP);
+  swEmployeeScheduleSeedPeople_(byName, options.jocReps || [], SW_OWNER_ROLES.JOC);
+
+  var qualifications = swReadRepQualificationMap_(ss);
+  var defaultJocByAdvisor = swReadDefaultJocByAdvisor_(ss);
+  Object.keys(byName).forEach(function (key) {
+    var row = byName[key];
+    if (!row.defaultJoc && defaultJocByAdvisor[key]) row.defaultJoc = defaultJocByAdvisor[key];
+    var q = qualifications[swNorm_(row.name)] || null;
+    if (q) {
+      row.email = row.email || q.email || '';
+      row.skills = q.skills;
+      if (q.active === false) row.active = false;
+      row.skillNotes = q.notes || '';
+    } else {
+      row.skills = row.skills || swDefaultRepSkills_();
+      row.skillNotes = row.skillNotes || '';
+    }
+    row.role = swNormalizeEmployeeRoleList_(row.role || row.inferredRole || '');
+    delete row.inferredRole;
+  });
+
+  return Object.keys(byName).map(function (key) {
+    return byName[key];
+  }).sort(function (a, b) {
+    var ar = swEmployeePrimaryRoleRank_(a.role);
+    var br = swEmployeePrimaryRoleRank_(b.role);
+    if (ar !== br) return ar - br;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+}
+
+function swReadDefaultJocByAdvisor_(ss) {
+  var out = {};
+  var sh = ss.getSheetByName(SW_SHEETS.DROPDOWN);
+  if (!sh || sh.getLastRow() < 2) return out;
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var advisorCol = swPickIndex_(H, ['Client Advisor', 'Assigned Rep']);
+  var jocCol = swPickIndex_(H, ['JOC', 'Assisted Rep', 'Assistant Rep']);
+  if (advisorCol < 0 || jocCol < 0) return out;
+  for (var i = 1; i < values.length; i++) {
+    var advisor = swTrim_(values[i][advisorCol]);
+    var joc = swTrim_(values[i][jocCol]);
+    if (advisor && joc && !out[swNorm_(advisor)]) out[swNorm_(advisor)] = joc;
+  }
+  return out;
+}
+
+function swReadEmployeeRosterRows_(ss) {
+  var sh = ss.getSheetByName(SW_SHEETS.ROSTER);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var C = {
+    name: swPickIndex_(H, ['Rep', 'Name', 'Team Member']),
+    email: swPickIndex_(H, ['Email', 'Rep Email']),
+    role: swPickIndex_(H, ['Role', 'Roles']),
+    active: swPickIndex_(H, ['Active?', 'Active']),
+    defaultJoc: swPickIndex_(H, ['Default JOC', 'Linked JOC', 'JOC Partner']),
+    coverageEnabled: swPickIndex_(H, ['Assisted Coverage Enabled?', 'Coverage Enabled?']),
+    coveragePartner: swPickIndex_(H, ['Assisted Coverage Partner', 'Coverage Partner'])
+  };
+  var days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  var dayCols = {};
+  days.forEach(function (day) { dayCols[day] = swPickIndex_(H, [day]); });
+  if (C.name < 0) return [];
+
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var name = swTrim_(values[i][C.name]);
+    if (!name) continue;
+    var row = {
+      rowNumber: i + 1,
+      name: name,
+      email: C.email >= 0 ? swNormEmail_(values[i][C.email]) : '',
+      role: C.role >= 0 ? swNormalizeEmployeeRoleList_(values[i][C.role]) : '',
+      active: C.active < 0 || !swTrim_(values[i][C.active]) || swTruthy_(values[i][C.active]),
+      defaultJoc: C.defaultJoc >= 0 ? swTrim_(values[i][C.defaultJoc]) : '',
+      coverageEnabled: C.coverageEnabled < 0 || !swTrim_(values[i][C.coverageEnabled]) || swTruthy_(values[i][C.coverageEnabled]),
+      coveragePartner: C.coveragePartner >= 0 ? swTrim_(values[i][C.coveragePartner]) : '',
+      days: {}
+    };
+    days.forEach(function (day) {
+      row.days[day] = dayCols[day] >= 0 ? swTruthy_(values[i][dayCols[day]]) : (day !== 'Sat' && day !== 'Sun');
+    });
+    out.push(row);
+  }
+  return out;
+}
+
+function swEmployeeScheduleSeedPeople_(byName, list, role) {
+  (list || []).forEach(function (item) {
+    var name = swTrim_(item && item.name);
+    if (!name) return;
+    var key = swNorm_(name);
+    var existing = byName[key];
+    if (!existing) {
+      existing = {
+        rowNumber: 0,
+        name: name,
+        email: swNormEmail_(item.email || ''),
+        role: '',
+        inferredRole: role,
+        active: true,
+        defaultJoc: '',
+        coverageEnabled: true,
+        coveragePartner: '',
+        days: swDefaultEmployeeScheduleDays_(),
+        skills: swDefaultRepSkills_()
+      };
+      byName[key] = existing;
+    }
+    if (!existing.email && item.email) existing.email = swNormEmail_(item.email);
+    existing.inferredRole = swNormalizeEmployeeRoleList_([existing.inferredRole, role].filter(Boolean).join(','));
+    if (!existing.role) existing.role = existing.inferredRole;
+  });
+}
+
+function swDefaultEmployeeScheduleDays_() {
+  return { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true, Sat: false, Sun: false };
+}
+
+function swDefaultRepSkills_() {
+  return { labDiamond: false, naturalDiamond: 'None', generalAppointment: true };
+}
+
+function swNormalizeEmployeeRoleList_(value) {
+  var roles = [];
+  String(value || '').split(/[,\n;]/).forEach(function (role) {
+    var normalized = swNormalizeEmployeeRole_(role);
+    if (normalized && roles.indexOf(normalized) < 0) roles.push(normalized);
+  });
+  return roles.join(',');
+}
+
+function swNormalizeEmployeeRole_(role) {
+  if (swWorkflowRoleMatches_(role, SW_OWNER_ROLES.SALES_REP)) return SW_OWNER_ROLES.SALES_REP;
+  if (swWorkflowRoleMatches_(role, SW_OWNER_ROLES.JOC)) return SW_OWNER_ROLES.JOC;
+  return '';
+}
+
+function swEmployeeHasRole_(person, role) {
+  var target = swNormalizeEmployeeRole_(role);
+  if (!target) return false;
+  return swNormalizeEmployeeRoleList_((person && person.role) || '').split(',').some(function (item) {
+    return swWorkflowRoleMatches_(item, target);
+  });
+}
+
+function swEmployeePrimaryRoleRank_(role) {
+  if (String(role || '').indexOf(SW_OWNER_ROLES.JOC) >= 0) return 1;
+  if (String(role || '').indexOf(SW_OWNER_ROLES.SALES_REP) >= 0) return 2;
+  return 9;
+}
+
+function swReadRepQualificationMap_(ss) {
+  var out = {};
+  var sh = ss.getSheetByName(SW_SHEETS.REP_QUALIFICATIONS);
+  if (!sh || sh.getLastRow() < 2) return out;
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var C = {
+    name: swPickIndex_(H, ['Rep Name', 'Rep', 'Name']),
+    email: swPickIndex_(H, ['Rep Email', 'Email']),
+    lab: swPickIndex_(H, ['Lab Diamond', 'Lab']),
+    natural: swPickIndex_(H, ['Natural Diamond', 'Natural']),
+    general: swPickIndex_(H, ['General Appointment', 'General']),
+    active: swPickIndex_(H, ['Active?', 'Active']),
+    notes: swPickIndex_(H, ['Notes', 'Note'])
+  };
+  if (C.name < 0) return out;
+  for (var i = 1; i < values.length; i++) {
+    var name = swTrim_(values[i][C.name]);
+    if (!name) continue;
+    out[swNorm_(name)] = {
+      name: name,
+      email: C.email >= 0 ? swNormEmail_(values[i][C.email]) : '',
+      active: C.active < 0 || !swTrim_(values[i][C.active]) || swTruthy_(values[i][C.active]),
+      notes: C.notes >= 0 ? swTrim_(values[i][C.notes]) : '',
+      skills: {
+        labDiamond: C.lab >= 0 ? swTruthy_(values[i][C.lab]) : false,
+        naturalDiamond: C.natural >= 0 ? swNormalizeNaturalSkill_(values[i][C.natural]) : 'None',
+        generalAppointment: C.general < 0 || !swTrim_(values[i][C.general]) || swTruthy_(values[i][C.general])
+      }
+    };
+  }
+  return out;
+}
+
+function swNormalizeNaturalSkill_(value) {
+  var s = swNorm_(value);
+  if (s === 'primary') return 'Primary';
+  if (s === 'backup') return 'Backup';
+  if (s === 'y' || s === 'yes' || s === 'true' || s === '1') return 'Primary';
+  return 'None';
+}
+
+function swReadEmployeeScheduleChanges_(ss) {
+  var sh = ss.getSheetByName(SW_SHEETS.SCHEDULE_CHANGES);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var C = {
+    name: swPickIndex_(H, ['Rep Name', 'Rep', 'Name']),
+    email: swPickIndex_(H, ['Email', 'Rep Email']),
+    role: swPickIndex_(H, ['Role', 'Roles']),
+    date: swPickIndex_(H, ['Change Date', 'Date']),
+    type: swPickIndex_(H, ['Change Type', 'Status', 'Override Status']),
+    from: swPickIndex_(H, ['Available From', 'From']),
+    until: swPickIndex_(H, ['Available Until', 'Until']),
+    notes: swPickIndex_(H, ['Notes', 'Note'])
+  };
+  if (C.name < 0 || C.date < 0) return [];
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var name = swTrim_(values[i][C.name]);
+    var date = swScheduleDateKey_(values[i][C.date]);
+    if (!name || !date) continue;
+    out.push({
+      rowNumber: i + 1,
+      name: name,
+      email: C.email >= 0 ? swNormEmail_(values[i][C.email]) : '',
+      role: C.role >= 0 ? swNormalizeEmployeeRoleList_(values[i][C.role]) : '',
+      date: date,
+      changeType: C.type >= 0 ? swTrim_(values[i][C.type]) || 'Full-day off' : 'Full-day off',
+      availableFrom: C.from >= 0 ? swTrim_(values[i][C.from]) : '',
+      availableUntil: C.until >= 0 ? swTrim_(values[i][C.until]) : '',
+      notes: C.notes >= 0 ? swTrim_(values[i][C.notes]) : ''
+    });
+  }
+  out.sort(function (a, b) {
+    return String(a.date || '').localeCompare(String(b.date || '')) ||
+      String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  return out;
+}
+
+function swEmployeeScheduleToday_(ss, people) {
+  var today = new Date();
+  var ctx = {
+    rosterIndex: swReadRosterAvailabilityIndex_(ss),
+    scheduleChangesIndex: swReadScheduleChangesIndex_(ss)
+  };
+  return (people || []).filter(function (person) {
+    return person && person.active !== false && typeof swAvailabilityFor_ === 'function' &&
+      swAvailabilityFor_(ss, person.name, today, ctx).available;
+  }).map(function (person) {
+    var override = swScheduleOverride_(ss, person.name, today, ctx);
+    return {
+      name: person.name,
+      role: person.role || '',
+      availableFrom: override ? override.availableFrom || '' : '',
+      availableUntil: override ? override.availableUntil || '' : ''
+    };
+  });
+}
+
+function swScheduleDateKey_(value) {
+  if (value instanceof Date) return Utilities.formatDate(value, swTimezone_(), 'yyyy-MM-dd');
+  var s = swTrim_(value);
+  if (!s) return '';
+  var iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (iso) return [iso[1], swPad2_(iso[2]), swPad2_(iso[3])].join('-');
+  var us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if (us) return [us[3], swPad2_(us[1]), swPad2_(us[2])].join('-');
+  return swDateKey_(value);
 }
 
 function swBuildIdentityContext_(ss, readOnly) {
@@ -306,6 +644,7 @@ function swAppointmentColumnIndex_(headers) {
     visitDate: swPickIndex_(H, ['Visit Date', 'Appointment Date', 'Date']),
     visitTime: swPickIndex_(H, ['Visit Time', 'Appointment Time', 'Time']),
     visitType: swPickIndex_(H, ['Visit Type', 'Appointment Type']),
+    diamondType: swPickIndex_(H, ['Diamond Type', 'Stone Type', 'Center Stone Type']),
     status: swPickIndex_(H, ['Status']),
     active: swPickIndex_(H, ['Active?', 'Active', 'Is Active']),
     assignedRep: swPickIndex_(H, ['Client Advisor', 'Assigned Rep', 'Rep', 'Owner']),
@@ -368,6 +707,7 @@ function swAppointmentRecordFromRows_(drow, vrow, idx, rowNumber) {
     visitDate: swTrim_(swCell_(drow, idx.visitDate)),
     visitTime: swFormatAppointmentTime_(swCell_(drow, idx.visitTime), swCell_(vrow, idx.visitTime)),
     visitType: swTrim_(swCell_(drow, idx.visitType)),
+    diamondType: swTrim_(swCell_(drow, idx.diamondType)),
     visitDateRaw: swCell_(vrow, idx.visitDate),
     visitTimeRaw: swCell_(vrow, idx.visitTime),
     status: swTrim_(swCell_(drow, idx.status)),

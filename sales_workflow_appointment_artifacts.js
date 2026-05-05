@@ -1058,6 +1058,12 @@ function swGenerateAppointmentSummary_(ss, row, now) {
   var folders = swEnsureAppointmentFolderForRoot_(ss, row['RootApptID']);
   var baseName = row['RootApptID'] + '__client_follow_up_draft__' + Utilities.formatDate(now, swTimezone_(), 'yyyyMMdd-HHmmss');
   var jsonFile = folders.summaries.createFile(baseName + '.json', JSON.stringify(normalized, null, 2), 'application/json');
+  var customerInsightsText = swSummaryHasInsights_(normalized.key_customer_insights)
+    ? swInsightsToText_(normalized.key_customer_insights)
+    : '';
+  var nextStepsText = (normalized.recommended_next_steps || []).length
+    ? swNextStepsToText_(normalized.recommended_next_steps)
+    : '';
   var summaryDoc = swCreateGoogleDocInFolder_(
     folders.summaries,
     baseName,
@@ -1077,8 +1083,8 @@ function swGenerateAppointmentSummary_(ss, row, now) {
     'Summary Doc ID': summaryDoc.id,
     'Summary Doc URL': summaryDoc.url,
     'Internal Summary': normalized.internal_appointment_summary,
-    'Customer Insights': swInsightsToText_(normalized.key_customer_insights),
-    'Recommended Next Steps': swNextStepsToText_(normalized.recommended_next_steps),
+    'Customer Insights': customerInsightsText,
+    'Recommended Next Steps': nextStepsText,
     'Client Follow-Up Draft': normalized.client_follow_up_message_draft,
     'Confidence Flags': (normalized.confidence_warning_flags || []).join('\n'),
     'Summary Snapshot JSON': JSON.stringify(normalized),
@@ -1300,7 +1306,7 @@ function swOpenAIAppointmentFollowUpDraft_(transcriptText, artifact, appointment
     input: [
       {
         role: 'system',
-        content: 'You write warm, concise client-facing post-appointment text messages for a jewelry sales team. Use only facts from the transcript and appointment context. Do not include internal notes, analytics, scoring, JSON, markdown, or labels.'
+        content: "You are a warm jewelry sales assistant. Using the consultation transcript, write a follow-up text message to the client that:\n- Opens with their name and a specific detail from their visit\n- Briefly summarizes what they loved (styles, stones, metals, timeline)\n- States their exact next steps\n- Invites them to reach out if anything changes\n- Closes with the consultant's name\n\nKeep it under 180 words. Conversational but polished. No emojis unless the client used them. No generic filler. Return only the message, ready to send."
       },
       {
         role: 'user',
@@ -1320,13 +1326,7 @@ function swOpenAIAppointmentFollowUpDraft_(transcriptText, artifact, appointment
             diamondRequirements: appointment.dvCustomerLookingFor || appointment.dvCustomerRequirementsJson || ''
           }, null, 2),
           '',
-          'Write one ready-to-send plain-text message to the client after their appointment.',
-          'Keep it natural and text-message friendly, ideally 80-160 words.',
-          'Include: thank you, a brief recap of what we went over, what our team is doing next, and an invitation to send anything they want to add or change.',
-          'Do not overpromise timing unless it is explicitly stated in the transcript or context.',
-          'If a detail is not in the transcript, do not infer it.',
-          '',
-          'Transcript:',
+          'Consultation transcript:',
           transcriptText
         ].join('\n')
       }

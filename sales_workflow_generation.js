@@ -90,6 +90,7 @@ function swBuildTask_(ss, state, ctx, rec, taskType, ownerRole, dueAt, dependenc
       visitDate: rec.visitDate,
       visitTime: visitTime,
       visitType: rec.visitType,
+      diamondType: rec.diamondType,
       assignedRep: rec.assignedRep,
       assignedRepEmail: rec.assignedRepEmail,
       assistedRep: rec.assistedRep,
@@ -374,7 +375,7 @@ function swRoleQueueLabel_(ctx, ownerRole) {
 
 function swResolveJocOwner_(ss, ctx, rec, dueAt, existing) {
   var intendedName = rec.assistedRep || '';
-  var intendedEmail = swLookupEmailByName_(ss, intendedName, ctx) || '';
+  var intendedEmail = swLookupEmailByName_(ss, intendedName, ctx) || swSchedulePersonEmailByName_(ctx, intendedName);
   if (!intendedName) {
     return {
       intendedOwner: '',
@@ -394,6 +395,17 @@ function swResolveJocOwner_(ss, ctx, rec, dueAt, existing) {
       currentOwner: intendedName,
       currentOwnerEmail: intendedEmail,
       coverageReason: ''
+    };
+  }
+
+  var coverage = swFindAvailableJocCoverageOwner_(ss, ctx, intendedName, ownerDate);
+  if (coverage) {
+    return {
+      intendedOwner: intendedName,
+      intendedOwnerEmail: intendedEmail,
+      currentOwner: coverage.name,
+      currentOwnerEmail: coverage.email,
+      coverageReason: swAssistedCoverageReason_(intendedAvail) + '_COVERED_BY_JOC'
     };
   }
 
@@ -428,15 +440,22 @@ function swAvailabilityFor_(ss, personName, date, ctx) {
   var day = Utilities.formatDate(date || new Date(), swTimezone_(), 'EEE');
   var row = rosterIndex.byName[swNorm_(personName)];
   if (!row) return { known: false, available: false, reason: 'NO_ROSTER_ROW' };
-
-  var scheduled = row.days[day];
-  if (scheduled == null) return { known: false, available: false, reason: 'ROSTER_SCHEMA_INCOMPLETE' };
-  if (!scheduled) return { known: true, available: false, reason: 'NOT_SCHEDULED' };
+  if (row.active === false) return { known: true, available: false, reason: 'INACTIVE' };
 
   var override = swScheduleOverride_(ss, personName, date, ctx);
   if (override && /off|ooo|out|vacation|pto|sick/i.test(override.changeType || '')) {
     return { known: true, available: false, reason: 'OUT_OF_OFFICE' };
   }
+  if (override && (override.availableFrom || override.availableUntil || swTruthy_(override.changeType || ''))) {
+    if (!swScheduleOverrideAllowsTime_(override, date)) {
+      return { known: true, available: false, reason: 'PARTIAL_UNAVAILABLE' };
+    }
+    return { known: true, available: true, reason: 'OVERRIDE_WORKING' };
+  }
+
+  var scheduled = row.days[day];
+  if (scheduled == null) return { known: false, available: false, reason: 'ROSTER_SCHEMA_INCOMPLETE' };
+  if (!scheduled) return { known: true, available: false, reason: 'NOT_SCHEDULED' };
 
   return { known: true, available: true, reason: 'SCHEDULED' };
 }
@@ -447,6 +466,249 @@ function swScheduleOverride_(ss, personName, date, ctx) {
   ctx = ctx || {};
   var scheduleIndex = ctx.scheduleChangesIndex || swReadScheduleChangesIndex_(ss);
   return scheduleIndex.byNameDate[targetName + '|' + targetDate] || null;
+}
+
+function swScheduleOverrideAllowsTime_(override, date) {
+  var mins = swDateMinutes_(date);
+  if (mins == null) return true;
+  var from = swTimeStringToMinutes_(override && override.availableFrom);
+  var until = swTimeStringToMinutes_(override && override.availableUntil);
+  if (from != null && mins < from) return false;
+  if (until != null && mins >= until) return false;
+  return true;
+}
+
+function swDateMinutes_(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function swTimeStringToMinutes_(value) {
+  var s = swTrim_(value);
+  if (!s) return null;
+  var m12 = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(s);
+  if (m12) {
+    var h12 = Number(m12[1]);
+    var ap = m12[3].toUpperCase();
+    if (ap === 'AM' && h12 === 12) h12 = 0;
+    if (ap === 'PM' && h12 !== 12) h12 += 12;
+    return h12 * 60 + Number(m12[2]);
+  }
+  var m24 = /^(\d{1,2}):(\d{2})/.exec(s);
+  if (!m24) return null;
+  return Number(m24[1]) * 60 + Number(m24[2]);
+}
+
+function swFindAvailableJocCoverageOwner_(ss, ctx, intendedName, date) {
+  ctx = ctx || {};
+  var preferredPartner = '';
+  var rosterIndex = ctx.rosterIndex || swReadRosterAvailabilityIndex_(ss);
+  var intendedRow = rosterIndex.byName ? rosterIndex.byName[swNorm_(intendedName)] : null;
+  if (intendedRow && intendedRow.coverageEnabled !== false) preferredPartner = swTrim_(intendedRow.coveragePartner);
+
+  var candidates = swAvailableScheduledPeopleForRole_(ss, ctx, SW_OWNER_ROLES.JOC, date, intendedName);
+  if (!candidates.length) return null;
+  candidates.sort(function (a, b) {
+    var ap = preferredPartner && swNorm_(a.name) === swNorm_(preferredPartner) ? 0 : 1;
+    var bp = preferredPartner && swNorm_(b.name) === swNorm_(preferredPartner) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  return candidates[0];
+}
+
+function swAvailableScheduledPeopleForRole_(ss, ctx, role, date, excludeName) {
+  ctx = ctx || {};
+  var people = ctx.employeeSchedulePeople || null;
+  if (!people) {
+    people = typeof swReadEmployeeSchedulePeople_ === 'function' ? swReadEmployeeSchedulePeople_(ss) : [];
+    ctx.employeeSchedulePeople = people;
+  }
+  var exclude = swNorm_(excludeName);
+  var out = [];
+  (people || []).forEach(function (person) {
+    if (!person || !person.name) return;
+    if (exclude && swNorm_(person.name) === exclude) return;
+    if (person.active === false) return;
+    if (typeof swEmployeeHasRole_ === 'function' && !swEmployeeHasRole_(person, role)) return;
+    var available = swAvailabilityFor_(ss, person.name, date, ctx);
+    if (!available.available) return;
+    out.push({
+      name: person.name,
+      email: swNormEmail_(person.email || '') || swLookupEmailByName_(ss, person.name, ctx),
+      defaultJoc: person.defaultJoc || '',
+      skills: person.skills || swDefaultRepSkills_()
+    });
+  });
+  return out;
+}
+
+function swSchedulePersonEmailByName_(ctx, name) {
+  var target = swNorm_(name);
+  if (!target) return '';
+  var people = (ctx && ctx.employeeSchedulePeople) || [];
+  for (var i = 0; i < people.length; i++) {
+    if (swNorm_(people[i].name) === target) return swNormEmail_(people[i].email || '');
+  }
+  return '';
+}
+
+function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
+  ctx = ctx || {};
+  var enabled = swTruthy_(swConfigValue_(ctx.config || [], 'SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN', 'N'));
+  var people = typeof swReadEmployeeSchedulePeople_ === 'function' ? swReadEmployeeSchedulePeople_(ss) : [];
+  ctx.employeeSchedulePeople = people;
+  var state = {
+    enabled: enabled,
+    countsByDate: {},
+    assignedByRoot: {},
+    advisors: people.filter(function (person) {
+      return person && person.active !== false && swEmployeeHasRole_(person, SW_OWNER_ROLES.SALES_REP);
+    }).map(function (person) {
+      return {
+        name: person.name,
+        email: swNormEmail_(person.email || '') || swLookupEmailByName_(ss, person.name, ctx),
+        defaultJoc: person.defaultJoc || '',
+        skills: person.skills || swDefaultRepSkills_()
+      };
+    })
+  };
+  ctx.clientAdvisorRoundRobin = state;
+  if (!enabled) return state;
+
+  (appointments || []).forEach(function (rec) {
+    if (!rec || !rec.assignedRep) return;
+    var visitAt = swVisitDateTime_(rec, ctx.tz);
+    if (!visitAt) return;
+    var dateKey = swDateKey_(visitAt);
+    var ownerKey = swNorm_(rec.assignedRep);
+    if (!state.countsByDate[dateKey]) state.countsByDate[dateKey] = {};
+    state.countsByDate[dateKey][ownerKey] = (state.countsByDate[dateKey][ownerKey] || 0) + 1;
+    if (rec.root) state.assignedByRoot[rec.root] = {
+      name: rec.assignedRep,
+      email: rec.assignedRepEmail || swLookupEmailByName_(ss, rec.assignedRep, ctx),
+      defaultJoc: rec.assistedRep || ''
+    };
+  });
+  return state;
+}
+
+function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
+  var rr = ctx && ctx.clientAdvisorRoundRobin;
+  if (!rr || !rr.enabled || !rec) return false;
+  var visitAt = swVisitDateTime_(rec, ctx.tz);
+  if (!visitAt) return false;
+
+  var currentUnavailable = false;
+  if (rec.assignedRep) {
+    var currentAvail = swAvailabilityFor_(ss, rec.assignedRep, visitAt, ctx);
+    currentUnavailable = currentAvail.known && !currentAvail.available;
+    if (!currentUnavailable) {
+      var existingAdvisor = swRoundRobinAdvisorByName_(rr, rec.assignedRep);
+      if (existingAdvisor && existingAdvisor.defaultJoc && !rec.assistedRep) {
+        var existingLinkedEmail = swLookupEmailByName_(ss, existingAdvisor.defaultJoc, ctx) || swSchedulePersonEmailByName_(ctx, existingAdvisor.defaultJoc);
+        if (swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, existingAdvisor, existingAdvisor.defaultJoc, existingLinkedEmail)) {
+          rec.assistedRep = existingAdvisor.defaultJoc;
+          rec.assistedRepEmail = existingLinkedEmail;
+          summary.autoLinkedJocFromAdvisor = (summary.autoLinkedJocFromAdvisor || 0) + 1;
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  var root = rec.root || rec.appt || '';
+  var existingRootAssignment = !rec.assignedRep && root ? rr.assignedByRoot[root] : null;
+  var chosen = existingRootAssignment || swPickClientAdvisorRoundRobin_(ss, ctx, rr, visitAt, rec, rec.assignedRep || '');
+  if (!chosen || !chosen.name) {
+    summary.clientAdvisorRoundRobinNoOwner = (summary.clientAdvisorRoundRobinNoOwner || 0) + 1;
+    return false;
+  }
+
+  var linkedJoc = swTrim_(chosen.defaultJoc || '');
+  var linkedJocEmail = linkedJoc ? (swLookupEmailByName_(ss, linkedJoc, ctx) || swSchedulePersonEmailByName_(ctx, linkedJoc)) : '';
+  if (!swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, chosen, linkedJoc, linkedJocEmail)) return false;
+  rec.assignedRep = chosen.name;
+  rec.assignedRepEmail = chosen.email || '';
+  rec.assistedRep = linkedJoc || rec.assistedRep || '';
+  rec.assistedRepEmail = linkedJoc ? linkedJocEmail : rec.assistedRepEmail;
+  if (root) rr.assignedByRoot[root] = chosen;
+  var dateKey = swDateKey_(visitAt);
+  if (!rr.countsByDate[dateKey]) rr.countsByDate[dateKey] = {};
+  var ownerKey = swNorm_(chosen.name);
+  rr.countsByDate[dateKey][ownerKey] = (rr.countsByDate[dateKey][ownerKey] || 0) + 1;
+  if (currentUnavailable) summary.autoReassignedClientAdvisors = (summary.autoReassignedClientAdvisors || 0) + 1;
+  else summary.autoAssignedClientAdvisors = (summary.autoAssignedClientAdvisors || 0) + 1;
+  return true;
+}
+
+function swRoundRobinAdvisorByName_(rr, name) {
+  var target = swNorm_(name);
+  for (var i = 0; i < (rr.advisors || []).length; i++) {
+    if (swNorm_(rr.advisors[i].name) === target) return rr.advisors[i];
+  }
+  return null;
+}
+
+function swPickClientAdvisorRoundRobin_(ss, ctx, rr, visitAt, rec, excludeName) {
+  var dateKey = swDateKey_(visitAt);
+  var counts = rr.countsByDate[dateKey] || {};
+  var candidates = (rr.advisors || []).filter(function (advisor) {
+    if (!advisor || !advisor.name) return false;
+    if (excludeName && swNorm_(advisor.name) === swNorm_(excludeName)) return false;
+    if (!swAvailabilityFor_(ss, advisor.name, visitAt, ctx).available) return false;
+    return swAdvisorQualifiedForAppointment_(advisor, rec);
+  });
+  candidates = swPrioritizeNaturalAdvisorPool_(candidates, rec);
+  if (!candidates.length) return null;
+  candidates.sort(function (a, b) {
+    var ac = counts[swNorm_(a.name)] || 0;
+    var bc = counts[swNorm_(b.name)] || 0;
+    if (ac !== bc) return ac - bc;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  return candidates[0];
+}
+
+function swAdvisorQualifiedForAppointment_(advisor, rec) {
+  var skills = advisor.skills || swDefaultRepSkills_();
+  var kind = swAppointmentDiamondKind_(rec);
+  if (kind === 'natural') return swNormalizeNaturalSkill_(skills.naturalDiamond) !== 'None';
+  if (kind === 'lab') return swTruthy_(skills.labDiamond);
+  return swTruthy_(skills.generalAppointment);
+}
+
+function swPrioritizeNaturalAdvisorPool_(candidates, rec) {
+  if (swAppointmentDiamondKind_(rec) !== 'natural') return candidates;
+  var primary = candidates.filter(function (advisor) {
+    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond) === 'Primary';
+  });
+  return primary.length ? primary : candidates.filter(function (advisor) {
+    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond) === 'Backup';
+  });
+}
+
+function swAppointmentDiamondKind_(rec) {
+  var s = swNorm_((rec && rec.diamondType) || (rec && rec.dvCustomerRequirementsJson) || (rec && rec.dvCustomerLookingFor) || '');
+  if (s.indexOf('natural') >= 0) return 'natural';
+  if (s.indexOf('lab') >= 0) return 'lab';
+  return '';
+}
+
+function swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, advisor, linkedJoc, linkedJocEmail) {
+  var row = Number(rec && rec.row);
+  if (!row || row < 2 || typeof swEnsureMasterOwnerHeaders_ !== 'function') return false;
+  var master = ss.getSheetByName(SW_SHEETS.MASTER);
+  if (!master) return false;
+  var headers = swEnsureMasterOwnerHeaders_(master);
+  master.getRange(row, headers.assignedRep).setValue(advisor.name || '');
+  master.getRange(row, headers.assignedRepEmail).setValue(advisor.email || '');
+  if (linkedJoc) {
+    master.getRange(row, headers.assistedRep).setValue(linkedJoc);
+    master.getRange(row, headers.assistedRepEmail).setValue(linkedJocEmail || swLookupEmailByName_(ss, linkedJoc, {}) || '');
+  }
+  return true;
 }
 
 function swIsWorkflowRelevant_(rec, now, ctx) {

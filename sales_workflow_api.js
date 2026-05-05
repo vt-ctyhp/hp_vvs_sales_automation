@@ -16,6 +16,9 @@ function sw_setupSalesWorkflow() {
   var usersSheet = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var cleanupSheet = swEnsureSheet_(ss, SW_SHEETS.DATA_CLEANUP, SW_DATA_CLEANUP_HEADERS);
   var artifactSheet = swEnsureAppointmentArtifactsSheet_(ss);
+  var rosterSheet = swEnsureSheet_(ss, SW_SHEETS.ROSTER, SW_EMPLOYEE_SCHEDULE_HEADERS);
+  var scheduleChangesSheet = swEnsureSheet_(ss, SW_SHEETS.SCHEDULE_CHANGES, SW_SCHEDULE_CHANGE_HEADERS);
+  var qualificationSheet = swEnsureSheet_(ss, SW_SHEETS.REP_QUALIFICATIONS, SW_REP_QUALIFICATION_HEADERS);
 
   swStyleSheet_(taskSheet);
   swStyleSheet_(logSheet);
@@ -24,6 +27,9 @@ function sw_setupSalesWorkflow() {
   swStyleSheet_(usersSheet);
   swStyleSheet_(cleanupSheet);
   swStyleSheet_(artifactSheet);
+  swStyleSheet_(rosterSheet);
+  swStyleSheet_(scheduleChangesSheet);
+  swStyleSheet_(qualificationSheet);
 
   swSeedConfig_(configSheet);
   swSeedTemplates_(templateSheet);
@@ -66,6 +72,7 @@ function sw_generateSalesWorkflowTasks() {
         };
       }
       var masterRows = swReadAppointments_(ss);
+      swPrepareClientAdvisorRoundRobin_(ss, ctx, masterRows);
       var taskState = swReadTaskState_(ss);
       swBeginDeferredTaskWrites_(ss, taskState);
       var now = new Date();
@@ -92,6 +99,7 @@ function sw_generateSalesWorkflowTasks() {
           return;
         }
 
+        swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary);
         swGenerateTasksForAppointment_(ss, taskState, ctx, rec, now, summary);
       });
 
@@ -926,6 +934,80 @@ function sw_adminGetTasks(authToken, filters) {
   });
 }
 
+function sw_adminGetEmployeeSchedules(authToken) {
+  return swTimed_('sw_adminGetEmployeeSchedules', function () {
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!user.isAdmin) throw new Error('Admin access required.');
+    return swReadEmployeeScheduleAdminData_(ss);
+  });
+}
+
+function sw_adminSaveEmployeeSchedules(authToken, data) {
+  return swTimed_('sw_adminSaveEmployeeSchedules', function () {
+    data = data || {};
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!user.isAdmin) throw new Error('Admin access required.');
+
+    var people = data.people || data.rows || [];
+    if (!Array.isArray(people)) throw new Error('Schedule rows must be an array.');
+    var written = swWriteEmployeeRosterRows_(ss, people, user);
+    swWriteRepQualificationRows_(ss, people, user);
+    if (data.settings && data.settings.clientAdvisorRoundRobin != null) {
+      swSetWorkflowConfigValue_(ss, 'SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN',
+        swTruthy_(data.settings.clientAdvisorRoundRobin) ? 'Y' : 'N');
+    }
+    var generation = null;
+    try { generation = sw_generateSalesWorkflowTasks(); } catch (err) { generation = { ok: false, error: swTrim_(err && err.message || err) }; }
+    return {
+      ok: true,
+      updated: written,
+      generation: generation,
+      schedule: swReadEmployeeScheduleAdminData_(ss)
+    };
+  });
+}
+
+function sw_adminUpsertScheduleChange(authToken, data) {
+  return swTimed_('sw_adminUpsertScheduleChange', function () {
+    data = data || {};
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!user.isAdmin) throw new Error('Admin access required.');
+    var row = swUpsertScheduleChangeRow_(ss, data, user);
+    var generation = null;
+    try { generation = sw_generateSalesWorkflowTasks(); } catch (err) { generation = { ok: false, error: swTrim_(err && err.message || err) }; }
+    return {
+      ok: true,
+      rowNumber: row,
+      generation: generation,
+      schedule: swReadEmployeeScheduleAdminData_(ss)
+    };
+  });
+}
+
+function sw_adminDeleteScheduleChange(authToken, name, date) {
+  return swTimed_('sw_adminDeleteScheduleChange', function () {
+    var ss = swSpreadsheet_();
+    sw_setupSalesWorkflow();
+    var user = swAuthUserForApi_(ss, authToken);
+    if (!user.isAdmin) throw new Error('Admin access required.');
+    var deleted = swDeleteScheduleChangeRow_(ss, name, date);
+    var generation = null;
+    try { generation = sw_generateSalesWorkflowTasks(); } catch (err) { generation = { ok: false, error: swTrim_(err && err.message || err) }; }
+    return {
+      ok: true,
+      deleted: deleted,
+      generation: generation,
+      schedule: swReadEmployeeScheduleAdminData_(ss)
+    };
+  });
+}
+
 /**
  * Read-only detail: returns task payload, rendered template data, and allowed actions.
  */
@@ -1501,6 +1583,211 @@ function swAssignmentEmailForName_(name, options) {
 
 function swAssignmentOptionSort_(a, b) {
   return String(a.name || '').localeCompare(String(b.name || ''));
+}
+
+function swWriteEmployeeRosterRows_(ss, people, actor) {
+  var sh = swEnsureEmployeeScheduleSheets_(ss).roster;
+  var headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map(function (h) {
+    return swTrim_(h);
+  });
+  var now = swIso_(new Date());
+  var actorLabel = actor ? (actor.name || actor.email || '') : '';
+  var rows = [];
+  var seen = {};
+
+  (people || []).forEach(function (person) {
+    person = person || {};
+    var name = swTrim_(person.name || person.rep || person['Rep']);
+    if (!name) return;
+    var key = swNorm_(name);
+    if (seen[key]) return;
+    seen[key] = true;
+    var days = person.days || {};
+    var role = swNormalizeEmployeeRoleList_(person.role || person.roles || '');
+    var active = person.active == null ? true : swTruthy_(person.active);
+    var coverageEnabled = person.coverageEnabled == null ? true : swTruthy_(person.coverageEnabled);
+    var valuesByHeaderKey = {
+      rep: name,
+      name: name,
+      teammember: name,
+      email: swNormEmail_(person.email || ''),
+      repemail: swNormEmail_(person.email || ''),
+      role: role,
+      roles: role,
+      active: active ? 'Y' : 'N',
+      mon: swTruthy_(days.Mon) ? 'Y' : 'N',
+      tue: swTruthy_(days.Tue) ? 'Y' : 'N',
+      wed: swTruthy_(days.Wed) ? 'Y' : 'N',
+      thu: swTruthy_(days.Thu) ? 'Y' : 'N',
+      fri: swTruthy_(days.Fri) ? 'Y' : 'N',
+      sat: swTruthy_(days.Sat) ? 'Y' : 'N',
+      sun: swTruthy_(days.Sun) ? 'Y' : 'N',
+      defaultjoc: swTrim_(person.defaultJoc || ''),
+      linkedjoc: swTrim_(person.defaultJoc || ''),
+      jocpartner: swTrim_(person.defaultJoc || ''),
+      assistedcoverageenabled: coverageEnabled ? 'Y' : 'N',
+      coverageenabled: coverageEnabled ? 'Y' : 'N',
+      assistedcoveragepartner: swTrim_(person.coveragePartner || ''),
+      coveragepartner: swTrim_(person.coveragePartner || ''),
+      updatedat: now,
+      updatedby: actorLabel
+    };
+    rows.push(headers.map(function (header) {
+      var headerKey = swHeaderKey_(header);
+      return valuesByHeaderKey[headerKey] == null ? '' : valuesByHeaderKey[headerKey];
+    }));
+  });
+
+  var oldRows = Math.max(0, sh.getLastRow() - 1);
+  if (oldRows > 0) sh.getRange(2, 1, oldRows, sh.getLastColumn()).clearContent();
+  if (rows.length) sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  return rows.length;
+}
+
+function swWriteRepQualificationRows_(ss, people, actor) {
+  var sh = swEnsureEmployeeScheduleSheets_(ss).qualifications;
+  var headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map(function (h) {
+    return swTrim_(h);
+  });
+  var now = swIso_(new Date());
+  var actorLabel = actor ? (actor.name || actor.email || '') : '';
+  var rows = [];
+  var seen = {};
+  (people || []).forEach(function (person) {
+    person = person || {};
+    var name = swTrim_(person.name || '');
+    if (!name || !swEmployeeHasRole_(person, SW_OWNER_ROLES.SALES_REP)) return;
+    var key = swNorm_(name);
+    if (seen[key]) return;
+    seen[key] = true;
+    var skills = person.skills || {};
+    var valuesByHeaderKey = {
+      repname: name,
+      rep: name,
+      name: name,
+      repemail: swNormEmail_(person.email || ''),
+      email: swNormEmail_(person.email || ''),
+      labdiamond: swTruthy_(skills.labDiamond) ? 'Y' : 'N',
+      lab: swTruthy_(skills.labDiamond) ? 'Y' : 'N',
+      naturaldiamond: swNormalizeNaturalSkill_(skills.naturalDiamond || 'None'),
+      natural: swNormalizeNaturalSkill_(skills.naturalDiamond || 'None'),
+      generalappointment: swTruthy_(skills.generalAppointment) ? 'Y' : 'N',
+      general: swTruthy_(skills.generalAppointment) ? 'Y' : 'N',
+      active: person.active === false ? 'N' : 'Y',
+      notes: swTrim_(person.skillNotes || ''),
+      note: swTrim_(person.skillNotes || ''),
+      updatedat: now,
+      updatedby: actorLabel
+    };
+    rows.push(headers.map(function (header) {
+      var headerKey = swHeaderKey_(header);
+      return valuesByHeaderKey[headerKey] == null ? '' : valuesByHeaderKey[headerKey];
+    }));
+  });
+  var oldRows = Math.max(0, sh.getLastRow() - 1);
+  if (oldRows > 0) sh.getRange(2, 1, oldRows, sh.getLastColumn()).clearContent();
+  if (rows.length) sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  return rows.length;
+}
+
+function swUpsertScheduleChangeRow_(ss, data, actor) {
+  var sh = swEnsureEmployeeScheduleSheets_(ss).changes;
+  var headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map(function (h) {
+    return swTrim_(h);
+  });
+  var name = swTrim_(data.name || data.rep || data['Rep Name']);
+  var date = swScheduleDateKey_(data.date || data.changeDate || data['Change Date']);
+  if (!name) throw new Error('Select an employee.');
+  if (!date) throw new Error('Select a valid change date.');
+  var role = swNormalizeEmployeeRoleList_(data.role || '');
+  var email = swNormEmail_(data.email || '') || swScheduleEmailForName_(ss, name);
+  var changeType = swTrim_(data.changeType || data.status || 'Full-day off');
+  var now = swIso_(new Date());
+  var actorLabel = actor ? (actor.name || actor.email || '') : '';
+  var valuesByHeaderKey = {
+    repname: name,
+    rep: name,
+    name: name,
+    email: email,
+    repemail: email,
+    role: role,
+    roles: role,
+    changedate: date,
+    date: date,
+    changetype: changeType,
+    status: changeType,
+    overridestatus: changeType,
+    availablefrom: swTrim_(data.availableFrom || ''),
+    from: swTrim_(data.availableFrom || ''),
+    availableuntil: swTrim_(data.availableUntil || ''),
+    until: swTrim_(data.availableUntil || ''),
+    notes: swTrim_(data.notes || ''),
+    note: swTrim_(data.notes || ''),
+    updatedat: now,
+    updatedby: actorLabel
+  };
+  var rowNumber = swFindScheduleChangeRow_(sh, name, date);
+  if (!rowNumber) rowNumber = sh.getLastRow() + 1;
+  sh.getRange(rowNumber, 1, 1, headers.length).setValues([headers.map(function (header) {
+    var headerKey = swHeaderKey_(header);
+    return valuesByHeaderKey[headerKey] == null ? '' : valuesByHeaderKey[headerKey];
+  })]);
+  return rowNumber;
+}
+
+function swDeleteScheduleChangeRow_(ss, name, date) {
+  var sh = swEnsureEmployeeScheduleSheets_(ss).changes;
+  var rowNumber = swFindScheduleChangeRow_(sh, name, date);
+  if (!rowNumber) return false;
+  sh.deleteRow(rowNumber);
+  return true;
+}
+
+function swFindScheduleChangeRow_(sh, name, date) {
+  name = swNorm_(name);
+  date = swScheduleDateKey_(date);
+  if (!name || !date || !sh || sh.getLastRow() < 2) return 0;
+  var values = sh.getDataRange().getDisplayValues();
+  var headers = values[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
+  var nameCol = swPickIndex_(H, ['Rep Name', 'Rep', 'Name']);
+  var dateCol = swPickIndex_(H, ['Change Date', 'Date']);
+  if (nameCol < 0 || dateCol < 0) return 0;
+  for (var i = 1; i < values.length; i++) {
+    if (swNorm_(values[i][nameCol]) === name && swScheduleDateKey_(values[i][dateCol]) === date) return i + 1;
+  }
+  return 0;
+}
+
+function swScheduleEmailForName_(ss, name) {
+  var target = swNorm_(name);
+  if (!target) return '';
+  var people = swReadEmployeeSchedulePeople_(ss);
+  for (var i = 0; i < people.length; i++) {
+    if (swNorm_(people[i].name) === target) return swNormEmail_(people[i].email);
+  }
+  return '';
+}
+
+function swSetWorkflowConfigValue_(ss, section, key, value) {
+  var sh = swEnsureSheet_(ss, SW_SHEETS.CONFIG, SW_CONFIG_HEADERS);
+  var targetSection = swNorm_(section);
+  var targetKey = swNorm_(key);
+  if (sh.getLastRow() >= 2) {
+    var values = sh.getRange(2, 1, sh.getLastRow() - 1, SW_CONFIG_HEADERS.length).getDisplayValues();
+    for (var i = 0; i < values.length; i++) {
+      if (swNorm_(values[i][0]) === targetSection && swNorm_(values[i][1]) === targetKey) {
+        sh.getRange(i + 2, 3).setValue(value);
+        return i + 2;
+      }
+    }
+  }
+  var row = ['', '', '', '', '', '', 'Y', '', ''];
+  row[0] = section;
+  row[1] = key;
+  row[2] = value;
+  sh.appendRow(row);
+  return sh.getLastRow();
 }
 
 /**

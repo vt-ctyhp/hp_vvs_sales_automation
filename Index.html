@@ -901,6 +901,350 @@
       display: none;
     }
 
+    .employee-schedule-wide .layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .employee-schedule-wide #detailPanel {
+      display: none;
+    }
+
+    .schedule-shell {
+      display: grid;
+      gap: 18px;
+    }
+
+    .schedule-toolbar {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+    }
+
+    .schedule-table-wrap {
+      border: 1px solid var(--rule);
+      overflow-x: auto;
+    }
+
+    .schedule-table {
+      border-collapse: collapse;
+      min-width: 1220px;
+      width: 100%;
+    }
+
+    .schedule-table th,
+    .schedule-table td {
+      border-bottom: 1px solid var(--rule);
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .schedule-table th {
+      background: var(--surface-inset);
+      color: var(--ink-primary);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .schedule-table input[type="text"],
+    .schedule-table input[type="email"],
+    .schedule-table select {
+      min-width: 130px;
+    }
+
+    .schedule-day-cell {
+      text-align: center;
+      width: 54px;
+    }
+
+    .schedule-day-cell input,
+    .schedule-role-group input,
+    .schedule-setting input {
+      accent-color: var(--ink-primary);
+    }
+
+    .schedule-role-group {
+      display: grid;
+      gap: 6px;
+      min-width: 136px;
+    }
+
+    .schedule-role-group label,
+    .schedule-setting,
+    .schedule-active-cell label {
+      align-items: center;
+      display: flex;
+      gap: 7px;
+      margin: 0;
+      text-transform: none;
+    }
+
+    .schedule-changes-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .schedule-change-row {
+      align-items: center;
+      border: 1px solid var(--rule);
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 12px;
+    }
+
+    .customer-detail-card {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      display: grid;
+      margin-bottom: 18px;
+      min-width: 0;
+    }
+
+    .customer-detail-hero {
+      align-items: start;
+      display: grid;
+      gap: 20px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 28px;
+    }
+
+    .customer-detail-heading {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .customer-detail-card h2 {
+      font-size: 44px;
+      line-height: 1;
+      overflow-wrap: anywhere;
+    }
+
+    .customer-stage-chip {
+      background: #F6E4C9;
+      color: #5D340B;
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      padding: 8px 12px;
+      text-transform: uppercase;
+    }
+
+    .customer-detail-meta {
+      color: var(--ink-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      margin-top: 18px;
+    }
+
+    .customer-detail-meta strong,
+    .customer-kv-value,
+    .customer-payment-amount {
+      color: var(--ink-primary);
+      font-weight: 500;
+    }
+
+    .customer-last-touch.stale {
+      color: #8A1F1F;
+    }
+
+    .customer-detail-next {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 8px minmax(118px, 150px) minmax(0, 1fr) auto;
+      padding: 26px 28px;
+    }
+
+    .customer-next-rule {
+      background: var(--ink-primary);
+      min-height: 110px;
+    }
+
+    .customer-next-text {
+      color: var(--ink-primary);
+      font-size: 18px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    button.link-button {
+      border: 0;
+      color: var(--ink-body);
+      font-size: 13px;
+      letter-spacing: 0;
+      padding: 0;
+      text-decoration: underline;
+      text-transform: none;
+    }
+
+    button.link-button:hover:not(:disabled) {
+      background: transparent;
+      color: var(--ink-primary);
+    }
+
+    .customer-detail-actions {
+      background: var(--surface-inset);
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 16px;
+      padding: 24px 28px;
+    }
+
+    .customer-section-heading {
+      align-items: baseline;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+    }
+
+    .customer-section-heading label {
+      margin-bottom: 0;
+    }
+
+    .customer-detail-tile > label,
+    .customer-detail-tile .customer-section-heading {
+      margin-bottom: 18px;
+    }
+
+    .customer-action-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .customer-action-panel {
+      min-width: 0;
+    }
+
+    .customer-action-panel summary {
+      background: var(--surface-card);
+      border: 1px solid #B8AC94;
+      color: var(--ink-primary);
+      cursor: pointer;
+      display: block;
+      font-size: 14px;
+      list-style: none;
+      overflow-wrap: anywhere;
+      padding: 14px 16px;
+    }
+
+    .customer-action-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .customer-action-panel summary::before {
+      content: '+';
+      margin-right: 9px;
+    }
+
+    .customer-action-panel[open] {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      grid-column: 1 / -1;
+      padding: 0 16px 16px;
+    }
+
+    .customer-action-panel[open] summary {
+      border: 0;
+      border-bottom: 1px solid var(--rule);
+      margin: 0 -16px 16px;
+    }
+
+    .customer-action-panel[open] summary::before {
+      content: '-';
+    }
+
+    .customer-action-panel .field-grid {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .customer-detail-info-grid,
+    .customer-detail-footer-grid {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .customer-detail-tile,
+    .customer-detail-footer-grid .detail-section {
+      border-bottom: 0;
+      border-right: 1px solid var(--rule);
+      min-width: 0;
+      padding: 28px;
+    }
+
+    .customer-detail-tile:last-child,
+    .customer-detail-footer-grid .detail-section:last-child {
+      border-right: 0;
+    }
+
+    .customer-kv-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .customer-kv-row {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(110px, 0.85fr) minmax(0, 1.15fr);
+    }
+
+    .customer-kv-key {
+      color: var(--ink-body);
+    }
+
+    .reference-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .reference-link {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      color: #0A5CA8;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      padding: 14px;
+      text-decoration: none;
+    }
+
+    .reference-link:hover {
+      border-color: var(--ink-primary);
+      color: var(--ink-primary);
+    }
+
+    .customer-payment-list {
+      border-top: 1px solid var(--rule);
+      display: grid;
+    }
+
+    .customer-payment-row {
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 12px 0;
+    }
+
+    .customer-payment-row:last-child {
+      border-bottom: 0;
+    }
+
+    .customer-payment-side {
+      text-align: right;
+    }
+
     .admin-dashboard-shell {
       display: grid;
       gap: 18px;
@@ -1634,6 +1978,43 @@
         overflow-x: visible;
       }
 
+      .customer-detail-hero,
+      .customer-detail-next,
+      .customer-detail-info-grid,
+      .customer-detail-footer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .customer-detail-card h2 {
+        font-size: 34px;
+      }
+
+      .customer-next-rule {
+        height: 4px;
+        min-height: 0;
+      }
+
+      .customer-detail-tile,
+      .customer-detail-footer-grid .detail-section {
+        border-bottom: 1px solid var(--rule);
+        border-right: 0;
+      }
+
+      .customer-detail-tile:last-child,
+      .customer-detail-footer-grid .detail-section:last-child {
+        border-bottom: 0;
+      }
+
+      .customer-kv-row,
+      .customer-payment-row,
+      .reference-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .customer-payment-side {
+        text-align: left;
+      }
+
       .stock-filter-heading {
         align-items: flex-start;
         flex-direction: column;
@@ -1769,6 +2150,7 @@
         <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
         <button id="tab-adminDashboard" type="button" data-view="adminDashboard" style="display:none">Customer Pipeline</button>
+        <button id="tab-employeeSchedules" type="button" data-view="employeeSchedules" style="display:none">Schedules</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
       <div class="toolbar-actions">
@@ -1877,7 +2259,7 @@
       var manageUsersButton = document.getElementById('manageUsersButton');
       if (manageUsersButton) manageUsersButton.addEventListener('click', openUserAdminPanel);
 
-      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'admin'].forEach(function (view) {
+      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
@@ -1887,6 +2269,7 @@
           else if (view === 'diamondTracking') loadDiamondTracking();
           else if (view === 'bulkReturns') loadBulkReturns();
           else if (view === 'adminDashboard') loadAdminDashboard();
+          else if (view === 'employeeSchedules') loadEmployeeSchedules();
           else loadTasks(view);
         });
       });
@@ -1926,6 +2309,13 @@
             clearAdminDashboardFilters();
             return;
           }
+          var scheduleSaveButton = closestMatch_(event.target, '.js-schedule-save');
+          if (scheduleSaveButton) return saveEmployeeSchedules(scheduleSaveButton);
+          if (closestMatch_(event.target, '.js-schedule-add-row')) return addEmployeeScheduleRow();
+          var scheduleAddButton = closestMatch_(event.target, '.js-schedule-add-change');
+          if (scheduleAddButton) return upsertEmployeeScheduleChange(scheduleAddButton);
+          var scheduleDeleteButton = closestMatch_(event.target, '.js-schedule-delete-change');
+          if (scheduleDeleteButton) return deleteEmployeeScheduleChange(scheduleDeleteButton);
           if (closestMatch_(event.target, '.js-customer-search-apply')) {
             loadCustomerSearch(collectCustomerSearchFilters());
             return;
@@ -1934,6 +2324,7 @@
             clearCustomerSearchFilters();
             return;
           }
+          if (closestMatch_(event.target, '.js-customer-status-open')) return openCustomerStatusAction();
           if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
           if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
           if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
@@ -2018,6 +2409,7 @@
           if (closestMatch_(event.target, '.js-admin-save-assignment')) return adminSaveAssignment();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+          if (closestMatch_(event.target, '.js-customer-status-open')) return openCustomerStatusAction();
           if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
           if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
           if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
@@ -2374,6 +2766,7 @@
         bulkReturns: !!(user.isAdmin || user.isDiamondOrderAdmin),
         coverage: !!(user.isJoc || user.isAdmin),
         adminDashboard: !!user.isAdmin,
+        employeeSchedules: !!user.isAdmin,
         admin: !!user.isAdmin
       };
     }
@@ -2412,6 +2805,7 @@
       document.getElementById('tab-bulkReturns').style.display = res.views && res.views.bulkReturns ? '' : 'none';
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
       document.getElementById('tab-adminDashboard').style.display = res.views && res.views.adminDashboard ? '' : 'none';
+      document.getElementById('tab-employeeSchedules').style.display = res.views && res.views.employeeSchedules ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
     }
@@ -2786,6 +3180,312 @@
     function clearAdminDashboardFilters() {
       appState.adminDashboardFilters = {};
       loadAdminDashboard({});
+    }
+
+    function loadEmployeeSchedules() {
+      var requestId = beginMainRequest('employeeSchedules');
+      appState.selectedTaskId = '';
+      appState.detailRequestId += 1;
+      setActiveTab('employeeSchedules');
+      renderViewHeader('employeeSchedules');
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING SCHEDULES</div>';
+      document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Team Schedules</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
+      serverCall('sw_adminGetEmployeeSchedules', [], function (res) {
+        if (!isCurrentMainRequest(requestId, 'employeeSchedules')) return;
+        appState.employeeSchedule = res || {};
+        renderEmployeeSchedules(appState.employeeSchedule);
+        renderEmployeeScheduleSummary(appState.employeeSchedule);
+      }, 'Loading employee schedules');
+    }
+
+    function renderEmployeeSchedules(res) {
+      res = res || {};
+      updateAdminDashboardLayoutMode();
+      document.getElementById('taskList').innerHTML = [
+        '<div class="schedule-shell">',
+          '<div class="schedule-toolbar">',
+            '<div>',
+              '<div class="eyebrow">Team Schedules</div>',
+              '<h2>Client Advisor and JOC schedules</h2>',
+              '<div class="meta">Weekly roster plus one-off schedule changes feed queue ownership during refresh.</div>',
+            '</div>',
+            '<div class="actions">',
+              '<button class="js-schedule-add-row" type="button">Add Row</button>',
+              '<button class="primary js-schedule-save" type="button">Save Schedules</button>',
+            '</div>',
+          '</div>',
+          renderEmployeeScheduleSettings(res.settings || {}),
+          renderEmployeeScheduleTable(res.people || [], res.days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
+          renderEmployeeScheduleChangeForm(res),
+          renderEmployeeScheduleChanges(res.changes || []),
+        '</div>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleSettings(settings) {
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading">',
+            '<div><div class="eyebrow">Automation</div><h2>Advisor assignment</h2></div>',
+          '</div>',
+          '<label class="schedule-setting"><input id="scheduleRoundRobin" type="checkbox"' + (settings.clientAdvisorRoundRobin ? ' checked' : '') + '>Auto-assign or reassign Client Advisors by schedule, skills, and round robin when Refresh Queue runs</label>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleTable(people, days) {
+      var jocNames = (people || []).filter(function (person) {
+        return employeeScheduleHasRole(person.role, 'JOC') && person.active !== false;
+      }).map(function (person) { return person.name || ''; }).filter(Boolean);
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Weekly roster</div><h2>Working days</h2></div></div>',
+          people && people.length ? [
+            '<div class="schedule-table-wrap"><table class="schedule-table">',
+              '<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Skills</th><th>Linked JOC</th><th>Active</th>',
+                days.map(function (day) { return '<th>' + escapeHtml(day) + '</th>'; }).join(''),
+                '<th>JOC Coverage Partner</th></tr></thead>',
+              '<tbody>',
+                people.map(function (person, index) {
+                  return renderEmployeeScheduleRow(person, days, jocNames, index);
+                }).join(''),
+              '</tbody>',
+            '</table></div>'
+          ].join('') : '<div class="empty">No employees found. Add workflow users or add a schedule row here.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleRow(person, days, jocNames, index) {
+      person = person || {};
+      var dayCells = days.map(function (day) {
+        var checked = person.days && person.days[day];
+        return '<td class="schedule-day-cell"><input class="schedule-day" type="checkbox" data-day="' + escapeAttrValue(day) + '"' + (checked ? ' checked' : '') + '></td>';
+      }).join('');
+      return [
+        '<tr class="schedule-row" data-index="' + escapeAttrValue(index) + '">',
+          '<td><input class="schedule-name" type="text" value="' + escapeAttrValue(person.name || '') + '"></td>',
+          '<td><input class="schedule-email" type="email" value="' + escapeAttrValue(person.email || '') + '"></td>',
+          '<td>' + renderEmployeeScheduleRoleChecks(person.role || '') + '</td>',
+          '<td>' + renderEmployeeScheduleSkills(person.skills || {}) + '</td>',
+          '<td><select class="schedule-default-joc">' + employeeSchedulePartnerOptions(jocNames, person.defaultJoc || '', person.name || '', 'No linked JOC') + '</select></td>',
+          '<td class="schedule-active-cell"><label><input class="schedule-active" type="checkbox"' + (person.active !== false ? ' checked' : '') + '>Active</label></td>',
+          dayCells,
+          '<td><select class="schedule-coverage-partner">' + employeeSchedulePartnerOptions(jocNames, person.coveragePartner || '', person.name || '') + '</select></td>',
+        '</tr>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleRoleChecks(role) {
+      return [
+        '<div class="schedule-role-group">',
+          '<label><input class="schedule-role" type="checkbox" data-role="Client Advisor"' + (employeeScheduleHasRole(role, 'Client Advisor') ? ' checked' : '') + '>Client Advisor</label>',
+          '<label><input class="schedule-role" type="checkbox" data-role="JOC"' + (employeeScheduleHasRole(role, 'JOC') ? ' checked' : '') + '>JOC</label>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleSkills(skills) {
+      skills = skills || {};
+      return [
+        '<div class="schedule-role-group">',
+          '<label><input class="schedule-skill-lab" type="checkbox"' + (skills.labDiamond ? ' checked' : '') + '>Lab</label>',
+          '<label><input class="schedule-skill-general" type="checkbox"' + (skills.generalAppointment !== false ? ' checked' : '') + '>General</label>',
+          '<label>Natural<select class="schedule-skill-natural">' + optionTags(['None', 'Primary', 'Backup'], skills.naturalDiamond || 'None') + '</select></label>',
+        '</div>'
+      ].join('');
+    }
+
+    function employeeSchedulePartnerOptions(names, selected, currentName, emptyLabel) {
+      var tags = ['<option value="">' + escapeHtml(emptyLabel || 'No fixed partner') + '</option>'];
+      var seen = {};
+      (names || []).forEach(function (name) {
+        if (!name || norm(name) === norm(currentName) || seen[norm(name)]) return;
+        seen[norm(name)] = true;
+        tags.push('<option value="' + escapeAttrValue(name) + '"' + (norm(name) === norm(selected) ? ' selected' : '') + '>' + escapeHtml(name) + '</option>');
+      });
+      return tags.join('');
+    }
+
+    function renderEmployeeScheduleChangeForm(res) {
+      res = res || {};
+      var people = res.people || [];
+      var changeTypes = res.changeTypes || ['Working', 'Full-day off', 'PTO', 'Sick', 'Vacation'];
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">One-off change</div><h2>Set a day off or working override</h2></div></div>',
+          '<div class="admin-filter-grid">',
+            '<div><label for="scheduleChangeEmployee">Employee</label><select id="scheduleChangeEmployee">' + employeeSchedulePersonOptions(people) + '</select></div>',
+            '<div><label for="scheduleChangeDate">Date</label><input id="scheduleChangeDate" type="date"></div>',
+            '<div><label for="scheduleChangeType">Change Type</label><select id="scheduleChangeType">' + optionTags(changeTypes, 'Full-day off') + '</select></div>',
+            '<div><label for="scheduleChangeFrom">Available From</label><input id="scheduleChangeFrom" type="time"></div>',
+            '<div><label for="scheduleChangeUntil">Available Until</label><input id="scheduleChangeUntil" type="time"></div>',
+            '<div><label for="scheduleChangeNotes">Notes</label><input id="scheduleChangeNotes" type="text"></div>',
+          '</div>',
+          '<div class="actions"><button class="primary js-schedule-add-change" type="button">Save Change</button></div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleChanges(changes) {
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Schedule changes</div><h2>Overrides</h2></div></div>',
+          changes && changes.length ? '<div class="schedule-changes-list">' + changes.map(function (change) {
+            return [
+              '<div class="schedule-change-row">',
+                '<div>',
+                  '<div class="task-title">' + escapeHtml(change.name || '') + '</div>',
+                  '<div class="meta">' + escapeHtml([change.date || '', change.changeType || '', change.availableFrom && ('from ' + change.availableFrom), change.availableUntil && ('until ' + change.availableUntil), change.notes || ''].filter(Boolean).join(' | ')) + '</div>',
+                '</div>',
+                '<button class="js-schedule-delete-change" type="button" data-name="' + escapeAttrValue(change.name || '') + '" data-date="' + escapeAttrValue(change.date || '') + '">Delete</button>',
+              '</div>'
+            ].join('');
+          }).join('') + '</div>' : '<div class="empty">No one-off schedule changes are recorded.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleSummary(res) {
+      res = res || {};
+      var people = res.people || [];
+      var jocCount = people.filter(function (person) { return employeeScheduleHasRole(person.role, 'JOC') && person.active !== false; }).length;
+      var advisorCount = people.filter(function (person) { return employeeScheduleHasRole(person.role, 'Client Advisor') && person.active !== false; }).length;
+      var today = res.today || [];
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header"><div class="eyebrow">Team Schedules</div><h2>Routing Rules</h2></div>',
+        '<div class="detail-body">',
+          '<div class="detail-section"><label>Active Employees</label><div class="template-box">' + escapeHtml(advisorCount + ' Client Advisor(s), ' + jocCount + ' JOC user(s).') + '</div></div>',
+          '<div class="detail-section"><label>Today Working</label><div class="template-box">' + escapeHtml(today.length ? today.map(function (person) { return person.name + (person.availableFrom || person.availableUntil ? ' (' + [person.availableFrom || 'start', person.availableUntil || 'end'].join('-') + ')' : ''); }).join(', ') : 'No scheduled employees found for today.') + '</div></div>',
+          '<div class="detail-section"><label>Client Advisor Pairing</label><div class="meta">Auto-assignment picks a working, qualified Client Advisor, then writes that advisor and linked JOC to the appointment.</div></div>',
+          '<div class="detail-section"><label>JOC Coverage</label><div class="meta">If the linked or intended JOC is off, tasks first use that JOC coverage partner, then another working JOC, then the shared JOC Coverage queue.</div></div>',
+          '<div class="detail-section"><label>Client Advisor Round Robin</label><div class="meta">' + escapeHtml((res.settings || {}).clientAdvisorRoundRobin ? 'Enabled for blank or unavailable Client Advisor fields on queue refresh.' : 'Disabled. Existing Client Advisor values stay manual unless enabled.') + '</div></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function employeeSchedulePersonOptions(people) {
+      var tags = ['<option value="">Select employee</option>'];
+      (people || []).forEach(function (person) {
+        if (!person || !person.name) return;
+        tags.push('<option value="' + escapeAttrValue(person.name) + '">' + escapeHtml(person.name) + '</option>');
+      });
+      return tags.join('');
+    }
+
+    function employeeScheduleHasRole(role, target) {
+      return String(role || '').split(/[,\n;]/).some(function (item) {
+        return norm(item) === norm(target);
+      });
+    }
+
+    function collectEmployeeSchedules() {
+      var rows = Array.prototype.slice.call(document.querySelectorAll('.schedule-row'));
+      return rows.map(function (row) {
+        var days = {};
+        Array.prototype.slice.call(row.querySelectorAll('.schedule-day')).forEach(function (input) {
+          days[input.getAttribute('data-day') || ''] = !!input.checked;
+        });
+        var roles = Array.prototype.slice.call(row.querySelectorAll('.schedule-role')).filter(function (input) {
+          return input.checked;
+        }).map(function (input) {
+          return input.getAttribute('data-role') || '';
+        }).filter(Boolean);
+        return {
+          name: (row.querySelector('.schedule-name') || {}).value || '',
+          email: (row.querySelector('.schedule-email') || {}).value || '',
+          role: roles.join(','),
+          active: !!((row.querySelector('.schedule-active') || {}).checked),
+          days: days,
+          defaultJoc: (row.querySelector('.schedule-default-joc') || {}).value || '',
+          skills: {
+            labDiamond: !!((row.querySelector('.schedule-skill-lab') || {}).checked),
+            naturalDiamond: (row.querySelector('.schedule-skill-natural') || {}).value || 'None',
+            generalAppointment: !!((row.querySelector('.schedule-skill-general') || {}).checked)
+          },
+          coveragePartner: (row.querySelector('.schedule-coverage-partner') || {}).value || ''
+        };
+      }).filter(function (person) {
+        return String(person.name || '').trim();
+      });
+    }
+
+    function saveEmployeeSchedules(sourceButton) {
+      var payload = {
+        people: collectEmployeeSchedules(),
+        settings: {
+          clientAdvisorRoundRobin: checkedOf('scheduleRoundRobin')
+        }
+      };
+      serverCall('sw_adminSaveEmployeeSchedules', [payload], function (res) {
+        appState.employeeSchedule = res.schedule || {};
+        renderEmployeeSchedules(appState.employeeSchedule);
+        renderEmployeeScheduleSummary(appState.employeeSchedule);
+        setStatus('Schedules saved.');
+      }, 'Saving schedules', sourceButton);
+    }
+
+    function addEmployeeScheduleRow() {
+      var res = appState.employeeSchedule || {};
+      if (!res.people) res.people = [];
+      res.people.push({
+        name: '',
+        email: '',
+        role: 'Client Advisor',
+        active: true,
+        coverageEnabled: true,
+        defaultJoc: '',
+        coveragePartner: '',
+        skills: { labDiamond: false, naturalDiamond: 'None', generalAppointment: true },
+        days: { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true, Sat: false, Sun: false }
+      });
+      renderEmployeeSchedules(res);
+      renderEmployeeScheduleSummary(res);
+    }
+
+    function upsertEmployeeScheduleChange(sourceButton) {
+      var person = findEmployeeSchedulePerson(valueOf('scheduleChangeEmployee'));
+      var payload = {
+        name: valueOf('scheduleChangeEmployee'),
+        email: person.email || '',
+        role: person.role || '',
+        date: valueOf('scheduleChangeDate'),
+        changeType: valueOf('scheduleChangeType'),
+        availableFrom: valueOf('scheduleChangeFrom'),
+        availableUntil: valueOf('scheduleChangeUntil'),
+        notes: valueOf('scheduleChangeNotes')
+      };
+      if (!payload.name || !payload.date) {
+        setStatus('Select an employee and date for the schedule change.', true);
+        return;
+      }
+      serverCall('sw_adminUpsertScheduleChange', [payload], function (res) {
+        appState.employeeSchedule = res.schedule || {};
+        renderEmployeeSchedules(appState.employeeSchedule);
+        renderEmployeeScheduleSummary(appState.employeeSchedule);
+        setStatus('Schedule change saved.');
+      }, 'Saving schedule change', sourceButton);
+    }
+
+    function deleteEmployeeScheduleChange(sourceButton) {
+      var name = sourceButton.getAttribute('data-name') || '';
+      var date = sourceButton.getAttribute('data-date') || '';
+      if (!name || !date) return;
+      serverCall('sw_adminDeleteScheduleChange', [name, date], function (res) {
+        appState.employeeSchedule = res.schedule || {};
+        renderEmployeeSchedules(appState.employeeSchedule);
+        renderEmployeeScheduleSummary(appState.employeeSchedule);
+        setStatus('Schedule change deleted.');
+      }, 'Deleting schedule change', sourceButton);
+    }
+
+    function findEmployeeSchedulePerson(name) {
+      var target = norm(name);
+      var people = (appState.employeeSchedule || {}).people || [];
+      for (var i = 0; i < people.length; i++) {
+        if (norm(people[i].name) === target) return people[i];
+      }
+      return {};
     }
 
     function renderAdminDashboard(res) {
@@ -3214,8 +3914,7 @@
         card.reportUrl ? '<a href="' + escapeHref(card.reportUrl) + '" target="_blank">Status Report</a>' : '',
         card.quotationUrl ? '<a href="' + escapeHref(card.quotationUrl) + '" target="_blank">Quotation</a>' : '',
         card.tracker3dUrl ? '<a href="' + escapeHref(card.tracker3dUrl) + '" target="_blank">3D Tracker</a>' : '',
-        card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : '',
-        card.masterUrl ? '<a href="' + escapeHref(card.masterUrl) + '" target="_blank">Open Master Row</a>' : ''
+        card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : ''
       ].filter(Boolean);
       document.getElementById('detailPanel').innerHTML = [
         '<div class="panel-header">',
@@ -3446,34 +4145,206 @@
     }
 
     function customerSearchDetailPanelHtml(res) {
+      res = res || {};
       var card = res.card || {};
-      var links = [
-        card.clientFolder ? '<a href="' + escapeHref(card.clientFolder) + '" target="_blank">Client Folder</a>' : '',
-        card.reportUrl ? '<a href="' + escapeHref(card.reportUrl) + '" target="_blank">Status Report</a>' : '',
-        card.quotationUrl ? '<a href="' + escapeHref(card.quotationUrl) + '" target="_blank">Quotation</a>' : '',
-        card.tracker3dUrl ? '<a href="' + escapeHref(card.tracker3dUrl) + '" target="_blank">3D Tracker</a>' : '',
-        card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : '',
-        card.masterUrl ? '<a href="' + escapeHref(card.masterUrl) + '" target="_blank">Open Master Row</a>' : ''
-      ].filter(Boolean);
+      var logs = res.logs || [];
+      var tasks = res.tasks || [];
       return [
-        '<div class="panel">',
-        '<div class="panel-header">',
-          '<div class="eyebrow">' + escapeHtml(card.stageLabel || 'Customer') + '</div>',
-          '<h2>' + escapeHtml(card.customerName || 'No customer') + '</h2>',
-        '</div>',
-        '<div class="detail-body">',
-          renderCustomerSearchSummary(card),
-          renderCustomerSearchLinks(links),
-          renderCustomerSearchAppointments(res.appointments || []),
-          renderCustomerSearchTasks(res.tasks || []),
-          renderCustomerSearchLogs(res.logs || []),
-          renderCustomerStatusAction(card, res.formOptions || {}),
-          renderCustomerDeadlineAction(card),
-          renderCustomerRevisionAction(card),
-          renderCustomerWaxAction(card, res.formOptions || {}),
-        '</div>',
+        '<section class="customer-detail-card">',
+          renderCustomerDetailHero(card, logs),
+          renderCustomerDetailNextSteps(card, logs),
+          renderCustomerDetailActions(card, res.formOptions || {}, tasks),
+          '<div class="customer-detail-info-grid">',
+            renderCustomerDetailOrderStatus(card),
+            renderCustomerPaymentHistory(res.paymentHistory || [], res.paymentHistoryUnavailable || ''),
+            renderCustomerDetailReferences(card),
+          '</div>',
+          '<div class="customer-detail-footer-grid">',
+            renderCustomerSearchAppointments(res.appointments || []),
+            renderCustomerSearchTasks(tasks),
+            renderCustomerSearchLogs(logs),
+          '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderCustomerDetailHero(card, logs) {
+      var lastTouch = customerLastTouchMeta(card, logs);
+      var stage = card.stageLabel || card.salesStage || 'Customer';
+      return [
+        '<div class="customer-detail-hero">',
+          '<div>',
+            '<div class="customer-detail-heading">',
+              '<div class="eyebrow">Customer</div>',
+              '<span class="customer-stage-chip">' + escapeHtml(stage) + '</span>',
+            '</div>',
+            '<h2>' + escapeHtml(card.customerName || 'No customer') + '</h2>',
+            '<div class="customer-detail-meta">',
+              '<span>Advisors <strong>' + escapeHtml(card.clientAdvisor || 'Unassigned') + '</strong></span>',
+              '<span>JOC <strong>' + escapeHtml(card.joc || 'Unassigned') + '</strong></span>',
+              card.brand ? '<span>Brand <strong>' + escapeHtml(card.brand) + '</strong></span>' : '',
+            '</div>',
+            '<div class="customer-detail-meta">',
+              '<span>SO# <strong>' + escapeHtml(card.so || 'None') + '</strong></span>',
+              '<span>RootApptID <strong>' + escapeHtml(card.root || '') + '</strong></span>',
+              '<span>Last touch <strong class="customer-last-touch' + (lastTouch.stale ? ' stale' : '') + '">' + escapeHtml(lastTouch.label) + '</strong></span>',
+            '</div>',
+          '</div>',
+          '<div class="customer-detail-primary-actions">',
+            '<button class="primary js-customer-status-open" type="button">Update Client Status</button>',
+          '</div>',
         '</div>'
       ].join('');
+    }
+
+    function renderCustomerDetailNextSteps(card, logs) {
+      var log = customerLatestStatusLog(logs);
+      var updated = log && log.eventAt ? customerDisplayDate(log.eventAt) : customerDisplayDate(card.updatedAt || '');
+      var actor = log ? (log.actorName || log.actorEmail || '') : '';
+      var meta = [updated ? 'Updated ' + updated : '', actor].filter(Boolean).join(' | ');
+      return [
+        '<div class="customer-detail-next">',
+          '<div class="customer-next-rule"></div>',
+          '<div>',
+            '<label>Next Steps</label>',
+            meta ? '<div class="meta">' + escapeHtml(meta) + '</div>' : '',
+          '</div>',
+          '<div class="customer-next-text">' + escapeHtml(card.nextSteps || 'No next steps recorded.') + '</div>',
+          '<div><button class="link-button js-customer-status-open" type="button">Edit</button></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerDetailActions(card, opts, tasks) {
+      return [
+        '<div class="customer-detail-actions">',
+          '<div class="customer-section-heading">',
+            '<label>Take Action</label>',
+            '<div class="meta">' + escapeHtml(customerTaskSummary(tasks || [])) + '</div>',
+          '</div>',
+          '<div class="customer-action-grid">',
+            renderCustomerStatusAction(card, opts),
+            renderCustomerDeadlineAction(card),
+            renderCustomerRevisionAction(card),
+            renderCustomerWaxAction(card, opts),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerDetailOrderStatus(card) {
+      return [
+        '<section class="customer-detail-tile">',
+          '<label>Order Status</label>',
+          '<div class="customer-kv-list">',
+            customerKvRow('Sales stage', card.salesStage || card.stageLabel || 'Lead'),
+            customerKvRow('Conversion', card.conversionStatus || 'Not set'),
+            customerKvRow('Custom order', card.customOrderStatus || 'Not started'),
+            customerKvRow('3D deadline', card.deadline3d || 'not set'),
+            customerKvRow('Wax', card.waxStatus || 'not requested'),
+            customerKvRow('In production', card.inProductionStatus || 'Not started'),
+          '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderCustomerDetailReferences(card) {
+      var links = customerReferenceLinks(card);
+      return [
+        '<section class="customer-detail-tile">',
+          '<div class="customer-section-heading">',
+            '<label>References</label>',
+            '<div class="meta">' + escapeHtml(links.length + ' link' + (links.length === 1 ? '' : 's')) + '</div>',
+          '</div>',
+          links.length ? '<div class="reference-grid">' + links.map(function (link) {
+            return '<a class="reference-link" href="' + escapeHref(link.href) + '" target="_blank" rel="noopener">' + escapeHtml(link.label) + ' &#8599;</a>';
+          }).join('') + '</div>' : '<div class="empty">No links available for this customer.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderCustomerPaymentHistory(rows, unavailable) {
+      rows = rows || [];
+      return [
+        '<section class="customer-detail-tile">',
+          '<div class="customer-section-heading">',
+            '<label>Payment History</label>',
+            '<div class="meta">' + escapeHtml(rows.length ? rows.length + ' receipt' + (rows.length === 1 ? '' : 's') : '') + '</div>',
+          '</div>',
+          rows.length ? '<div class="customer-payment-list">' + rows.map(function (row) {
+            var amount = row.amountGross || row.amountNet || 0;
+            var side = row.balanceDue !== '' && row.balanceDue != null ? 'Balance ' + formatAdminCurrency(row.balanceDue) : '';
+            return '<div class="customer-payment-row"><div><div class="customer-payment-amount">' + escapeHtml(formatAdminCurrency(amount)) + '</div><div class="meta">' + escapeHtml(customerPaymentDescription(row)) + '</div></div><div class="customer-payment-side meta">' + escapeHtml(side) + '</div></div>';
+          }).join('') + '</div>' : '<div class="empty">' + escapeHtml(unavailable || 'No payment history for this customer.') + '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function customerReferenceLinks(card) {
+      return [
+        card.clientFolder ? { label: 'Client folder', href: card.clientFolder } : null,
+        card.reportUrl ? { label: 'Status report', href: card.reportUrl } : null,
+        card.quotationUrl ? { label: 'Quotation', href: card.quotationUrl } : null,
+        card.tracker3dUrl ? { label: '3D tracker', href: card.tracker3dUrl } : null,
+        card.orderFolder ? { label: 'Order folder', href: card.orderFolder } : null
+      ].filter(Boolean);
+    }
+
+    function customerKvRow(label, value) {
+      return '<div class="customer-kv-row"><div class="customer-kv-key">' + escapeHtml(label) + '</div><div class="customer-kv-value">' + escapeHtml(value || 'Not set') + '</div></div>';
+    }
+
+    function customerTaskSummary(tasks) {
+      var count = (tasks || []).length;
+      var overdue = (tasks || []).filter(function (task) { return /^Overdue/i.test(task.dueLabel || ''); }).length;
+      return count + ' task' + (count === 1 ? '' : 's') + ' pending' + (overdue ? ' | ' + overdue + ' overdue' : '');
+    }
+
+    function customerPaymentDescription(row) {
+      return [row.date, row.method, row.docType, row.docNumber].filter(Boolean).join(' | ');
+    }
+
+    function customerLatestStatusLog(logs) {
+      logs = logs || [];
+      for (var i = 0; i < logs.length; i++) {
+        if (/STATUS|NOTE|CLIENT/i.test(logs[i].eventType || '')) return logs[i];
+      }
+      return logs[0] || null;
+    }
+
+    function customerLastTouchMeta(card, logs) {
+      var log = customerLatestStatusLog(logs || []);
+      var raw = (log && log.eventAt) || card.updatedAt || card.lastPaymentDate || card.lastVisit || '';
+      var date = customerDateFromValue(raw);
+      if (!date) return { label: raw || 'Unavailable', stale: false };
+      var today = new Date();
+      var startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      var startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      var days = Math.floor((startToday.getTime() - startDate.getTime()) / 86400000);
+      if (days < 0) return { label: customerDisplayDate(raw), stale: false };
+      if (days === 0) return { label: 'today', stale: false };
+      return { label: days + ' days ago', stale: days >= 30 };
+    }
+
+    function customerDisplayDate(value) {
+      var date = customerDateFromValue(value);
+      if (!date) return String(value || '');
+      return String(date.getMonth() + 1) + '/' + String(date.getDate());
+    }
+
+    function customerDateFromValue(value) {
+      var s = String(value || '').trim();
+      if (!s) return null;
+      var iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+      if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+      var mdy = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(s);
+      if (mdy) {
+        var y = Number(mdy[3]);
+        if (y < 100) y += 2000;
+        return new Date(y, Number(mdy[1]) - 1, Number(mdy[2]));
+      }
+      var parsed = new Date(s);
+      return isNaN(parsed.getTime()) ? null : parsed;
     }
 
     function customerSearchAdvisorOptionTags(options, selected) {
@@ -3565,7 +4436,7 @@
 
     function renderCustomerStatusAction(card, opts) {
       return [
-        '<details class="detail-section">',
+        '<details id="customerStatusAction" class="customer-action-panel">',
           '<summary><span class="snooze-summary-text">Update Client Status</span></summary>',
           '<div class="field-grid">',
             selectFieldHtml('csSalesStage', 'Sales Stage', optionsWithCurrent(opts.salesStages || [], card.salesStage || ''), card.salesStage || '', true),
@@ -3585,7 +4456,7 @@
 
     function renderCustomerDeadlineAction(card) {
       return [
-        '<details class="detail-section">',
+        '<details class="customer-action-panel">',
           '<summary><span class="snooze-summary-text">Update 3D Deadline</span></summary>',
           '<div class="field-grid">',
             '<div><label for="csOnlyDeadline3d">3D Deadline</label><input id="csOnlyDeadline3d" type="date" value="' + escapeAttrValue(dateInputValue(card.deadline3d || '')) + '"></div>',
@@ -3598,7 +4469,7 @@
 
     function renderCustomerRevisionAction(card) {
       return [
-        '<details class="detail-section">',
+        '<details class="customer-action-panel">',
           '<summary><span class="snooze-summary-text">Submit 3D Revision Request</span></summary>',
           '<div class="field-grid">',
             '<div><label for="csRevAccent">Accent Diamond</label><input id="csRevAccent"></div>',
@@ -3619,7 +4490,7 @@
 
     function renderCustomerWaxAction(card, opts) {
       return [
-        '<details class="detail-section">',
+        '<details class="customer-action-panel">',
           '<summary><span class="snooze-summary-text">Request Wax</span></summary>',
           '<div class="field-grid">',
             '<div><label for="csWaxSoMo">SO/MO Number</label><input id="csWaxSoMo" value="' + escapeAttrValue(card.so || '') + '"></div>',
@@ -3641,6 +4512,13 @@
 
     function customerSearchRoot() {
       return ((appState.customerSearch || {}).detail || {}).root || appState.customerSearch.selectedRoot || '';
+    }
+
+    function openCustomerStatusAction() {
+      var panel = document.getElementById('customerStatusAction');
+      if (!panel) return;
+      panel.open = true;
+      if (panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function saveCustomerSearchStatus() {
@@ -4751,12 +5629,12 @@
       var extra = ((res.payload || {}).extra || {});
       var rows = [
         extra.internalSummary ? ['Internal Summary', extra.internalSummary] : null,
-        extra.customerInsights ? ['Customer Insights', extra.customerInsights] : null,
-        extra.recommendedNextSteps ? ['Recommended Next Steps', extra.recommendedNextSteps] : null,
+        meaningfulAiReviewText(extra.customerInsights) ? ['Customer Insights', extra.customerInsights] : null,
+        meaningfulAiReviewText(extra.recommendedNextSteps) ? ['Recommended Next Steps', extra.recommendedNextSteps] : null,
         extra.confidenceFlags ? ['Confidence / Warning Flags', extra.confidenceFlags] : null
       ].filter(Boolean);
       var links = [
-        extra.summaryDocUrl ? '<a href="' + escapeHref(extra.summaryDocUrl) + '" target="_blank">AI Summary Doc</a>' : '',
+        extra.summaryDocUrl ? '<a href="' + escapeHref(extra.summaryDocUrl) + '" target="_blank">AI Follow-Up Doc</a>' : '',
         task.taskType === 'APPROVE_RECAP_MESSAGE' && extra.transcriptDocUrl ? '<a href="' + escapeHref(extra.transcriptDocUrl) + '" target="_blank">Transcript Doc</a>' : ''
       ].filter(Boolean).join('');
       if (!rows.length && !links) return '';
@@ -4771,6 +5649,19 @@
           '</div>',
         '</div>'
       ].join('');
+    }
+
+    function meaningfulAiReviewText(value) {
+      var text = String(value || '').trim();
+      if (!text) return false;
+      var compact = text.toLowerCase().replace(/\s+/g, ' ');
+      if (compact === 'no next steps generated.') return false;
+      if (compact.indexOf('preferences: not captured.') >= 0 &&
+          compact.indexOf('budget signals: not captured.') >= 0 &&
+          compact.indexOf('concerns: not captured.') >= 0 &&
+          compact.indexOf('decision makers: not captured.') >= 0 &&
+          compact.indexOf('style notes: not captured.') >= 0) return false;
+      return true;
     }
 
     function renderChecklist(items) {

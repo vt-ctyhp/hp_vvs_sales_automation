@@ -94,7 +94,6 @@ function swTaskExplicitlyOwnedByUser_(task, user) {
 function swTaskRoleOwnedByUser_(task, user) {
   if (!task || !user) return false;
   var role = swNorm_(task.ownerRole);
-  if (role === swNorm_(SW_OWNER_ROLES.JOC)) return !!user.isJoc;
   if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN)) return !!user.isDiamondOrderAdmin;
   if (role === swNorm_(SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)) {
     return !!user.isDiamondOrderAssistant || (!!user.isDiamondOrderAdmin && task.taskType === SW_TASKS.DIAMOND_RETURN);
@@ -133,7 +132,7 @@ function swCanClaimTask_(task, user) {
   if (!(user.isJoc || user.isAdmin)) return false;
   if (task.ownerRole !== 'JOC') return false;
   if (swTaskOwnedByUser_(task, user)) return false;
-  return !!task.coverageReason || swNorm_(task.currentOwner) === swNorm_('JOC Coverage');
+  return swNorm_(task.currentOwner) === swNorm_('JOC Coverage');
 }
 
 function swReadConfig_(ss, readOnly) {

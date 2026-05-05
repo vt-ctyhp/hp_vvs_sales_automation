@@ -144,6 +144,10 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - The proposal workspace's inventory matching uses the existing `sw_getInStockDiamonds` web-app API, filters the returned in-stock `200_` rows against the entered requirements, and can import selected matches into the proposal stone fields. Match rows show the diamond `Stone Type` so Client Advisors can see whether each matched stone is lab or natural before adding it. Pricing is intentionally omitted until the workflow has reliable price data.
 - JOC, diamond order admin, and Client Advisor diamond task cards receive the Sheet 100 customer requirements in their generated payloads so quote/order decisions are reviewed against the same brief.
 - Admins can add/update users from `Sales > Manage workflow users` in Sheets or `Manage Users` in the dashboard, with either auto-generated or admin-entered passwords.
+- Admins can manage team schedules from the dashboard `Schedules` tab. It writes weekly working days to `10_Roster_Schedule`, one-off overrides to `Schedule Changes`, and Client Advisor skills to `Rep Qualifications`.
+- Client Advisor auto-assignment can be enabled from the `Schedules` tab. When enabled, queue refresh assigns or reassigns active appointments by working-day availability, lab/natural/general qualification, and round-robin load. The selected Client Advisor's linked JOC is written to the appointment as the paired JOC.
+- Schedule changes support full-day off and partial-day availability windows. Saving a schedule or override refreshes the workflow so affected appointments/tasks are reassigned.
+- JOC coverage now preserves named queues: if the linked/intended JOC is unavailable, the workflow tries that JOC's coverage partner, then another working JOC, then the shared `JOC Coverage` queue.
 - Diamond Viewing workflow setup, ownership, templates, and review steps are documented in [`diamond_viewing_workflow_setup.md`](diamond_viewing_workflow_setup.md).
 
 ## 15. Current High-Level Workflow

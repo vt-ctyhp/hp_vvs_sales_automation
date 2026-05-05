@@ -376,6 +376,9 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
   var stage = swAdminDashboardPipelineStage_(target.rec, target.rows);
   var card = swCustomerSearchCard_(ss, masterGid, target.root, target.rec, target.rows, stage);
   mark('card');
+  var paymentResult = swCustomerSearchPaymentHistory_(target.root, card.so, 12);
+  swCustomerSearchApplyPaymentSummary_(card, paymentResult.rows || [], target.rec);
+  mark('payments', { payments: paymentResult.rows ? paymentResult.rows.length : 0 });
   var now = new Date().getTime();
   var rootTasks = typeof swReadTaskListForRoot_ === 'function'
     ? swReadTaskListForRoot_(ss, target.root)
@@ -402,6 +405,8 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
     appointments: target.rows.map(swCustomerSearchPublicAppointment_),
     tasks: tasks,
     logs: logs,
+    paymentHistory: paymentResult.rows || [],
+    paymentHistoryUnavailable: paymentResult.unavailable || '',
     formOptions: formOptions,
     actions: {
       updateStatus: true,
@@ -410,6 +415,74 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
       requestWax: true
     }
   };
+}
+
+function swCustomerSearchPaymentHistory_(root, so, limit) {
+  var warnings = [];
+  if (typeof swAdminDashboardReadPaymentReceiptRows_ !== 'function') {
+    return { rows: [], unavailable: 'Payments ledger helper is unavailable.' };
+  }
+
+  var source = swAdminDashboardReadPaymentReceiptRows_(warnings);
+  var values = source && source.rows ? source.rows : [];
+  var wantRoot = swAdminDashboardCleanId_(root);
+  var wantSo = swAdminDashboardCleanId_(so);
+  var seen = {};
+  var rows = [];
+
+  values.forEach(function (row) {
+    var rowRoot = swAdminDashboardCleanId_(row.root || '');
+    var rowSo = swAdminDashboardCleanId_(row.so || '');
+    if (!(wantRoot && rowRoot === wantRoot) && !(wantSo && rowSo === wantSo)) return;
+
+    var when = new Date(Number(row.whenMs || 0));
+    if (isNaN(when.getTime())) return;
+    var key = row.paymentId || row.docNumber || [swAdminDashboardDateKey_(when), row.net, row.gross, row.method, rowSo, rowRoot].join('|');
+    if (seen[key]) return;
+    seen[key] = true;
+
+    rows.push({
+      root: rowRoot,
+      so: rowSo,
+      paymentId: row.paymentId || '',
+      docType: row.docType || 'Receipt',
+      docNumber: row.docNumber || '',
+      method: row.method || '',
+      date: swAdminDashboardDateKey_(when),
+      whenMs: when.getTime(),
+      amountNet: swAdminDashboardNumber_(row.net),
+      amountGross: swAdminDashboardNumber_(row.gross === '' || row.gross == null ? row.net : row.gross),
+      balanceDue: row.balance === '' || row.balance == null ? '' : swAdminDashboardNumber_(row.balance),
+      orderTotal: row.orderTotal === '' || row.orderTotal == null ? '' : swAdminDashboardNumber_(row.orderTotal)
+    });
+  });
+
+  rows.sort(function (a, b) { return Number(b.whenMs || 0) - Number(a.whenMs || 0); });
+  if (limit && limit > 0) rows = rows.slice(0, limit);
+  return {
+    rows: rows,
+    unavailable: warnings.length ? warnings.join(' ') : ''
+  };
+}
+
+function swCustomerSearchApplyPaymentSummary_(card, paymentRows, rec) {
+  paymentRows = paymentRows || [];
+  rec = rec || {};
+  var paidNet = 0;
+  paymentRows.forEach(function (row) {
+    paidNet += Number(row.amountNet || 0);
+  });
+
+  var latest = paymentRows.length ? paymentRows[0] : null;
+  var recPaid = swAdminDashboardNumberOrBlank_(rec.paidToDate);
+  var recBalance = swAdminDashboardNumberOrBlank_(rec.remainingBalance);
+  var recOrderTotal = swAdminDashboardNumberOrBlank_(rec.orderTotal);
+
+  card.paymentCount = paymentRows.length;
+  card.paidNet = paymentRows.length ? paidNet : (recPaid === '' ? 0 : recPaid);
+  card.balanceDue = latest && latest.balanceDue !== '' ? latest.balanceDue : (recBalance === '' ? '' : recBalance);
+  card.orderTotal = latest && latest.orderTotal !== '' ? latest.orderTotal : (recOrderTotal === '' ? '' : recOrderTotal);
+  card.lastPaymentDate = latest ? latest.date : (rec.lastPaymentDate || '');
 }
 
 function swCustomerSearchPublicAppointment_(rec) {

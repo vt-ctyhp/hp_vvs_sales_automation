@@ -407,7 +407,7 @@ function swBuildVisibleTaskBuckets_(state, user, options) {
       swIsDataCleanupTaskType_(t.taskType) &&
       swNorm_(t.lifecycleStage) === swNorm_('Cleanup Campaign');
     var jocCoverageTask = t.ownerRole === 'JOC' &&
-      (!!t.coverageReason || swNorm_(t.currentOwner) === swNorm_('JOC Coverage'));
+      swNorm_(t.currentOwner) === swNorm_('JOC Coverage');
     if (options.cleanupCampaignTabEnabled && cleanupCampaignTask && due &&
         (user.isAdmin || (swTaskOwnedByUser_(t, user) && !jocCoverageTask))) {
       buckets.cleanup.push(t);

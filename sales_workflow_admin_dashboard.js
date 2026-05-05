@@ -523,9 +523,12 @@ function swAdminDashboardReadPaymentReceiptRows_(warnings) {
     root: swPickIndex_(H, ['RootApptID', 'APPT_ID', 'Root Appt ID', 'Appointment ID']),
     so: swPickIndex_(H, ['SO#', 'SO', 'SO Number', 'Sales Order', 'Sales Order #']),
     brand: swPickIndex_(H, ['Brand']),
+    paymentId: swPickIndex_(H, ['PAYMENT_ID', 'PaymentId', 'Payment ID']),
     docType: swPickIndex_(H, ['DocType', 'Doc Type', 'Document Type', 'Type']),
+    docNumber: swPickIndex_(H, ['DocNumber', 'Doc #', 'Document Number']),
     docStatus: swPickIndex_(H, ['DocStatus', 'Doc Status', 'Status']),
     when: swPickIndex_(H, ['PaymentDateTime', 'Payment DateTime', 'Payment Date/Time', 'Payment Date', 'Paid At']),
+    method: swPickIndex_(H, ['Method', 'Payment Method', 'Tender']),
     amountNet: swPickIndex_(H, ['AmountNet', 'Net', 'Net Amount']),
     amountGross: swPickIndex_(H, ['AmountGross', 'Gross', 'Amount']),
     balance: swPickIndex_(H, ['Balance_SO', 'Balance SO', 'BalanceDue', 'Balance Due']),
@@ -561,8 +564,13 @@ function swAdminDashboardReadPaymentReceiptRows_(warnings) {
       so: so,
       key: key,
       brand: swTrim_(swAdminDashboardPaymentBlockCell_(row, C.brand, block.offset)),
+      paymentId: swTrim_(swAdminDashboardPaymentBlockCell_(row, C.paymentId, block.offset)),
+      docType: docType,
+      docNumber: swTrim_(swAdminDashboardPaymentBlockCell_(row, C.docNumber, block.offset)),
+      method: swTrim_(swAdminDashboardPaymentBlockCell_(row, C.method, block.offset)),
       whenMs: when.getTime(),
       net: swAdminDashboardNumber_(netRaw),
+      gross: C.amountGross >= 0 ? swAdminDashboardNumber_(swAdminDashboardPaymentBlockCell_(row, C.amountGross, block.offset)) : swAdminDashboardNumber_(netRaw),
       balance: C.balance >= 0 ? swAdminDashboardNumberOrBlank_(swAdminDashboardPaymentBlockCell_(row, C.balance, block.offset)) : '',
       orderTotal: C.orderTotal >= 0 ? swAdminDashboardNumberOrBlank_(swAdminDashboardPaymentBlockCell_(row, C.orderTotal, block.offset)) : ''
     });
@@ -632,7 +640,7 @@ function swAdminDashboardPaymentsCacheKey_(target) {
   try {
     var sh = target && target.sh;
     if (!sh) return '';
-    return 'sw:adminDashboardPayments:v1:' + sh.getParent().getId() + ':' + sh.getSheetId();
+    return 'sw:adminDashboardPayments:v2:' + sh.getParent().getId() + ':' + sh.getSheetId();
   } catch (_) {}
   return '';
 }
