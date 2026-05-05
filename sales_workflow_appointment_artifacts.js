@@ -1150,6 +1150,32 @@ function sw_promptSetAppointmentAutomationScriptProperties() {
   return result;
 }
 
+function sw_checkAppointmentAutomationScriptProperties() {
+  var props = PropertiesService.getScriptProperties();
+  return {
+    ok: true,
+    assemblyAiApiKeySet: !!swTrim_(props.getProperty('ASSEMBLYAI_API_KEY')),
+    openAiApiKeySet: !!swTrim_(props.getProperty('OPENAI_API_KEY')),
+    assemblyAiBaseUrl: swTrim_(props.getProperty('ASSEMBLYAI_BASE_URL')) || 'https://api.assemblyai.com',
+    openAiAppointmentSummaryModelSet: !!swTrim_(props.getProperty('OPENAI_APPOINTMENT_SUMMARY_MODEL'))
+  };
+}
+
+function sw_showAppointmentAutomationScriptPropertiesStatus() {
+  var status = sw_checkAppointmentAutomationScriptProperties();
+  SpreadsheetApp.getUi().alert(
+    'Appointment Automation API Keys',
+    [
+      'AssemblyAI API key: ' + (status.assemblyAiApiKeySet ? 'set' : 'missing'),
+      'OpenAI API key: ' + (status.openAiApiKeySet ? 'set' : 'missing'),
+      'AssemblyAI base URL: ' + status.assemblyAiBaseUrl,
+      'OpenAI summary model override: ' + (status.openAiAppointmentSummaryModelSet ? 'set' : 'not set')
+    ].join('\n'),
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+  return status;
+}
+
 /**
  * Local-only helper. Paste keys into this function in the Apps Script editor,
  * run it once, then remove the pasted keys before saving/pushing code.

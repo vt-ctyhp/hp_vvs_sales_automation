@@ -41,6 +41,8 @@ function onOpen(e) {
     .addItem('Authorize Drive', 'authorizeDriveOnce')
     .addItem('Open dashboard', 'openSalesDashboard')
     .addItem('Manage workflow users', 'sw_openWorkflowUserDialog')
+    .addItem('Set appointment automation API keys', 'sw_promptSetAppointmentAutomationScriptProperties')
+    .addItem('Check appointment automation API keys', 'sw_showAppointmentAutomationScriptPropertiesStatus')
     .addSeparator()
     .addItem('Start 3D design', 'openStart3D')
     .addItem('Assign SO', 'assignSO')
