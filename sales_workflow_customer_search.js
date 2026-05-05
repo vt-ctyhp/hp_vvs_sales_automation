@@ -1420,8 +1420,11 @@ function swCustomerSearchResolveRootFromReadModel_(ss, rootApptId, config) {
 
 function swCustomerSearchDetailTargetFromReadModelRec_(ss, rec, source) {
   var root = swTrim_(rec.root || rec.appt || '');
-  var rows = swCustomerSearchReadAppointmentRows_(ss, rec.sourceRows || [], root);
-  if (!rows.length && root) rows = swReadAppointmentsForRoot_(ss, root);
+  var sourceRows = rec.sourceRows || [];
+  var rows = sourceRows.length > 1
+    ? swCustomerSearchReadAppointmentRows_(ss, sourceRows, root)
+    : [];
+  if (!rows.length) rows = [swCustomerSearchAppointmentLikeFromReadModel_(rec)];
   var active = rows.filter(function (row) { return swIsAppointmentActive_(row); });
   var latest = rows.length
     ? swAdminDashboardLatestRow_(active.length ? active : rows)
