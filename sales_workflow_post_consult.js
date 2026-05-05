@@ -306,6 +306,6 @@ function swCacheTaskFormOptions_(cacheKey, out) {
   if (!cacheKey) return;
   try {
     var json = JSON.stringify(out || {});
-    if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 300);
+    if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 10 * 60);
   } catch (_) {}
 }

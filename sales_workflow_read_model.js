@@ -216,11 +216,21 @@ function swBuildCustomerReadModel_(ss, builtAt) {
     write.cacheMs = 0;
     write.cacheOk = false;
     write.cacheSource = 'notAttempted';
+    write.detailIndexMs = 0;
+    write.detailIndexKeys = 0;
+    write.detailIndexRows = 0;
+    write.detailIndexBytes = 0;
+    write.detailIndexOk = false;
+    write.detailCacheMs = 0;
+    write.detailPaymentKeys = 0;
+    write.detailLogKeys = 0;
+    write.detailFormOptionGroups = 0;
     if (typeof swCustomerSearchReadModelRecord_ === 'function' &&
         typeof swCacheCustomerSearchReadModelRows_ === 'function') {
       var cacheStarted = new Date().getTime();
+      var customerSearchRows = [];
       try {
-        var customerSearchRows = rows.map(function (values) {
+        customerSearchRows = rows.map(function (values) {
           var obj = {};
           SW_CUSTOMER_READ_MODEL_HEADERS.forEach(function (header, index) {
             obj[header] = values[index] || '';
@@ -242,8 +252,36 @@ function swBuildCustomerReadModel_(ss, builtAt) {
         write.cacheSource = 'customerReadModelCache';
         write.cacheError = cacheErr && cacheErr.message ? cacheErr.message : String(cacheErr);
       }
+      if (typeof swCacheCustomerSearchDetailIndex_ === 'function') {
+        var detailIndexStarted = new Date().getTime();
+        try {
+          var detailIndex = swCacheCustomerSearchDetailIndex_(ss, customerSearchRows, { builtAt: swIso_(builtAt) }) || {};
+          write.detailIndexMs = new Date().getTime() - detailIndexStarted;
+          write.detailIndexKeys = detailIndex.keys || 0;
+          write.detailIndexRows = detailIndex.records || 0;
+          write.detailIndexBytes = detailIndex.bytes || 0;
+          write.detailIndexOk = detailIndex.ok !== false;
+          if (detailIndex.reason) write.detailIndexError = detailIndex.reason;
+        } catch (detailIndexErr) {
+          write.detailIndexMs = new Date().getTime() - detailIndexStarted;
+          write.detailIndexOk = false;
+          write.detailIndexError = detailIndexErr && detailIndexErr.message ? detailIndexErr.message : String(detailIndexErr);
+        }
+      }
     } else {
       write.cacheError = 'customerSearchCacheHelpersUnavailable';
+    }
+    if (typeof swPrewarmCustomerSearchDetailCaches_ === 'function') {
+      var detailCache = swPrewarmCustomerSearchDetailCaches_(ss) || {};
+      write.detailCacheMs = detailCache.ms || 0;
+      write.detailPaymentKeys = detailCache.paymentKeys || 0;
+      write.detailPaymentRows = detailCache.paymentRows || 0;
+      write.detailPaymentBytes = detailCache.paymentBytes || 0;
+      write.detailLogKeys = detailCache.logKeys || 0;
+      write.detailLogBytes = detailCache.logBytes || 0;
+      write.detailFormOptionGroups = detailCache.formOptionGroups || 0;
+      write.detailCacheOk = detailCache.ok !== false;
+      if (detailCache.error) write.detailCacheError = detailCache.error;
     }
     return write;
   } catch (err) {
@@ -502,6 +540,21 @@ function swWorkflowReadModelLogSummary_(result) {
       cacheChunks: model.cacheChunks || 0,
       cacheBytes: model.cacheBytes || 0,
       cacheError: model.cacheError || '',
+      detailIndexMs: model.detailIndexMs || 0,
+      detailIndexKeys: model.detailIndexKeys || 0,
+      detailIndexRows: model.detailIndexRows || 0,
+      detailIndexBytes: model.detailIndexBytes || 0,
+      detailIndexOk: !!model.detailIndexOk,
+      detailIndexError: model.detailIndexError || '',
+      detailCacheMs: model.detailCacheMs || 0,
+      detailPaymentKeys: model.detailPaymentKeys || 0,
+      detailPaymentRows: model.detailPaymentRows || 0,
+      detailPaymentBytes: model.detailPaymentBytes || 0,
+      detailLogKeys: model.detailLogKeys || 0,
+      detailLogBytes: model.detailLogBytes || 0,
+      detailFormOptionGroups: model.detailFormOptionGroups || 0,
+      detailCacheOk: !!model.detailCacheOk,
+      detailCacheError: model.detailCacheError || '',
       error: model.error || ''
     };
   });
