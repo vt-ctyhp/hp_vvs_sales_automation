@@ -426,19 +426,17 @@ function swBuildVisibleTaskBuckets_(state, user, options) {
   var buckets = { mine: [], cleanup: [], coverage: [], admin: [] };
   tasks.forEach(function (t) {
     var due = swTaskDueForQueue_(t, now);
-    var cleanupCampaignTask = typeof swIsDataCleanupTaskType_ === 'function' &&
-      swIsDataCleanupTaskType_(t.taskType) &&
-      swNorm_(t.lifecycleStage) === swNorm_('Cleanup Campaign');
-    var jocCoverageTask = t.ownerRole === 'JOC' &&
+    var cleanupCampaignTask = swIsCleanupCampaignTask_(t);
+    var jocCoverageTask = swWorkflowRoleMatches_(t.ownerRole, SW_OWNER_ROLES.JOC) &&
       swNorm_(t.currentOwner) === swNorm_('JOC Coverage');
     if (options.cleanupCampaignTabEnabled && cleanupCampaignTask && due &&
-        (user.isAdmin || (swTaskOwnedByUser_(t, user) && !jocCoverageTask))) {
+        (user.isAdmin || swTaskOwnedByUser_(t, user) || swJocCanUseCleanupCampaignTask_(t, user))) {
       buckets.cleanup.push(t);
     }
     if (due && swTaskOwnedByUser_(t, user) && !(options.cleanupCampaignTabEnabled && cleanupCampaignTask)) {
       buckets.mine.push(t);
     }
-    if ((user.isJoc || user.isAdmin) && due && jocCoverageTask) {
+    if ((user.isJoc || user.isAdmin) && due && jocCoverageTask && !cleanupCampaignTask) {
       buckets.coverage.push(t);
     }
     if (user.isAdmin && t.status !== SW_STATUSES.COMPLETED) {

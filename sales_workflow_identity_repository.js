@@ -121,6 +121,7 @@ function swTaskNamedOwnerApplies_(task, user) {
 
 function swCanViewTask_(task, user) {
   if (user.isAdmin) return true;
+  if (swJocCanUseCleanupCampaignTask_(task, user)) return true;
   if (swTaskOwnedByUser_(task, user)) return true;
   if (swCanClaimTask_(task, user)) return true;
   return false;
@@ -128,7 +129,21 @@ function swCanViewTask_(task, user) {
 
 function swCanActOnTask_(task, user) {
   if (user.isAdmin) return true;
+  if (swJocCanUseCleanupCampaignTask_(task, user)) return true;
   return swTaskOwnedByUser_(task, user);
+}
+
+function swJocCanUseCleanupCampaignTask_(task, user) {
+  return !!(user && user.isJoc) &&
+    swIsCleanupCampaignTask_(task) &&
+    swWorkflowRoleMatches_(task.ownerRole, SW_OWNER_ROLES.JOC);
+}
+
+function swIsCleanupCampaignTask_(task) {
+  return !!task &&
+    typeof swIsDataCleanupTaskType_ === 'function' &&
+    swIsDataCleanupTaskType_(task.taskType) &&
+    swNorm_(task.lifecycleStage) === swNorm_('Cleanup Campaign');
 }
 
 function swCanClaimTask_(task, user) {

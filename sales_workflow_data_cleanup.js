@@ -53,8 +53,8 @@ function swGenerateDataCleanupTasks_(ss, taskState, ctx, appointments, now, summ
   var rootIndex = swDataCleanupReadRootIndex_(ss);
   var caseState = swReadDataCleanupCaseState_(ss);
   var roots = Object.keys(currentByRoot);
-  out.existingJocTasksRerouted = swDataCleanupRerouteCampaignJocTasks_(ss, taskState, ctx, caseState, campaignId, now);
-  if (summary && out.existingJocTasksRerouted) summary.updated += out.existingJocTasksRerouted;
+  out.existingJocTasksRestored = swDataCleanupRestoreCampaignJocTasks_(ss, taskState, ctx, caseState, campaignId, now);
+  if (summary && out.existingJocTasksRestored) summary.updated += out.existingJocTasksRestored;
 
   roots.forEach(function (root) {
     out.scannedRoots++;
@@ -129,7 +129,6 @@ function swGenerateDataCleanupTasks_(ss, taskState, ctx, appointments, now, summ
     });
     var jocTask = swBuildDataCleanupTask_(ss, taskState, ctx, rec, cleanupCase, SW_TASKS.DATA_CLEANUP_REVIEW, SW_OWNER_ROLES.JOC, now, '', now, {
       phase: 'review',
-      sharedJocQueue: cleanupCase.campaignTab === 'Y',
       taskId: swDataCleanupTaskId_(caseId, 'REVIEW', 'JOC', 0)
     });
     swUpsertTask_(ss, taskState, repTask, summary);
@@ -149,8 +148,8 @@ function swGenerateDataCleanupTasks_(ss, taskState, ctx, appointments, now, summ
 function swBuildDataCleanupTask_(ss, state, ctx, rec, cleanupCase, taskType, ownerRole, dueAt, dependencyTaskId, now, options) {
   options = options || {};
   var template = (ctx.templates && ctx.templates[taskType]) || swDefaultTemplate_(taskType);
-  var owner = options.sharedJocQueue && swWorkflowRoleMatches_(ownerRole, SW_OWNER_ROLES.JOC)
-    ? swDataCleanupSharedJocQueueOwner_(ss, ctx, rec)
+  var owner = swDataCleanupUsesDirectCampaignJocOwner_(cleanupCase, ownerRole)
+    ? swDataCleanupDirectCampaignJocOwner_(ss, ctx, rec)
     : swResolveOwner_(ss, ctx, rec, ownerRole, dueAt || now, null);
   if (options.ownerName || options.ownerEmail) {
     owner.currentOwner = options.ownerName || owner.currentOwner;
@@ -315,7 +314,6 @@ function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
   var confirmRole = swDataCleanupOppositeRole_(proposerRole);
   var confirmTask = swBuildDataCleanupTask_(ss, null, swBuildContext_(ss, true), rec, cleanupCase, SW_TASKS.DATA_CLEANUP_CONFIRM, confirmRole, now, task.taskId, now, {
     phase: 'confirm',
-    sharedJocQueue: cleanupCase.campaignTab === 'Y' && swWorkflowRoleMatches_(confirmRole, SW_OWNER_ROLES.JOC),
     taskId: swDataCleanupTaskId_(cleanupCase.caseId, 'CONFIRM', swDataCleanupRoleKey_(confirmRole), Number(cleanupCase.revisionCount) || 0)
   });
   swDataCleanupUpsertImmediateTask_(ss, confirmTask, user, 'CREATE');
@@ -676,37 +674,84 @@ function swDataCleanupPublicCase_(cleanupCase) {
   };
 }
 
-function swDataCleanupSharedJocQueueName_() {
-  return 'JOC Coverage';
+function swDataCleanupUsesDirectCampaignJocOwner_(cleanupCase, ownerRole) {
+  return cleanupCase &&
+    cleanupCase.campaignTab === 'Y' &&
+    swWorkflowRoleMatches_(ownerRole, SW_OWNER_ROLES.JOC);
 }
 
-function swDataCleanupSharedJocQueueOwner_(ss, ctx, rec) {
+function swDataCleanupDirectCampaignJocOwner_(ss, ctx, rec) {
   rec = rec || {};
-  var intendedName = rec.assistedRep || '';
+  var intendedName = swTrim_(rec.assistedRep || '');
+  var intendedEmail = swNormEmail_(rec.assistedRepEmail || '');
+  var owner = swDataCleanupCanonicalJocOwner_(ss, ctx, intendedName, intendedEmail);
+  if (owner) {
+    return {
+      intendedOwner: owner.name,
+      intendedOwnerEmail: owner.email,
+      currentOwner: owner.name,
+      currentOwnerEmail: owner.email,
+      coverageReason: ''
+    };
+  }
+  if (intendedName || intendedEmail) {
+    return {
+      intendedOwner: intendedName || intendedEmail,
+      intendedOwnerEmail: intendedEmail,
+      currentOwner: intendedName || intendedEmail,
+      currentOwnerEmail: intendedEmail,
+      coverageReason: 'UNRESOLVED_ASSISTED_REP'
+    };
+  }
   return {
-    intendedOwner: intendedName,
-    intendedOwnerEmail: swLookupEmailByName_(ss, intendedName, ctx) || rec.assistedRepEmail || '',
-    currentOwner: swDataCleanupSharedJocQueueName_(),
+    intendedOwner: '',
+    intendedOwnerEmail: '',
+    currentOwner: 'Admin Review',
     currentOwnerEmail: '',
-    coverageReason: 'DATA_CLEANUP_SHARED_JOC_QUEUE'
+    coverageReason: 'NO_ASSISTED_REP'
   };
 }
 
-function swDataCleanupRerouteCampaignJocTasks_(ss, taskState, ctx, caseState, campaignId, now) {
+function swDataCleanupCanonicalJocOwner_(ss, ctx, name, email) {
+  var exact = swCanonicalWorkflowOwnerForRole_(ss, ctx, name, email, SW_OWNER_ROLES.JOC);
+  if (exact) return exact;
+  var parts = swDataCleanupOwnerNameParts_(name);
+  var matched = [];
+  parts.forEach(function (part) {
+    var owner = swCanonicalWorkflowOwnerForRole_(ss, ctx, part, '', SW_OWNER_ROLES.JOC);
+    if (!owner) return;
+    for (var i = 0; i < matched.length; i++) {
+      if (swNormEmail_(matched[i].email) === swNormEmail_(owner.email)) return;
+    }
+    matched.push(owner);
+  });
+  return matched.length ? matched[0] : null;
+}
+
+function swDataCleanupOwnerNameParts_(name) {
+  return String(name || '')
+    .split(/\s*(?:,|\/|&|\band\b)\s*/i)
+    .map(function (part) { return swTrim_(part); })
+    .filter(Boolean);
+}
+
+function swDataCleanupRestoreCampaignJocTasks_(ss, taskState, ctx, caseState, campaignId, now) {
   var byId = (taskState && taskState.byId) || {};
   var casesById = (caseState && caseState.byId) || {};
   var count = 0;
   Object.keys(byId).forEach(function (taskId) {
     var task = byId[taskId];
-    if (!swDataCleanupShouldRerouteJocTask_(task, campaignId)) return;
+    if (!swDataCleanupShouldRestoreCampaignJocTask_(task, campaignId)) return;
     var cleanupCase = casesById[swDataCleanupCaseIdFromTask_(task)] || {};
     var payload = swParseJson_(task.payloadJson, {});
     var rec = swDataCleanupRecFromTask_(task, payload, cleanupCase);
     rec.assistedRep = rec.assistedRep || task.intendedOwner || '';
     rec.assistedRepEmail = rec.assistedRepEmail || task.intendedOwnerEmail || '';
-    var owner = swDataCleanupSharedJocQueueOwner_(ss, ctx, rec);
+    var owner = swDataCleanupDirectCampaignJocOwner_(ss, ctx, rec);
     if (swNorm_(task.currentOwner) === swNorm_(owner.currentOwner) &&
-        !task.currentOwnerEmail &&
+        swNormEmail_(task.currentOwnerEmail) === swNormEmail_(owner.currentOwnerEmail) &&
+        swNorm_(task.intendedOwner) === swNorm_(owner.intendedOwner) &&
+        swNormEmail_(task.intendedOwnerEmail) === swNormEmail_(owner.intendedOwnerEmail) &&
         task.coverageReason === owner.coverageReason) {
       return;
     }
@@ -721,7 +766,7 @@ function swDataCleanupRerouteCampaignJocTasks_(ss, taskState, ctx, caseState, ca
     task.lastEvent = 'ASSIGN';
     swWriteTaskRow_(ss, task);
     swAppendTaskLog_(ss, 'ASSIGN', task, swSystemUser_(), fromOwner, task.currentOwner, {
-      reason: 'One-time data cleanup JOC work uses the shared JOC queue.',
+      reason: 'One-time data cleanup JOC work stays in the Cleanup tab.',
       coverageReason: task.coverageReason
     });
     count++;
@@ -729,11 +774,11 @@ function swDataCleanupRerouteCampaignJocTasks_(ss, taskState, ctx, caseState, ca
   return count;
 }
 
-function swDataCleanupShouldRerouteJocTask_(task, campaignId) {
+function swDataCleanupShouldRestoreCampaignJocTask_(task, campaignId) {
   if (!task || task.claimedBy) return false;
   if (task.status !== SW_STATUSES.PENDING && task.status !== SW_STATUSES.SNOOZED) return false;
   if (!swWorkflowRoleMatches_(task.ownerRole, SW_OWNER_ROLES.JOC)) return false;
-  if (task.taskType !== SW_TASKS.DATA_CLEANUP_REVIEW && task.taskType !== SW_TASKS.DATA_CLEANUP_CONFIRM) return false;
+  if (!swIsDataCleanupTaskType_(task.taskType)) return false;
   if (swNorm_(task.lifecycleStage) !== swNorm_('Cleanup Campaign')) return false;
   return swDataCleanupCampaignIdFromTask_(task) === campaignId;
 }
