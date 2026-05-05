@@ -159,8 +159,11 @@
       let DROPS = BOOTSTRAP.dropdowns;
       let CTX = BOOTSTRAP.context;
       let ROWS = [];
+      let INITIALIZED = false;
 
       function init() {
+        if (INITIALIZED) return;
+        INITIALIZED = true;
         // Use the already-injected BOOTSTRAP (no client/server roundtrip)
         document.getElementById('ctx-cust').textContent = 'Customer: ' + (CTX.customerName || '—');
         document.getElementById('ctx-date').textContent = 'Visit: ' + (CTX.visitDateStr || '—') + ' ' + (CTX.visitTimeStr || '');
@@ -461,16 +464,21 @@
       function optDefault(){ const o=document.createElement('option'); o.value=''; o.textContent='(none)'; return o; }
 
       function validate() {
+        const activeRows = ROWS.filter(rowHasData);
         let ok = true;
-        for (const r of ROWS) {
+        for (const r of activeRows) {
           if (!r.stoneType || !r.shape || !r.carat || Number(r.carat) <= 0 ||
               !r.color || !r.clarity || !r.lab || !r.certNo || !r.vendor) { ok = false; break; }
           if (r.color === 'Fancy' && (!r.fancyColor || !r.fancyIntensity)) { ok = false; break; }
         }
         const btn = document.getElementById('btnSubmit');
-        btn.disabled = !ok || ROWS.length === 0;
-        btn.textContent = 'Submit (' + ROWS.length + ')';
+        btn.disabled = !ok || activeRows.length === 0;
+        btn.textContent = 'Submit (' + activeRows.length + ')';
         return ok;
+      }
+
+      function rowHasData(r) {
+        return !!(r && Object.keys(r).some(k => String(r[k] || '').trim()));
       }
 
       function showMsg(text, cls) {
@@ -491,12 +499,17 @@
           showMsg('Please complete all required fields (and Fancy sub-fields when applicable).', 'error');
           return;
         }
-        const payload = { stones: ROWS };
+        const stones = ROWS.filter(rowHasData);
+        if (!stones.length) {
+          showMsg('Please enter at least one stone before submitting.', 'error');
+          return;
+        }
+        const payload = { stones: stones };
         const btn = document.getElementById('btnSubmit');
         btn.disabled = true; btn.textContent = 'Submitting…';
 
         google.script.run.withSuccessHandler(function(res){
-          btn.disabled = false; btn.textContent = 'Submit (' + ROWS.length + ')';
+          btn.disabled = false; btn.textContent = 'Submit (' + ROWS.filter(rowHasData).length + ')';
           if (!res || !res.ok) {
             showMsg('An unknown error occurred. Please try again.', 'error');
             return;
@@ -519,7 +532,7 @@
           ROWS = [];
           renderRows();
         }).withFailureHandler(function(err){
-          btn.disabled = false; btn.textContent = 'Submit (' + ROWS.length + ')';
+          btn.disabled = false; btn.textContent = 'Submit (' + ROWS.filter(rowHasData).length + ')';
           const msg = (err && err.message) ? err.message : String(err);
           showMsg(msg, 'error');
         }).dp_submitProposals(payload);
