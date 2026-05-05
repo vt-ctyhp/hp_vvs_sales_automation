@@ -735,25 +735,142 @@ function swCustomerSearchInitialPayloadCacheKey_(ss) {
 function swCustomerSearchInitialPayloadCacheGet_(key) {
   try {
     var text = CacheService.getScriptCache().get(key);
-    if (text) return swParseJson_(text, null);
+    if (text) return swUnpackCustomerSearchInitialPayload_(swParseJson_(text, null));
   } catch (_) {}
-  return swTaskListCacheGet_(key);
+  return swUnpackCustomerSearchInitialPayload_(swTaskListCacheGet_(key));
 }
 
 function swCustomerSearchInitialPayloadCachePut_(key, payload) {
+  var cachePayload = swPackCustomerSearchInitialPayload_(payload);
   try {
-    var text = swStringify_(payload);
+    var text = swStringify_(cachePayload);
     if (text.length <= 90000) {
       CacheService.getScriptCache().put(key, text, SW_CUSTOMER_SEARCH_READ_MODEL_CACHE_SECONDS);
       return { ok: true, chunks: 1, bytes: text.length };
     }
   } catch (_) {}
-  return swTaskListCachePut_(key, payload);
+  return swTaskListCachePut_(key, cachePayload);
 }
 
 function swCustomerSearchInitialPayloadCacheRemove_(key) {
   try { CacheService.getScriptCache().remove(key); } catch (_) {}
   try { swTaskListCacheRemove_(key); } catch (_) {}
+}
+
+function swPackCustomerSearchInitialPayload_(payload) {
+  payload = payload || {};
+  var response = payload.payload || {};
+  var columns = response && response.kanban && response.kanban.columns ? response.kanban.columns : [];
+  return {
+    ca: payload.cachedAt || '',
+    v: payload.version || '',
+    m: payload.modelBuiltAt || '',
+    sr: Number(payload.sourceRows || 0),
+    fr: Number(payload.filteredRows || 0),
+    c: Number(payload.cards || 0),
+    h: Number(payload.hiddenCards || 0),
+    p: {
+      ok: response.ok === false ? 0 : 1,
+      g: response.generatedAt || '',
+      q: response.query || '',
+      s: response.source || '',
+      f: response.filters || {},
+      o: response.filterOptions || {},
+      k: columns.map(swPackCustomerSearchInitialColumn_)
+    }
+  };
+}
+
+function swUnpackCustomerSearchInitialPayload_(payload) {
+  if (!payload) return null;
+  if (payload.payload && payload.payload.kanban) return payload;
+  if (!(payload.p && payload.p.k)) return payload;
+  return {
+    cachedAt: payload.ca || '',
+    version: payload.v || '',
+    modelBuiltAt: payload.m || '',
+    sourceRows: Number(payload.sr || 0),
+    filteredRows: Number(payload.fr || 0),
+    cards: Number(payload.c || 0),
+    hiddenCards: Number(payload.h || 0),
+    payload: {
+      ok: payload.p.ok !== 0,
+      generatedAt: payload.p.g || '',
+      query: payload.p.q || '',
+      source: payload.p.s || '',
+      filters: payload.p.f || {},
+      filterOptions: payload.p.o || {},
+      kanban: {
+        columns: (payload.p.k || []).map(swUnpackCustomerSearchInitialColumn_)
+      }
+    }
+  };
+}
+
+function swPackCustomerSearchInitialColumn_(col) {
+  col = col || {};
+  return [
+    col.key || '',
+    col.label || '',
+    Number(col.count || 0),
+    Number(col.hiddenCount || 0),
+    (col.cards || []).map(swPackCustomerSearchInitialCard_)
+  ];
+}
+
+function swUnpackCustomerSearchInitialColumn_(col) {
+  col = col || [];
+  return {
+    key: col[0] || '',
+    label: col[1] || '',
+    count: Number(col[2] || 0),
+    hiddenCount: Number(col[3] || 0),
+    cards: (col[4] || []).map(swUnpackCustomerSearchInitialCard_)
+  };
+}
+
+function swPackCustomerSearchInitialCard_(card) {
+  card = card || {};
+  return [
+    card.root || '',
+    card.appt || '',
+    card.customerName || '',
+    card.brand || '',
+    card.clientAdvisor || '',
+    card.joc || '',
+    card.nextVisit || '',
+    card.lastVisit || '',
+    card.salesStage || '',
+    card.conversionStatus || '',
+    card.customOrderStatus || '',
+    card.inProductionStatus || '',
+    card.so || '',
+    card.deadline3d || '',
+    card.waxStatus || '',
+    card.badges || []
+  ];
+}
+
+function swUnpackCustomerSearchInitialCard_(card) {
+  card = card || [];
+  return {
+    root: card[0] || '',
+    appt: card[1] || '',
+    customerName: card[2] || '',
+    brand: card[3] || '',
+    clientAdvisor: card[4] || '',
+    joc: card[5] || '',
+    nextVisit: card[6] || '',
+    lastVisit: card[7] || '',
+    salesStage: card[8] || '',
+    conversionStatus: card[9] || '',
+    customOrderStatus: card[10] || '',
+    inProductionStatus: card[11] || '',
+    so: card[12] || '',
+    deadline3d: card[13] || '',
+    waxStatus: card[14] || '',
+    badges: card[15] || []
+  };
 }
 
 function swCacheCustomerSearchDetailIndex_(ss, rows, status) {
