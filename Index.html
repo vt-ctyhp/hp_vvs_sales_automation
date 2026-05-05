@@ -994,76 +994,368 @@
 
     .schedule-shell {
       display: grid;
-      gap: 18px;
+      gap: 24px;
     }
 
-    .schedule-toolbar {
-      align-items: center;
+    .schedule-hero {
+      align-items: end;
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding-bottom: 24px;
+    }
+
+    .schedule-hero h2 {
+      font-size: 42px;
+      line-height: 0.95;
+    }
+
+    .schedule-hero-actions,
+    .schedule-filter-group {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      justify-content: space-between;
+      gap: 8px;
+      justify-content: flex-end;
     }
 
-    .schedule-table-wrap {
+    .schedule-auto-card {
+      align-items: center;
+      background: var(--surface-card);
       border: 1px solid var(--rule);
-      overflow-x: auto;
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 18px;
     }
 
-    .schedule-table {
-      border-collapse: collapse;
-      min-width: 1220px;
+    .schedule-switch {
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .schedule-switch input {
+      opacity: 0;
+      position: absolute;
+      width: 1px;
+    }
+
+    .schedule-switch span {
+      background: var(--ink-primary);
+      border: 1px solid var(--ink-primary);
+      display: block;
+      height: 24px;
+      position: relative;
+      width: 48px;
+    }
+
+    .schedule-switch span::after {
+      background: var(--bg-foundation);
+      content: '';
+      height: 18px;
+      left: 3px;
+      position: absolute;
+      top: 2px;
+      transition: left 140ms ease-out;
+      width: 18px;
+    }
+
+    .schedule-switch input:not(:checked) + span {
+      background: transparent;
+      border-color: var(--rule);
+    }
+
+    .schedule-switch input:not(:checked) + span::after {
+      background: var(--ink-muted);
+    }
+
+    .schedule-switch input:checked + span::after {
+      left: 25px;
+    }
+
+    .schedule-summary-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .schedule-summary-card {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      min-height: 104px;
+      padding: 14px;
+    }
+
+    .schedule-summary-value {
+      color: var(--ink-primary);
+      display: block;
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 30px;
+      line-height: 1;
+      margin-top: 8px;
+    }
+
+    .schedule-roster-section {
+      display: grid;
+      gap: 14px;
+    }
+
+    .schedule-section-heading {
+      align-items: end;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    button.schedule-filter-button {
+      min-width: 76px;
+      padding: 9px 12px;
+    }
+
+    .schedule-roster-head,
+    .schedule-person-card {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(220px, 1.1fr) minmax(160px, 0.8fr) minmax(196px, 0.9fr) minmax(250px, 1fr);
+    }
+
+    .schedule-roster-head {
+      color: var(--ink-muted);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      padding: 0 18px;
+      text-transform: uppercase;
+    }
+
+    .schedule-roster-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .schedule-person-card {
+      align-items: center;
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      padding: 18px;
+    }
+
+    .schedule-person-card.is-inactive {
+      opacity: 0.56;
+    }
+
+    .schedule-shell[data-schedule-filter="advisors"] .schedule-person-card:not([data-has-advisor="1"]),
+    .schedule-shell[data-schedule-filter="joc"] .schedule-person-card:not([data-has-joc="1"]) {
+      display: none;
+    }
+
+    .schedule-person-cell {
+      align-items: center;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 44px minmax(0, 1fr);
+      min-width: 0;
+    }
+
+    .schedule-avatar {
+      align-items: center;
+      background: var(--avatar-bg, var(--ink-primary));
+      border-radius: 50%;
+      color: var(--bg-foundation);
+      display: inline-flex;
+      font-size: 13px;
+      font-weight: 500;
+      height: 40px;
+      justify-content: center;
+      width: 40px;
+    }
+
+    .schedule-person-fields {
+      min-width: 0;
+    }
+
+    .schedule-person-fields input {
+      border-bottom-color: transparent;
+      display: block;
+      min-width: 0;
       width: 100%;
     }
 
-    .schedule-table th,
-    .schedule-table td {
-      border-bottom: 1px solid var(--rule);
-      padding: 10px;
-      text-align: left;
-      vertical-align: top;
+    .schedule-person-fields input:focus {
+      border-bottom-color: var(--accent);
     }
 
-    .schedule-table th {
-      background: var(--surface-inset);
+    .schedule-name {
       color: var(--ink-primary);
+      font-weight: 500;
+      padding-bottom: 2px;
+    }
+
+    .schedule-email {
+      color: var(--ink-muted);
+      font-size: 12px;
+      padding-top: 0;
+    }
+
+    .schedule-active-control,
+    .schedule-coverage-enabled-control {
+      color: var(--ink-muted);
+      display: inline-flex;
       font-size: 10px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-
-    .schedule-table input[type="text"],
-    .schedule-table input[type="email"],
-    .schedule-table select {
-      min-width: 130px;
-    }
-
-    .schedule-day-cell {
-      text-align: center;
-      width: 54px;
-    }
-
-    .schedule-day-cell input,
-    .schedule-role-group input,
-    .schedule-setting input {
-      accent-color: var(--ink-primary);
-    }
-
-    .schedule-role-group {
-      display: grid;
       gap: 6px;
-      min-width: 136px;
+      letter-spacing: 0.12em;
+      margin: 6px 0 0;
+      text-transform: uppercase;
     }
 
-    .schedule-role-group label,
-    .schedule-setting,
-    .schedule-active-cell label {
-      align-items: center;
+    .schedule-coverage-enabled-control {
+      grid-column: 1 / -1;
+    }
+
+    .schedule-active-control input,
+    .schedule-coverage-enabled-control input {
+      margin: 0;
+      width: auto;
+    }
+
+    .schedule-pill-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .schedule-pill-row,
+    .schedule-day-pills {
       display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .schedule-pill-control,
+    .schedule-day-chip,
+    .schedule-change-type-pill {
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .schedule-chip-input,
+    .schedule-day-chip input,
+    .schedule-change-type-pill input {
+      height: 1px;
+      opacity: 0;
+      position: absolute;
+      width: 1px;
+    }
+
+    .schedule-pill-control span,
+    .schedule-day-chip span,
+    .schedule-change-type-pill span {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: inline-flex;
+      font-size: 11px;
+      line-height: 1;
+      min-height: 27px;
+      padding: 7px 9px;
+      text-transform: none;
+      transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+    }
+
+    .schedule-pill-control input:checked + span,
+    .schedule-day-chip input:checked + span,
+    .schedule-change-type-pill input:checked + span {
+      background: var(--ink-primary);
+      border-color: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+
+    .schedule-pill-control input:focus + span,
+    .schedule-day-chip input:focus + span,
+    .schedule-change-type-pill input:focus + span {
+      border-color: var(--accent);
+    }
+
+    .schedule-day-chip span {
+      justify-content: center;
+      min-width: 32px;
+      padding: 8px 0;
+    }
+
+    .schedule-natural-control {
+      align-items: center;
+      display: inline-flex;
       gap: 7px;
       margin: 0;
       text-transform: none;
+    }
+
+    .schedule-natural-control span {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      color: var(--ink-body);
+      font-size: 11px;
+      line-height: 1;
+      min-height: 27px;
+      padding: 7px 9px;
+    }
+
+    .schedule-natural-control select {
+      min-width: 88px;
+      padding: 5px 2px;
+    }
+
+    .schedule-routing {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .schedule-routing label {
+      margin: 0;
+    }
+
+    .schedule-routing select {
+      background: var(--surface-card);
+      min-width: 0;
+    }
+
+    .schedule-override-grid {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 24px;
+      grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1fr);
+      padding-top: 28px;
+    }
+
+    .schedule-override-panel {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      display: grid;
+      gap: 18px;
+      padding: 24px;
+    }
+
+    .schedule-override-form-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .schedule-form-wide {
+      grid-column: 1 / -1;
+    }
+
+    .schedule-change-type-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+    }
+
+    .schedule-change-type-pill span {
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      text-align: center;
+      width: 100%;
     }
 
     .schedule-changes-list {
@@ -1073,11 +1365,27 @@
 
     .schedule-change-row {
       align-items: center;
-      border: 1px solid var(--rule);
+      background: var(--surface-inset);
+      border: 1px solid transparent;
       display: grid;
       gap: 12px;
       grid-template-columns: minmax(0, 1fr) auto;
       padding: 12px;
+    }
+
+    button.schedule-change-delete {
+      border: 0;
+      color: var(--ink-muted);
+      font-size: 18px;
+      letter-spacing: 0;
+      padding: 4px 6px;
+      text-transform: none;
+    }
+
+    button.schedule-change-delete:hover:not(:disabled),
+    button.schedule-change-delete[data-confirm="1"] {
+      background: transparent;
+      color: var(--accent);
     }
 
     .customer-detail-card {
@@ -2056,6 +2364,25 @@
         grid-template-columns: 1fr;
       }
 
+      .schedule-hero,
+      .schedule-section-heading,
+      .schedule-summary-grid,
+      .schedule-person-card,
+      .schedule-routing,
+      .schedule-override-grid,
+      .schedule-override-form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .schedule-hero-actions,
+      .schedule-filter-group {
+        justify-content: flex-start;
+      }
+
+      .schedule-roster-head {
+        display: none;
+      }
+
       .admin-kanban-board {
         grid-template-columns: 1fr;
         overflow-x: visible;
@@ -2367,7 +2694,9 @@
       diamondSyncPreview: null,
       adminDashboard: null,
       adminDashboardFilters: null,
-      adminDashboardMode: 'health',
+      adminDashboardDetail: null,
+      adminDashboardSelectedRoot: '',
+      employeeScheduleFilter: 'all',
       customerSearch: {
         query: '',
         filters: { activeOnly: true, defaultAdvisor: true },
@@ -2465,18 +2794,6 @@
             openLoupe360SyncPanel();
             return;
           }
-          var adminModeButton = closestMatch_(event.target, '.js-admin-dashboard-mode');
-          if (adminModeButton) {
-            appState.adminDashboardMode = adminModeButton.getAttribute('data-mode') || 'health';
-            if (!appState.adminDashboard || !appState.adminDashboard[appState.adminDashboardMode]) {
-              loadAdminDashboard(appState.adminDashboardFilters || {});
-              return;
-            }
-            renderAdminDashboard(appState.adminDashboard || {});
-            if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(appState.adminDashboard || {});
-            else renderAdminDashboardHealthSummary(appState.adminDashboard || {});
-            return;
-          }
           if (closestMatch_(event.target, '.js-admin-dashboard-apply')) {
             loadAdminDashboard(collectAdminDashboardFilters());
             return;
@@ -2485,6 +2802,8 @@
             clearAdminDashboardFilters();
             return;
           }
+          var scheduleFilterButton = closestMatch_(event.target, '.js-schedule-filter');
+          if (scheduleFilterButton) return setEmployeeScheduleFilter(scheduleFilterButton.getAttribute('data-filter') || 'all');
           var scheduleSaveButton = closestMatch_(event.target, '.js-schedule-save');
           if (scheduleSaveButton) return saveEmployeeSchedules(scheduleSaveButton);
           if (closestMatch_(event.target, '.js-schedule-add-row')) return addEmployeeScheduleRow();
@@ -2512,7 +2831,7 @@
           }
           var adminCard = closestMatch_(event.target, '.js-admin-kanban-card');
           if (adminCard) {
-            renderAdminCustomerDetail(adminCard.getAttribute('data-root') || '');
+            openAdminDashboardCustomerDetail(adminCard.getAttribute('data-root') || '');
             return;
           }
           var bulkSelectButton = closestMatch_(event.target, '.js-bulk-return-select');
@@ -3269,7 +3588,7 @@
     function updateAdminDashboardLayoutMode() {
       var shell = document.getElementById('appShell');
       if (!shell) return;
-      shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard' && appState.adminDashboardMode !== 'kanban');
+      shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard');
       shell.classList.toggle('customer-search-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'customerSearch');
       shell.classList.toggle('employee-schedule-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'employeeSchedules');
     }
@@ -3325,12 +3644,14 @@
       var requestId = beginMainRequest('adminDashboard');
       appState.selectedTaskId = '';
       appState.detailRequestId += 1;
+      appState.adminDashboardDetail = null;
+      appState.adminDashboardSelectedRoot = '';
       setActiveTab('adminDashboard');
       renderViewHeader('adminDashboard');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING ADMIN DASHBOARD</div>';
       document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Admin Dashboard</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
       filters = filters || appState.adminDashboardFilters || {};
-      filters.mode = appState.adminDashboardMode || 'health';
+      filters.mode = 'kanban';
       var dashboardCacheKey = adminDashboardFilterCacheKey(filters);
       var previousDashboard = appState.adminDashboardCacheKey === dashboardCacheKey ? (appState.adminDashboard || {}) : {};
       serverCall('sw_getAdminDashboard', [filters], function (res) {
@@ -3339,8 +3660,6 @@
         appState.adminDashboardCacheKey = dashboardCacheKey;
         appState.adminDashboardFilters = (res && res.filters) || filters || {};
         renderAdminDashboard(appState.adminDashboard || {});
-        if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(appState.adminDashboard || {});
-        else renderAdminDashboardHealthSummary(appState.adminDashboard || {});
       }, 'Loading admin dashboard');
     }
 
@@ -3365,8 +3684,6 @@
         generatedAt: next.generatedAt || prev.generatedAt || '',
         filters: next.filters || prev.filters || {},
         filterOptions: next.filterOptions || prev.filterOptions || {},
-        metrics: next.metrics || prev.metrics || {},
-        health: next.health || prev.health || null,
         kanban: next.kanban || prev.kanban || null,
         taskCount: next.taskCount == null ? prev.taskCount : next.taskCount,
         warnings: next.warnings || prev.warnings || []
@@ -3378,7 +3695,7 @@
         windowPreset: valueOf('adminDashWindow'),
         startDate: valueOf('adminDashStartDate'),
         endDate: valueOf('adminDashEndDate'),
-        mode: appState.adminDashboardMode || 'health',
+        mode: 'kanban',
         brand: valueOf('adminDashBrand'),
         clientAdvisor: valueOf('adminDashClientAdvisor'),
         joc: valueOf('adminDashJoc'),
@@ -3411,33 +3728,57 @@
       res = res || {};
       updateAdminDashboardLayoutMode();
       document.getElementById('taskList').innerHTML = [
-        '<div class="schedule-shell">',
-          '<div class="schedule-toolbar">',
+        '<div class="schedule-shell" data-schedule-filter="' + escapeAttrValue(appState.employeeScheduleFilter || 'all') + '">',
+          '<div class="schedule-hero">',
             '<div>',
-              '<div class="eyebrow">Team Schedules</div>',
-              '<h2>Client Advisor and JOC schedules</h2>',
-              '<div class="meta">Weekly roster plus one-off schedule changes feed queue ownership during refresh.</div>',
+              '<div class="eyebrow">Admin / Schedules</div>',
+              '<h2>Team roster and coverage</h2>',
+              '<div class="meta">Working days, roles, skills, linked JOC partners, and one-off changes feed queue ownership during refresh.</div>',
             '</div>',
-            '<div class="actions">',
-              '<button class="js-schedule-add-row" type="button">Add Row</button>',
-              '<button class="primary js-schedule-save" type="button">Save Schedules</button>',
+            '<div class="schedule-hero-actions">',
+              '<button class="js-schedule-add-row" type="button">Add Person</button>',
+              '<button class="primary js-schedule-save" type="button">Save Changes</button>',
             '</div>',
           '</div>',
           renderEmployeeScheduleSettings(res.settings || {}),
+          renderEmployeeScheduleSummaryCards(res),
           renderEmployeeScheduleTable(res.people || [], res.days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
-          renderEmployeeScheduleChangeForm(res),
-          renderEmployeeScheduleChanges(res.changes || []),
+          '<div class="schedule-override-grid">',
+            renderEmployeeScheduleChangeForm(res),
+            renderEmployeeScheduleChanges(res.changes || []),
+          '</div>',
         '</div>'
       ].join('');
+      applyEmployeeScheduleFilter(appState.employeeScheduleFilter || 'all');
     }
 
     function renderEmployeeScheduleSettings(settings) {
       return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading">',
-            '<div><div class="eyebrow">Automation</div><h2>Advisor assignment</h2></div>',
+        '<section class="schedule-auto-card">',
+          '<div>',
+            '<div class="task-title">Auto-assign advisors</div>',
+            '<div class="meta">Round-robin assignment by schedule and skills runs automatically on every queue refresh.</div>',
           '</div>',
-          '<label class="schedule-setting"><input id="scheduleRoundRobin" type="checkbox"' + (settings.clientAdvisorRoundRobin ? ' checked' : '') + '>Auto-assign or reassign Client Advisors by schedule, skills, and round robin when Refresh Queue runs</label>',
+          '<label class="schedule-switch" title="Auto-assign advisors"><input id="scheduleRoundRobin" type="checkbox"' + (settings.clientAdvisorRoundRobin ? ' checked' : '') + '><span></span></label>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderEmployeeScheduleSummaryCards(res) {
+      res = res || {};
+      var people = res.people || [];
+      var today = res.today || [];
+      var jocCount = people.filter(function (person) { return employeeScheduleHasRole(person.role, 'JOC') && person.active !== false; }).length;
+      var advisorCount = people.filter(function (person) { return employeeScheduleHasRole(person.role, 'Client Advisor') && person.active !== false; }).length;
+      var linkedCount = people.filter(function (person) {
+        return employeeScheduleHasRole(person.role, 'Client Advisor') && person.active !== false && person.defaultJoc;
+      }).length;
+      return [
+        '<section class="schedule-summary-grid">',
+          '<div class="schedule-summary-card"><div class="eyebrow">Advisors</div><span class="schedule-summary-value">' + escapeHtml(advisorCount) + '</span><div class="meta">active client advisors</div></div>',
+          '<div class="schedule-summary-card"><div class="eyebrow">JOC</div><span class="schedule-summary-value">' + escapeHtml(jocCount) + '</span><div class="meta">active coverage users</div></div>',
+          '<div class="schedule-summary-card"><div class="eyebrow">Working Today</div><span class="schedule-summary-value">' + escapeHtml(today.length) + '</span><div class="meta">' + escapeHtml(today.length ? today.map(function (person) { return person.name; }).slice(0, 4).join(', ') + (today.length > 4 ? ' +' + (today.length - 4) : '') : 'No scheduled employees') + '</div></div>',
+          '<div class="schedule-summary-card"><div class="eyebrow">Linked Pairs</div><span class="schedule-summary-value">' + escapeHtml(linkedCount) + '</span><div class="meta">advisors with a default JOC</div></div>',
         '</section>'
       ].join('');
     }
@@ -3446,20 +3787,24 @@
       var jocNames = (people || []).filter(function (person) {
         return employeeScheduleHasRole(person.role, 'JOC') && person.active !== false;
       }).map(function (person) { return person.name || ''; }).filter(Boolean);
+      var filter = appState.employeeScheduleFilter || 'all';
       return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Weekly roster</div><h2>Working days</h2></div></div>',
+        '<section class="schedule-roster-section">',
+          '<div class="schedule-section-heading">',
+            '<div><div class="eyebrow">Team members</div><h2>Roster rules</h2></div>',
+            '<div class="schedule-filter-group" role="group" aria-label="Schedule roster filter">',
+              '<button class="schedule-filter-button js-schedule-filter' + (filter === 'all' ? ' active' : '') + '" type="button" data-filter="all" aria-pressed="' + (filter === 'all' ? 'true' : 'false') + '">All</button>',
+              '<button class="schedule-filter-button js-schedule-filter' + (filter === 'advisors' ? ' active' : '') + '" type="button" data-filter="advisors" aria-pressed="' + (filter === 'advisors' ? 'true' : 'false') + '">Advisors</button>',
+              '<button class="schedule-filter-button js-schedule-filter' + (filter === 'joc' ? ' active' : '') + '" type="button" data-filter="joc" aria-pressed="' + (filter === 'joc' ? 'true' : 'false') + '">JOC</button>',
+            '</div>',
+          '</div>',
           people && people.length ? [
-            '<div class="schedule-table-wrap"><table class="schedule-table">',
-              '<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Skills</th><th>Linked JOC</th><th>Active</th>',
-                days.map(function (day) { return '<th>' + escapeHtml(day) + '</th>'; }).join(''),
-                '<th>JOC Coverage Partner</th></tr></thead>',
-              '<tbody>',
-                people.map(function (person, index) {
-                  return renderEmployeeScheduleRow(person, days, jocNames, index);
-                }).join(''),
-              '</tbody>',
-            '</table></div>'
+            '<div class="schedule-roster-head"><div>Person</div><div>Role and skills</div><div>Working days</div><div>Assignment routing</div></div>',
+            '<div class="schedule-roster-list">',
+              people.map(function (person, index) {
+                return renderEmployeeScheduleRow(person, days, jocNames, index);
+              }).join(''),
+            '</div>'
           ].join('') : '<div class="empty">No employees found. Add workflow users or add a schedule row here.</div>',
         '</section>'
       ].join('');
@@ -3467,29 +3812,38 @@
 
     function renderEmployeeScheduleRow(person, days, jocNames, index) {
       person = person || {};
-      var dayCells = days.map(function (day) {
-        var checked = person.days && person.days[day];
-        return '<td class="schedule-day-cell"><input class="schedule-day" type="checkbox" data-day="' + escapeAttrValue(day) + '"' + (checked ? ' checked' : '') + '></td>';
-      }).join('');
+      var hasAdvisor = employeeScheduleHasRole(person.role, 'Client Advisor');
+      var hasJoc = employeeScheduleHasRole(person.role, 'JOC');
+      var name = person.name || '';
       return [
-        '<tr class="schedule-row" data-index="' + escapeAttrValue(index) + '">',
-          '<td><input class="schedule-name" type="text" value="' + escapeAttrValue(person.name || '') + '"></td>',
-          '<td><input class="schedule-email" type="email" value="' + escapeAttrValue(person.email || '') + '"></td>',
-          '<td>' + renderEmployeeScheduleRoleChecks(person.role || '') + '</td>',
-          '<td>' + renderEmployeeScheduleSkills(person.skills || {}) + '</td>',
-          '<td><select class="schedule-default-joc">' + employeeSchedulePartnerOptions(jocNames, person.defaultJoc || '', person.name || '', 'No linked JOC') + '</select></td>',
-          '<td class="schedule-active-cell"><label><input class="schedule-active" type="checkbox"' + (person.active !== false ? ' checked' : '') + '>Active</label></td>',
-          dayCells,
-          '<td><select class="schedule-coverage-partner">' + employeeSchedulePartnerOptions(jocNames, person.coveragePartner || '', person.name || '') + '</select></td>',
-        '</tr>'
+        '<div class="schedule-row schedule-person-card' + (person.active === false ? ' is-inactive' : '') + '" data-index="' + escapeAttrValue(index) + '" data-has-advisor="' + (hasAdvisor ? '1' : '0') + '" data-has-joc="' + (hasJoc ? '1' : '0') + '">',
+          '<div class="schedule-person-cell">',
+            '<div class="schedule-avatar" style="--avatar-bg:' + escapeAttrValue(employeeScheduleAvatarColor(name || person.email || index)) + '">' + escapeHtml(employeeScheduleInitials(name || person.email || 'New')) + '</div>',
+            '<div class="schedule-person-fields">',
+              '<input class="schedule-name" type="text" aria-label="Person name" placeholder="Person name" value="' + escapeAttrValue(name) + '">',
+              '<input class="schedule-email" type="email" aria-label="Email" placeholder="email@company.com" value="' + escapeAttrValue(person.email || '') + '">',
+              '<label class="schedule-active-control"><input class="schedule-active" type="checkbox"' + (person.active !== false ? ' checked' : '') + '>Active</label>',
+            '</div>',
+          '</div>',
+          '<div class="schedule-pill-stack">',
+            renderEmployeeScheduleRoleChecks(person.role || ''),
+            renderEmployeeScheduleSkills(person.skills || {}),
+          '</div>',
+          renderEmployeeScheduleDays(person, days),
+          '<div class="schedule-routing">',
+            '<label>Linked JOC<select class="schedule-default-joc">' + employeeSchedulePartnerOptions(jocNames, person.defaultJoc || '', person.name || '', 'No linked JOC') + '</select></label>',
+            '<label>Coverage Partner<select class="schedule-coverage-partner">' + employeeSchedulePartnerOptions(jocNames, person.coveragePartner || '', person.name || '') + '</select></label>',
+            '<label class="schedule-coverage-enabled-control"><input class="schedule-coverage-enabled" type="checkbox"' + (person.coverageEnabled !== false ? ' checked' : '') + '>Use coverage routing</label>',
+          '</div>',
+        '</div>'
       ].join('');
     }
 
     function renderEmployeeScheduleRoleChecks(role) {
       return [
-        '<div class="schedule-role-group">',
-          '<label><input class="schedule-role" type="checkbox" data-role="Client Advisor"' + (employeeScheduleHasRole(role, 'Client Advisor') ? ' checked' : '') + '>Client Advisor</label>',
-          '<label><input class="schedule-role" type="checkbox" data-role="JOC"' + (employeeScheduleHasRole(role, 'JOC') ? ' checked' : '') + '>JOC</label>',
+        '<div class="schedule-pill-row">',
+          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-role" type="checkbox" data-role="Client Advisor"' + (employeeScheduleHasRole(role, 'Client Advisor') ? ' checked' : '') + '><span>Advisor</span></label>',
+          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-role" type="checkbox" data-role="JOC"' + (employeeScheduleHasRole(role, 'JOC') ? ' checked' : '') + '><span>JOC</span></label>',
         '</div>'
       ].join('');
     }
@@ -3497,12 +3851,27 @@
     function renderEmployeeScheduleSkills(skills) {
       skills = skills || {};
       return [
-        '<div class="schedule-role-group">',
-          '<label><input class="schedule-skill-lab" type="checkbox"' + (skills.labDiamond ? ' checked' : '') + '>Lab</label>',
-          '<label><input class="schedule-skill-general" type="checkbox"' + (skills.generalAppointment !== false ? ' checked' : '') + '>General</label>',
-          '<label>Natural<select class="schedule-skill-natural">' + optionTags(['None', 'Primary', 'Backup'], skills.naturalDiamond || 'None') + '</select></label>',
+        '<div class="schedule-pill-row">',
+          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-skill-lab" type="checkbox"' + (skills.labDiamond ? ' checked' : '') + '><span>Lab</span></label>',
+          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-skill-general" type="checkbox"' + (skills.generalAppointment !== false ? ' checked' : '') + '><span>General</span></label>',
+          '<label class="schedule-natural-control"><span>Natural</span><select class="schedule-skill-natural">' + optionTags(['None', 'Primary', 'Backup'], skills.naturalDiamond || 'None') + '</select></label>',
         '</div>'
       ].join('');
+    }
+
+    function renderEmployeeScheduleDays(person, days) {
+      return [
+        '<div class="schedule-day-pills">',
+          (days || []).map(function (day) {
+            var checked = person.days && person.days[day];
+            return '<label class="schedule-day-chip" title="' + escapeAttrValue(day) + '"><input class="schedule-day" type="checkbox" data-day="' + escapeAttrValue(day) + '"' + (checked ? ' checked' : '') + '><span>' + escapeHtml(employeeScheduleDayLetter(day)) + '</span></label>';
+          }).join(''),
+        '</div>'
+      ].join('');
+    }
+
+    function employeeScheduleDayLetter(day) {
+      return String(day || '').charAt(0) || '';
     }
 
     function employeeSchedulePartnerOptions(names, selected, currentName, emptyLabel) {
@@ -3521,33 +3890,60 @@
       var people = res.people || [];
       var changeTypes = res.changeTypes || ['Working', 'Full-day off', 'PTO', 'Sick', 'Vacation'];
       return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">One-off change</div><h2>Set a day off or working override</h2></div></div>',
-          '<div class="admin-filter-grid">',
+        '<section class="schedule-override-panel">',
+          '<div><div class="eyebrow">Schedule override</div><h2>Add a schedule override</h2><div class="meta">One-off day off, partial shift, or extra working day for any team member.</div></div>',
+          '<div class="schedule-override-form-grid">',
             '<div><label for="scheduleChangeEmployee">Employee</label><select id="scheduleChangeEmployee">' + employeeSchedulePersonOptions(people) + '</select></div>',
-            '<div><label for="scheduleChangeDate">Date</label><input id="scheduleChangeDate" type="date"></div>',
-            '<div><label for="scheduleChangeType">Change Type</label><select id="scheduleChangeType">' + optionTags(changeTypes, 'Full-day off') + '</select></div>',
+            '<div><label for="scheduleChangeDate">Date</label><input id="scheduleChangeDate" type="date" value="' + escapeAttrValue(currentDateKey()) + '"></div>',
+            '<div class="schedule-form-wide"><label>Change Type</label>' + renderEmployeeScheduleChangeTypeOptions(changeTypes, 'Full-day off') + '</div>',
             '<div><label for="scheduleChangeFrom">Available From</label><input id="scheduleChangeFrom" type="time"></div>',
             '<div><label for="scheduleChangeUntil">Available Until</label><input id="scheduleChangeUntil" type="time"></div>',
-            '<div><label for="scheduleChangeNotes">Notes</label><input id="scheduleChangeNotes" type="text"></div>',
+            '<div class="schedule-form-wide"><label for="scheduleChangeNotes">Notes</label><input id="scheduleChangeNotes" type="text" placeholder="e.g. doctor appointment"></div>',
           '</div>',
-          '<div class="actions"><button class="primary js-schedule-add-change" type="button">Save Change</button></div>',
+          '<div class="actions"><button class="js-schedule-add-change" type="button">Save Override</button></div>',
         '</section>'
       ].join('');
     }
 
-    function renderEmployeeScheduleChanges(changes) {
+    function renderEmployeeScheduleChangeTypeOptions(changeTypes, selected) {
+      var order = ['Full-day off', 'Working', 'PTO', 'Sick', 'Vacation'];
+      var seen = {};
+      var values = [];
+      order.concat(changeTypes || []).forEach(function (type) {
+        var value = String(type || '').trim();
+        if (!value || seen[norm(value)]) return;
+        seen[norm(value)] = true;
+        values.push(value);
+      });
       return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Schedule changes</div><h2>Overrides</h2></div></div>',
-          changes && changes.length ? '<div class="schedule-changes-list">' + changes.map(function (change) {
+        '<div class="schedule-change-type-grid">',
+          values.map(function (value) {
+            return '<label class="schedule-change-type-pill"><input type="radio" name="scheduleChangeType" value="' + escapeAttrValue(value) + '"' + (norm(value) === norm(selected) ? ' checked' : '') + '><span>' + escapeHtml(employeeScheduleChangeTypeLabel(value)) + '</span></label>';
+          }).join(''),
+        '</div>'
+      ].join('');
+    }
+
+    function employeeScheduleChangeTypeLabel(value) {
+      var type = norm(value);
+      if (type === 'full-day off') return 'Full day off';
+      if (type === 'working') return 'Extra / partial';
+      return value || 'Override';
+    }
+
+    function renderEmployeeScheduleChanges(changes) {
+      changes = changes || [];
+      return [
+        '<section class="schedule-override-panel">',
+          '<div><div class="eyebrow">Overrides</div><h2>Upcoming overrides</h2><div class="meta">' + escapeHtml(changes.length + ' recorded') + '</div></div>',
+          changes.length ? '<div class="schedule-changes-list">' + changes.map(function (change) {
             return [
               '<div class="schedule-change-row">',
                 '<div>',
                   '<div class="task-title">' + escapeHtml(change.name || '') + '</div>',
-                  '<div class="meta">' + escapeHtml([change.date || '', change.changeType || '', change.availableFrom && ('from ' + change.availableFrom), change.availableUntil && ('until ' + change.availableUntil), change.notes || ''].filter(Boolean).join(' | ')) + '</div>',
+                  '<div class="meta">' + escapeHtml([change.changeType || '', change.date || '', change.availableFrom && ('from ' + change.availableFrom), change.availableUntil && ('until ' + change.availableUntil), change.notes || ''].filter(Boolean).join(' | ')) + '</div>',
                 '</div>',
-                '<button class="js-schedule-delete-change" type="button" data-name="' + escapeAttrValue(change.name || '') + '" data-date="' + escapeAttrValue(change.date || '') + '">Delete</button>',
+                '<button class="schedule-change-delete js-schedule-delete-change" type="button" data-name="' + escapeAttrValue(change.name || '') + '" data-date="' + escapeAttrValue(change.date || '') + '" aria-label="Delete schedule override">x</button>',
               '</div>'
             ].join('');
           }).join('') + '</div>' : '<div class="empty">No one-off schedule changes are recorded.</div>',
@@ -3588,6 +3984,43 @@
       });
     }
 
+    function setEmployeeScheduleFilter(filter) {
+      appState.employeeScheduleFilter = filter || 'all';
+      applyEmployeeScheduleFilter(appState.employeeScheduleFilter);
+    }
+
+    function applyEmployeeScheduleFilter(filter) {
+      filter = filter || 'all';
+      var shell = document.querySelector('.schedule-shell');
+      if (!shell) return;
+      shell.setAttribute('data-schedule-filter', filter);
+      Array.prototype.slice.call(shell.querySelectorAll('.js-schedule-filter')).forEach(function (button) {
+        var active = (button.getAttribute('data-filter') || 'all') === filter;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    function employeeScheduleInitials(value) {
+      var parts = String(value || '').replace(/@.*/, '').split(/\s+/).filter(Boolean);
+      if (!parts.length) return '?';
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+
+    function employeeScheduleAvatarColor(value) {
+      var colors = ['#3F2F91', '#9B3D1F', '#0F6B56', '#1769AA', '#8A5A08', '#5946C6', '#437C17', '#7B2147', '#4B4A45', '#0D6F5A'];
+      var text = String(value || '');
+      var hash = 0;
+      for (var i = 0; i < text.length; i++) hash = (hash + text.charCodeAt(i) * (i + 1)) % 997;
+      return colors[hash % colors.length];
+    }
+
+    function selectedEmployeeScheduleChangeType() {
+      var input = document.querySelector('input[name="scheduleChangeType"]:checked');
+      return input ? input.value || 'Full-day off' : 'Full-day off';
+    }
+
     function collectEmployeeSchedules() {
       var rows = Array.prototype.slice.call(document.querySelectorAll('.schedule-row'));
       return rows.map(function (row) {
@@ -3607,6 +4040,7 @@
           active: !!((row.querySelector('.schedule-active') || {}).checked),
           days: days,
           defaultJoc: (row.querySelector('.schedule-default-joc') || {}).value || '',
+          coverageEnabled: !!((row.querySelector('.schedule-coverage-enabled') || {}).checked),
           skills: {
             labDiamond: !!((row.querySelector('.schedule-skill-lab') || {}).checked),
             naturalDiamond: (row.querySelector('.schedule-skill-natural') || {}).value || 'None',
@@ -3637,6 +4071,7 @@
     function addEmployeeScheduleRow() {
       var res = appState.employeeSchedule || {};
       if (!res.people) res.people = [];
+      appState.employeeScheduleFilter = 'all';
       res.people.push({
         name: '',
         email: '',
@@ -3659,7 +4094,7 @@
         email: person.email || '',
         role: person.role || '',
         date: valueOf('scheduleChangeDate'),
-        changeType: valueOf('scheduleChangeType'),
+        changeType: selectedEmployeeScheduleChangeType(),
         availableFrom: valueOf('scheduleChangeFrom'),
         availableUntil: valueOf('scheduleChangeUntil'),
         notes: valueOf('scheduleChangeNotes')
@@ -3680,6 +4115,17 @@
       var name = sourceButton.getAttribute('data-name') || '';
       var date = sourceButton.getAttribute('data-date') || '';
       if (!name || !date) return;
+      if (sourceButton.getAttribute('data-confirm') !== '1') {
+        sourceButton.setAttribute('data-confirm', '1');
+        sourceButton.textContent = 'Confirm';
+        window.setTimeout(function () {
+          if (sourceButton && sourceButton.getAttribute('data-confirm') === '1') {
+            sourceButton.removeAttribute('data-confirm');
+            sourceButton.textContent = 'x';
+          }
+        }, 4000);
+        return;
+      }
       serverCall('sw_adminDeleteScheduleChange', [name, date], function (res) {
         appState.employeeSchedule = res.schedule || {};
         renderEmployeeSchedules(appState.employeeSchedule);
@@ -3706,11 +4152,9 @@
       document.getElementById('taskList').innerHTML = [
         '<div class="admin-dashboard-shell">',
           renderAdminDashboardFilters(res),
-          renderAdminDashboardModeToggle(),
           warnings,
-          appState.adminDashboardMode === 'kanban'
-            ? renderAdminDashboardKanban(res.kanban || { columns: [] })
-            : renderAdminDashboardHealth(res.health || {}),
+          '<div id="adminDashboardDetailMount"' + (appState.adminDashboardDetail ? '' : ' style="display:none"') + '>' + (appState.adminDashboardDetail ? customerSearchDetailPanelHtml(appState.adminDashboardDetail) : '') + '</div>',
+          renderAdminDashboardKanban(res.kanban || { columns: [] }),
         '</div>'
       ].join('');
     }
@@ -3762,260 +4206,21 @@
       return tags.join('');
     }
 
-    function renderAdminDashboardModeToggle() {
-      return [
-        '<div class="admin-dashboard-toolbar">',
-          '<div>',
-            '<div class="eyebrow">Admin Dashboard</div>',
-            '<h2>' + (appState.adminDashboardMode === 'kanban' ? 'Customer pipeline kanban' : 'Business health and customer pipeline') + '</h2>',
-          '</div>',
-          '<div class="admin-mode-toggle" role="group" aria-label="Admin dashboard view">',
-            '<button class="js-admin-dashboard-mode' + (appState.adminDashboardMode !== 'kanban' ? ' active' : '') + '" type="button" data-mode="health">Health Dashboard</button>',
-            '<button class="js-admin-dashboard-mode' + (appState.adminDashboardMode === 'kanban' ? ' active' : '') + '" type="button" data-mode="kanban">Kanban</button>',
-          '</div>',
-        '</div>'
-      ].join('');
-    }
-
-    function renderAdminDashboardHealth(health) {
-      health = health || {};
-      return [
-        renderAdminRiskSnapshot(health.snapshot || []),
-        renderAdminPulse(health.pulse || []),
-        renderAdminPipeline(health.pipeline || {}),
-        '<div class="admin-dashboard-grid">',
-          renderAdminTrend(health.trend || {}),
-          renderAdminLeadSources(health.leadSources || {}),
-        '</div>',
-        renderAdminAdvisorScorecard((health.advisorScorecard || {}).rows || []),
-        '<div class="admin-dashboard-grid">',
-          renderAdminTopDeals(health.topDeals || []),
-          renderAdminReceivables(health.receivables || {}),
-        '</div>'
-      ].join('');
-    }
-
-    function renderAdminRiskSnapshot(cards) {
-      return [
-        '<section class="admin-health-section unframed">',
-          '<div class="admin-health-heading">',
-            '<div><div class="eyebrow">At-risk snapshot</div><h2>Needs attention now</h2></div>',
-          '</div>',
-          '<div class="admin-risk-grid">',
-            (cards || []).map(function (card) {
-              return [
-                '<div class="admin-health-card ' + escapeAttr(card.tone || '') + '">',
-                  '<div class="eyebrow">' + escapeHtml(card.title || '') + '</div>',
-                  '<div class="admin-health-value">' + escapeHtml(card.value == null ? 0 : card.value) + '</div>',
-                  '<div class="meta">' + escapeHtml(card.caption || '') + '</div>',
-                  '<div class="admin-health-footnote">' + escapeHtml(card.footnote || '') + '</div>',
-                '</div>'
-              ].join('');
-            }).join(''),
-          '</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminPulse(cards) {
-      return [
-        '<section class="admin-health-section unframed">',
-          '<div class="admin-health-heading">',
-            '<div><div class="eyebrow">Weekly pulse</div><h2>Current window</h2></div>',
-          '</div>',
-          '<div class="admin-pulse-grid">',
-            (cards || []).map(function (card) {
-              return [
-                '<div class="admin-health-card">',
-                  '<div class="eyebrow">' + escapeHtml(card.label || '') + '</div>',
-                  '<div class="admin-health-value">' + escapeHtml(card.value == null ? 0 : card.value) + '</div>',
-                  '<div class="meta">' + escapeHtml(card.caption || '') + '</div>',
-                '</div>'
-              ].join('');
-            }).join(''),
-          '</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminPipeline(pipeline) {
-      pipeline = pipeline || {};
-      var stages = pipeline.stages || [];
-      return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading">',
-            '<div>',
-              '<div class="eyebrow">Pipeline by stage</div>',
-              '<h2>Active customers · weighted value</h2>',
-              '<div class="meta">' + escapeHtml((pipeline.activeCustomers || 0) + ' active customer(s) · ' + formatAdminCurrency(pipeline.weightedValue || 0) + ' total weighted pipeline · ' + formatAdminCurrency(pipeline.outstandingReceivables || 0) + ' outstanding receivables') + '</div>',
-            '</div>',
-          '</div>',
-          '<div class="admin-stage-grid">',
-            stages.map(function (stage) {
-              return [
-                '<div class="admin-stage-card ' + escapeAttr(stage.key || '') + '">',
-                  '<div class="eyebrow">' + escapeHtml(stage.label || '') + '</div>',
-                  '<div class="stat-value">' + escapeHtml(stage.count || 0) + '</div>',
-                  '<div class="meta">' + escapeHtml(formatAdminCurrency(stage.weightedValue || 0)) + ' weighted</div>',
-                  '<div class="meta">' + escapeHtml(formatAdminCurrency(stage.receivables || 0)) + ' receivable</div>',
-                '</div>'
-              ].join('');
-            }).join(''),
-          '</div>',
-          '<div class="template-box" style="margin-top:14px;min-height:0">' + escapeHtml(pipeline.insight || '') + '</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminTrend(trend) {
-      trend = trend || {};
-      var weeks = trend.weeks || [];
-      var maxBookings = Math.max(1, Number(trend.maxBookings || 0));
-      var maxDeposits = Math.max(1, Number(trend.maxDeposits || 0));
-      return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Trend · last 12 weeks</div><h2>Bookings and first-time deposits</h2></div></div>',
-          '<div class="admin-trend-chart">',
-            weeks.map(function (week) {
-              var bookingHeight = Math.max(2, Math.round((Number(week.bookings || 0) / maxBookings) * 150));
-              var depositHeight = Math.max(2, Math.round((Number(week.firstDeposits || 0) / maxDeposits) * 150));
-              return [
-                '<div class="admin-trend-week" title="' + escapeAttrValue((week.startDate || '') + ' to ' + (week.endDate || '') + ': ' + (week.bookings || 0) + ' booking(s), ' + (week.firstDeposits || 0) + ' first deposit(s)') + '">',
-                  '<div class="admin-trend-bars">',
-                    '<div class="admin-trend-bar" style="height:' + bookingHeight + 'px"></div>',
-                    '<div class="admin-trend-dot" style="height:' + depositHeight + 'px"></div>',
-                  '</div>',
-                  '<div class="admin-trend-label">' + escapeHtml(week.label || '') + '</div>',
-                '</div>'
-              ].join('');
-            }).join(''),
-          '</div>',
-          '<div class="meta" style="margin-top:10px"><span style="color:#7E6DD8">■</span> Bookings &nbsp; <span style="color:#168A62">■</span> First-time deposits</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminLeadSources(sourceData) {
-      sourceData = sourceData || {};
-      if (!sourceData.available) {
-        return [
-          '<section class="admin-health-section">',
-            '<div class="admin-health-heading"><div><div class="eyebrow">Lead sources · 90 days</div><h2>Where customers come from</h2></div></div>',
-            '<div class="empty">' + escapeHtml(sourceData.note || 'Lead source data is unavailable.') + '</div>',
-          '</section>'
-        ].join('');
+    function openAdminDashboardCustomerDetail(root) {
+      if (!root) return;
+      appState.adminDashboardSelectedRoot = root;
+      appState.detailRequestId += 1;
+      var detailRequestId = appState.detailRequestId;
+      var mount = document.getElementById('adminDashboardDetailMount');
+      if (mount) {
+        mount.innerHTML = '<div class="customer-detail-card"><div class="loading">LOADING CUSTOMER</div></div>';
+        mount.style.display = '';
       }
-      return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Lead sources · 90 days</div><h2>Where customers come from</h2></div></div>',
-          '<div class="admin-source-list">',
-            (sourceData.rows || []).map(function (row) {
-              return [
-                '<div class="admin-source-row">',
-                  '<div class="admin-source-top"><span>' + escapeHtml(row.source || '') + '</span><span class="meta">' + escapeHtml((row.count || 0) + ' · ' + (row.pct || 0) + '%') + '</span></div>',
-                  '<div class="admin-source-track"><div class="admin-source-fill" style="width:' + Math.max(1, Math.min(100, Number(row.pct || 0))) + '%"></div></div>',
-                '</div>'
-              ].join('');
-            }).join(''),
-          '</div>',
-          '<div class="meta" style="margin-top:12px">' + escapeHtml(sourceData.note || '') + '</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminAdvisorScorecard(rows) {
-      return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Advisor scorecard</div><h2>Performance and hygiene by rep</h2></div></div>',
-          rows.length ? [
-            '<div class="admin-scorecard-wrap"><table class="admin-scorecard">',
-              '<thead><tr><th>Rep</th><th>Customers</th><th>Active Pipeline</th><th>Win Rate</th><th>Collected</th><th>No-touch &gt;48h</th><th>3D Overdue</th><th>Escalations</th></tr></thead>',
-              '<tbody>',
-                rows.map(function (row) {
-                  return [
-                    '<tr>',
-                      '<td>' + escapeHtml(row.advisor || 'Unassigned') + '</td>',
-                      '<td>' + escapeHtml(row.customers || 0) + '</td>',
-                      '<td>' + escapeHtml(formatAdminCurrency(row.weightedPipeline || 0)) + '</td>',
-                      '<td>' + escapeHtml(row.winRate == null ? '-' : row.winRate + '%') + '</td>',
-                      '<td>' + escapeHtml(formatAdminCurrency(row.collected || 0)) + '</td>',
-                      '<td>' + escapeHtml(row.noTouch || 0) + '</td>',
-                      '<td>' + escapeHtml(row.threeDOverdue || 0) + '</td>',
-                      '<td>' + escapeHtml(row.escalations || 0) + '</td>',
-                    '</tr>'
-                  ].join('');
-                }).join(''),
-              '</tbody>',
-            '</table></div>'
-          ].join('') : '<div class="empty">No advisor data matches these filters.</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminTopDeals(rows) {
-      return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Top deals to protect</div><h2>Highest weighted pipeline</h2></div></div>',
-          rows.length ? '<div class="admin-deal-list">' + rows.map(function (row) {
-            var title = row.masterUrl ? '<a href="' + escapeHref(row.masterUrl) + '" target="_blank">' + escapeHtml(row.customerName || '') + '</a>' : escapeHtml(row.customerName || '');
-            return [
-              '<div class="admin-deal-row">',
-                '<div><div class="task-title">' + title + '</div><div class="meta">' + escapeHtml([row.advisor, row.stageLabel, row.quietDays == null ? '' : row.quietDays + 'd quiet'].filter(Boolean).join(' · ')) + '</div></div>',
-                '<div class="task-side">' + escapeHtml(formatAdminCurrency(row.weightedValue || 0)) + '</div>',
-              '</div>'
-            ].join('');
-          }).join('') + '</div>' : '<div class="empty">No weighted pipeline deals match these filters.</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminReceivables(data) {
-      data = data || {};
-      var rows = data.rows || [];
-      return [
-        '<section class="admin-health-section">',
-          '<div class="admin-health-heading"><div><div class="eyebrow">Receivables watch</div><h2>Outstanding deposit balances</h2></div></div>',
-          '<div class="admin-health-card" style="margin-bottom:12px">',
-            '<div class="eyebrow">Open balance · ' + escapeHtml(data.customers || 0) + ' customer(s)</div>',
-            '<div class="admin-health-value">' + escapeHtml(formatAdminCurrency(data.openBalance || 0)) + '</div>',
-          '</div>',
-          rows.length ? '<div class="admin-deal-list">' + rows.map(function (row) {
-            var title = row.masterUrl ? '<a href="' + escapeHref(row.masterUrl) + '" target="_blank">' + escapeHtml(row.customerName || '') + '</a>' : escapeHtml(row.customerName || '');
-            return [
-              '<div class="admin-deal-row">',
-                '<div><div class="task-title">' + title + '</div><div class="meta">' + escapeHtml([row.advisor, row.stageLabel, row.lastPaymentDate ? 'last touch ' + row.lastPaymentDate : ''].filter(Boolean).join(' · ')) + '</div></div>',
-                '<div class="task-side">' + escapeHtml(formatAdminCurrency(row.balanceDue || 0)) + '</div>',
-              '</div>'
-            ].join('');
-          }).join('') + '</div>' : '<div class="empty">No open balances match these filters.</div>',
-        '</section>'
-      ].join('');
-    }
-
-    function renderAdminDashboardMetrics(metrics) {
-      var cards = [
-        ['Bookings Created', metrics.bookingsCreated || 0, 'New appointments booked in range'],
-        ['Consults Scheduled', metrics.consultationsScheduled || 0, 'Initial consultations on calendar'],
-        ['Viewings Scheduled', metrics.viewingsScheduled || 0, 'Diamond viewings on calendar'],
-        ['Consults Actual', metrics.consultationsActual || 0, 'Completed or attended consultations'],
-        ['Viewings Actual', metrics.viewingsActual || 0, 'Completed or attended viewings'],
-        ['Payments Net', formatAdminCurrency(metrics.paymentsNet || 0), (metrics.paymentsCount || 0) + ' receipt(s)'],
-        ['First Deposits', formatAdminCurrency(metrics.firstDepositNet || 0), (metrics.firstDepositCount || 0) + ' first receipt(s)'],
-        ['Open Admin Tasks', metrics.adminOpenTasks || 0, (metrics.adminOverdueTasks || 0) + ' overdue']
-      ];
-      return '<div class="admin-kpi-grid">' + cards.map(function (card) {
-        return adminMetricCardHtml(card[0], card[1], card[2]);
-      }).join('') + '</div>';
-    }
-
-    function adminMetricCardHtml(label, value, caption) {
-      return [
-        '<div class="admin-kpi-card">',
-          '<div class="eyebrow">' + escapeHtml(label) + '</div>',
-          '<div class="stat-value">' + escapeHtml(value) + '</div>',
-          '<div class="meta">' + escapeHtml(caption || '') + '</div>',
-        '</div>'
-      ].join('');
+      serverCall('sw_getCustomerSearchDetail', [root], function (res) {
+        if (detailRequestId !== appState.detailRequestId || appState.adminDashboardSelectedRoot !== root) return;
+        appState.adminDashboardDetail = res || {};
+        renderAdminDashboard(appState.adminDashboard || {});
+      }, 'Loading customer');
     }
 
     function renderAdminDashboardKanban(kanban) {
@@ -4067,117 +4272,6 @@
           '<span class="badge">' + escapeHtml(card.stageLabel || '') + '</span>',
         '</button>'
       ].join('');
-    }
-
-    function renderAdminDashboardHealthSummary(res) {
-      var health = (res || {}).health || {};
-      var pipeline = health.pipeline || {};
-      var filters = (res || {}).filters || {};
-      document.getElementById('detailPanel').innerHTML = [
-        '<div class="panel-header">',
-          '<div class="eyebrow">Admin Dashboard</div>',
-          '<h2>Health Snapshot</h2>',
-        '</div>',
-        '<div class="detail-body">',
-          '<div class="detail-section">',
-            '<label>Window</label>',
-            '<div class="meta">' + escapeHtml(filters.windowLabel || [filters.startDate, filters.endDate].filter(Boolean).join(' to ')) + '</div>',
-            '<div class="meta">' + escapeHtml([filters.brand, filters.clientAdvisor, filters.joc].filter(Boolean).join(' | ') || 'All owners and brands') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>Pipeline</label>',
-            '<div class="template-box">' + escapeHtml((pipeline.activeCustomers || 0) + ' active customer(s), ' + formatAdminCurrency(pipeline.weightedValue || 0) + ' weighted pipeline, ' + formatAdminCurrency(pipeline.outstandingReceivables || 0) + ' outstanding receivables.') + '</div>',
-          '</div>',
-        '</div>'
-      ].join('');
-    }
-
-    function renderAdminDashboardSummary(res) {
-      var metrics = res.metrics || {};
-      var filters = res.filters || {};
-      document.getElementById('detailPanel').innerHTML = [
-        '<div class="panel-header">',
-          '<div class="eyebrow">Admin Dashboard</div>',
-          '<h2>Weekly Snapshot</h2>',
-        '</div>',
-        '<div class="detail-body">',
-          '<div class="detail-section">',
-            '<label>Window</label>',
-            '<div class="meta">' + escapeHtml(filters.windowLabel || [filters.startDate, filters.endDate].filter(Boolean).join(' to ')) + '</div>',
-            '<div class="meta">' + escapeHtml([filters.brand, filters.clientAdvisor, filters.joc].filter(Boolean).join(' | ') || 'All owners and brands') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>At a Glance</label>',
-            '<div class="template-box">' + escapeHtml((metrics.bookingsCreated || 0) + ' booking(s), ' + (metrics.paymentsCount || 0) + ' payment receipt(s), ' + (metrics.adminOpenTasks || 0) + ' open admin task(s).') + '</div>',
-          '</div>',
-          '<div class="empty">No customer selected.</div>',
-        '</div>'
-      ].join('');
-    }
-
-    function renderAdminCustomerDetail(root) {
-      var card = findAdminDashboardCard(root);
-      if (!card) return;
-      var links = [
-        card.clientFolder ? '<a href="' + escapeHref(card.clientFolder) + '" target="_blank">Client Folder</a>' : '',
-        card.reportUrl ? '<a href="' + escapeHref(card.reportUrl) + '" target="_blank">Status Report</a>' : '',
-        card.quotationUrl ? '<a href="' + escapeHref(card.quotationUrl) + '" target="_blank">Quotation</a>' : '',
-        card.tracker3dUrl ? '<a href="' + escapeHref(card.tracker3dUrl) + '" target="_blank">3D Tracker</a>' : '',
-        card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : ''
-      ].filter(Boolean);
-      document.getElementById('detailPanel').innerHTML = [
-        '<div class="panel-header">',
-          '<div class="eyebrow">' + escapeHtml(card.stageLabel || 'Customer') + '</div>',
-          '<h2>' + escapeHtml(card.customerName || 'No customer') + '</h2>',
-        '</div>',
-        '<div class="detail-body">',
-          '<div class="detail-section">',
-            '<label>Owners</label>',
-            '<div class="meta">Client Advisor: ' + escapeHtml(card.clientAdvisor || 'Unassigned') + '</div>',
-            '<div class="meta">JOC: ' + escapeHtml(card.joc || 'Unassigned') + '</div>',
-            '<div class="meta">' + escapeHtml(card.brand || '') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>Status</label>',
-            '<div class="meta">Sales Stage: ' + escapeHtml(card.salesStage || '') + '</div>',
-            '<div class="meta">Conversion: ' + escapeHtml(card.conversionStatus || '') + '</div>',
-            '<div class="meta">Custom Order: ' + escapeHtml(card.customOrderStatus || '') + '</div>',
-            '<div class="meta">In Production: ' + escapeHtml(card.inProductionStatus || '') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>Appointment</label>',
-            '<div class="meta">Next: ' + escapeHtml(card.nextVisit || 'None scheduled') + '</div>',
-            '<div class="meta">Last: ' + escapeHtml(card.lastVisit || 'None recorded') + '</div>',
-            '<div class="meta">Root: ' + escapeHtml(card.root || '') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>Payments</label>',
-            '<div class="meta">SO#: ' + escapeHtml(card.so || '') + '</div>',
-            '<div class="meta">Paid net: ' + escapeHtml(formatAdminCurrency(card.paidNet || 0)) + '</div>',
-            '<div class="meta">Balance: ' + escapeHtml(card.balanceDue !== '' && card.balanceDue != null ? formatAdminCurrency(card.balanceDue) : 'Unavailable') + '</div>',
-            '<div class="meta">Last payment: ' + escapeHtml(card.lastPaymentDate || 'Unavailable') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>Next Steps</label>',
-            '<div class="template-box">' + escapeHtml(card.nextSteps || 'No next steps recorded.') + '</div>',
-          '</div>',
-          '<div class="detail-section">',
-            '<label>References</label>',
-            links.length ? '<div class="attachment-list">' + links.map(function (link) { return '<div class="attachment-row">' + link + '</div>'; }).join('') + '</div>' : '<div class="empty">No links available for this customer.</div>',
-          '</div>',
-        '</div>'
-      ].join('');
-    }
-
-    function findAdminDashboardCard(root) {
-      var columns = ((appState.adminDashboard || {}).kanban || {}).columns || [];
-      for (var i = 0; i < columns.length; i++) {
-        var cards = columns[i].cards || [];
-        for (var j = 0; j < cards.length; j++) {
-          if (String(cards[j].root) === String(root)) return cards[j];
-        }
-      }
-      return null;
     }
 
     function loadCustomerSearch(filters, preserveDetail) {
