@@ -59,7 +59,7 @@ function sw_getAdminDashboard(authToken, filters) {
     var payments = swAdminDashboardReadPayments_(scope, filters, warnings);
     mark('payments', { receipts: payments.receipts ? payments.receipts.length : 0 });
     var state = swReadTaskListState_(ss, true);
-    var tasks = swListVisibleTasksFromState_(state, user, 'admin');
+    var tasks = swAdminDashboardOpenTasksFromState_(state);
     mark('tasks', { rows: tasks.length });
     var indexes = swAdminDashboardBuildIndexes_(appointments);
     mark('indexes', { roots: Object.keys(indexes.currentByRoot || {}).length });
@@ -323,6 +323,12 @@ function swAdminDashboardTaskMatchesFilters_(task, currentByRoot, filters) {
   return true;
 }
 
+function swAdminDashboardOpenTasksFromState_(state) {
+  return (state && state.tasks ? state.tasks : []).filter(function (task) {
+    return task && task.taskId && task.status !== SW_STATUSES.COMPLETED;
+  });
+}
+
 function swAdminDashboardBuildIndexes_(appointments) {
   var groups = swAdminDashboardRowsByRoot_(appointments);
   var currentByRoot = {};
@@ -424,7 +430,7 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   }
 
   var receipts = [];
-  for (var i = 1; i < values.length; i++) {
+  for (var i = 1; i < display.length; i++) {
     var row = values[i];
     var drow = display[i];
     var docType = swTrim_(swCell_(drow, C.docType));
@@ -534,11 +540,16 @@ function swAdminDashboardNumberOrBlank_(value) {
 }
 
 function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings, indexes) {
+  var mark = swStepTimer_('swAdminDashboardHealthContext');
   indexes = indexes || {};
   var groups = indexes.groups || swAdminDashboardRowsByRoot_(appointments);
+  mark('groups', { roots: Object.keys(groups || {}).length });
   var rootIndex = swAdminDashboardReadRootIndex_(ss, warnings);
+  mark('rootIndex', { available: rootIndex.available });
   var statusLog = swAdminDashboardReadStatusLog_(ss, appointments, warnings);
+  mark('statusLog', { available: statusLog.available });
   var stageWeights = swAdminDashboardStageWeights_(ss);
+  mark('stageWeights');
   var master = ss.getSheetByName(SW_SHEETS.MASTER);
   var masterGid = master ? master.getSheetId() : '';
   var rows = [];
@@ -633,6 +644,7 @@ function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payment
       masterUrl: masterGid && rec.row ? ('https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit#gid=' + masterGid + '&range=A' + rec.row) : ''
     });
   });
+  mark('rows', { rows: rows.length });
 
   return {
     ss: ss,
@@ -928,7 +940,6 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
     warnings.push('Last-touch data unavailable: 07_Root_Index is missing or empty.');
     return out;
   }
-  var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
   var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
   var H = swHeaderMapFromArray_(display[0].map(function (h) { return swTrim_(h); }));
   var C = {
@@ -941,7 +952,7 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
   }
   for (var i = 1; i < values.length; i++) {
     var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
-    var when = swAdminDashboardDateTimeValue_(swCell_(values[i], C.updatedAt), swCell_(display[i], C.updatedAt));
+    var when = swAdminDashboardDateTimeValue_(swCell_(display[i], C.updatedAt), swCell_(display[i], C.updatedAt));
     if (!root || !when) continue;
     if (!out.byRoot[root] || when.getTime() > out.byRoot[root].getTime()) out.byRoot[root] = when;
   }
@@ -960,7 +971,6 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
   (appointments || []).forEach(function (rec) {
     if (rec.appt && rec.root) apptToRoot[rec.appt] = rec.root;
   });
-  var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
   var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
   var H = swHeaderMapFromArray_(display[0].map(function (h) { return swTrim_(h); }));
   var C = {
@@ -974,12 +984,12 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
     warnings.push('Status-log timing unavailable: 03_Client_Status_Log is missing an appointment/root id or Updated At.');
     return out;
   }
-  for (var i = 1; i < values.length; i++) {
+  for (var i = 1; i < display.length; i++) {
     var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
     var appt = swAdminDashboardCleanId_(swCell_(display[i], C.appt));
     root = root || apptToRoot[appt] || '';
     if (!root) continue;
-    var when = swAdminDashboardDateTimeValue_(swCell_(values[i], C.updatedAt), swCell_(display[i], C.updatedAt));
+    var when = swAdminDashboardDateTimeValue_(swCell_(display[i], C.updatedAt), swCell_(display[i], C.updatedAt));
     if (!when) continue;
     var custom = swNorm_(swCell_(display[i], C.custom));
     var ips = swTrim_(swCell_(display[i], C.inProduction));

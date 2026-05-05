@@ -893,10 +893,6 @@
       display: none;
     }
 
-    .shell.customer-search-wide {
-      max-width: none;
-    }
-
     .customer-search-wide .layout {
       grid-template-columns: minmax(0, 1fr);
     }
@@ -1841,7 +1837,7 @@
       adminDashboardMode: 'health',
       customerSearch: {
         query: '',
-        filters: { activeOnly: true },
+        filters: { activeOnly: true, defaultAdvisor: true },
         result: null,
         detail: null,
         selectedRoot: ''
@@ -1938,6 +1934,10 @@
             clearCustomerSearchFilters();
             return;
           }
+          if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
+          if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
+          if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
+          if (closestMatch_(event.target, '.js-customer-wax-save')) return submitCustomerSearchWaxRequest();
           var customerCard = closestMatch_(event.target, '.js-customer-search-card');
           if (customerCard) {
             openCustomerSearchDetail(customerCard.getAttribute('data-root') || '');
@@ -3163,7 +3163,7 @@
     function loadCustomerSearch(filters, preserveDetail) {
       var requestId = beginMainRequest('customerSearch');
       var current = appState.customerSearch || {};
-      filters = filters || current.filters || { activeOnly: true };
+      filters = filters || current.filters || defaultCustomerSearchFilters();
       filters.activeOnly = filters.activeOnly !== false;
       appState.customerSearch.filters = filters;
       appState.customerSearch.query = filters.query || '';
@@ -3174,14 +3174,17 @@
         appState.customerSearch.detail = null;
         appState.customerSearch.selectedRoot = '';
         hideCustomerSearchWorkspace();
-      } else if (appState.customerSearch.detail) {
-        showCustomerSearchWorkspace();
       }
       serverCall('sw_searchCustomers', [filters.query || '', filters], function (res) {
         if (!isCurrentMainRequest(requestId, 'customerSearch')) return;
         appState.customerSearch.result = res || {};
+        appState.customerSearch.filters = (res && res.filters) || filters;
         renderCustomerSearch(res || {});
       }, 'Searching customers');
+    }
+
+    function defaultCustomerSearchFilters() {
+      return { activeOnly: true, defaultAdvisor: true };
     }
 
     function collectCustomerSearchFilters() {
@@ -3195,14 +3198,17 @@
     }
 
     function clearCustomerSearchFilters() {
-      appState.customerSearch.filters = { activeOnly: true };
+      appState.customerSearch.filters = defaultCustomerSearchFilters();
       appState.customerSearch.query = '';
       loadCustomerSearch(appState.customerSearch.filters);
     }
 
     function renderCustomerSearch(res) {
+      var detail = (appState.customerSearch || {}).detail;
+      var detailHtml = detail ? customerSearchDetailPanelHtml(detail) : '';
       document.getElementById('taskList').innerHTML = [
         renderCustomerSearchFilters(res),
+        '<div id="customerSearchDetailMount"' + (detailHtml ? '' : ' style="display:none"') + '>' + detailHtml + '</div>',
         renderCustomerSearchKanban((res || {}).kanban || { columns: [] })
       ].join('');
     }
@@ -3213,9 +3219,9 @@
       return [
         '<div class="admin-filter-panel">',
           '<div class="admin-filter-grid">',
-            '<div><label for="customerSearchQuery">Search</label><input id="customerSearchQuery" class="js-customer-search-field" value="' + escapeAttrValue(filters.query || '') + '" placeholder="Name, phone, email, SO, RootApptID"></div>',
+            '<div><label for="customerSearchQuery">Search</label><input id="customerSearchQuery" class="js-customer-search-field" value="' + escapeAttrValue(filters.query || '') + '" placeholder="Name, phone, email, SO, RootApptID, APPT_ID"></div>',
             '<div><label for="customerSearchBrand">Brand</label><select id="customerSearchBrand" class="js-customer-search-field">' + adminFilterOptionTags(options.brands || [], filters.brand || '', 'All Brands') + '</select></div>',
-            '<div><label for="customerSearchAdvisor">Client Advisor</label><select id="customerSearchAdvisor" class="js-customer-search-field">' + adminFilterOptionTags(options.clientAdvisors || [], filters.clientAdvisor || '', 'All Advisors') + '</select></div>',
+            '<div><label for="customerSearchAdvisor">Client Advisor</label><select id="customerSearchAdvisor" class="js-customer-search-field">' + customerSearchAdvisorOptionTags(options.clientAdvisors || [], filters.clientAdvisor || '') + '</select></div>',
             '<div><label for="customerSearchJoc">JOC</label><select id="customerSearchJoc" class="js-customer-search-field">' + adminFilterOptionTags(options.jocs || [], filters.joc || '', 'All JOC') + '</select></div>',
           '</div>',
           '<div class="task-top">',
@@ -3297,6 +3303,14 @@
     }
 
     function showCustomerSearchWorkspace(html) {
+      if (appState.view === 'customerSearch') {
+        var mount = document.getElementById('customerSearchDetailMount');
+        if (mount) {
+          if (html != null) mount.innerHTML = html;
+          mount.style.display = mount.innerHTML ? '' : 'none';
+          return;
+        }
+      }
       var workspace = document.getElementById('taskWorkspace');
       if (!workspace) return;
       if (html != null) workspace.innerHTML = html;
@@ -3304,6 +3318,11 @@
     }
 
     function hideCustomerSearchWorkspace() {
+      var mount = document.getElementById('customerSearchDetailMount');
+      if (mount) {
+        mount.innerHTML = '';
+        mount.style.display = 'none';
+      }
       var workspace = document.getElementById('taskWorkspace');
       if (!workspace) return;
       workspace.innerHTML = '';
@@ -3311,6 +3330,10 @@
     }
 
     function renderCustomerSearchDetail(res) {
+      showCustomerSearchWorkspace(customerSearchDetailPanelHtml(res));
+    }
+
+    function customerSearchDetailPanelHtml(res) {
       var card = res.card || {};
       var links = [
         card.clientFolder ? '<a href="' + escapeHref(card.clientFolder) + '" target="_blank">Client Folder</a>' : '',
@@ -3320,7 +3343,7 @@
         card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : '',
         card.masterUrl ? '<a href="' + escapeHref(card.masterUrl) + '" target="_blank">Open Master Row</a>' : ''
       ].filter(Boolean);
-      showCustomerSearchWorkspace([
+      return [
         '<div class="panel">',
         '<div class="panel-header">',
           '<div class="eyebrow">' + escapeHtml(card.stageLabel || 'Customer') + '</div>',
@@ -3338,7 +3361,27 @@
           renderCustomerWaxAction(card, res.formOptions || {}),
         '</div>',
         '</div>'
-      ].join(''));
+      ].join('');
+    }
+
+    function customerSearchAdvisorOptionTags(options, selected) {
+      return adminFilterOptionTags(customerSearchIndividualNames(options), selected, 'All Advisors');
+    }
+
+    function customerSearchIndividualNames(options) {
+      var seen = {};
+      var out = [];
+      (options || []).forEach(function (option) {
+        String(option || '').split(/\s*(?:\/|,|;|\+|&|\band\b)\s*/i).forEach(function (part) {
+          part = part.trim();
+          var key = norm(part);
+          if (!part || seen[key]) return;
+          seen[key] = true;
+          out.push(part);
+        });
+      });
+      out.sort(function (a, b) { return a.localeCompare(b); });
+      return out;
     }
 
     function renderCustomerSearchSummary(card) {

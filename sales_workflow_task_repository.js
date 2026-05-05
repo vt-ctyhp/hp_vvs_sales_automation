@@ -47,6 +47,39 @@ function swReadTaskListState_(ss, readOnly, options) {
   return swBuildTaskStateFromTasks_(rawTasks, [], options);
 }
 
+function swReadTaskListForRoot_(ss, rootApptId) {
+  var root = swTrim_(rootApptId);
+  if (!root) return [];
+  var sh = swGetRequiredSheet_(ss, SW_SHEETS.TASKS);
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+
+  var rowCount = lastRow - 1;
+  var rootCol = swTaskHeaderColumn_('RootApptID');
+  var apptCol = swTaskHeaderColumn_('APPT_ID');
+  var statusCol = swTaskHeaderColumn_('Status');
+  var primaryActionCol = swTaskHeaderColumn_('Primary Action');
+  var snoozeReasonCol = swTaskHeaderColumn_('Snooze Reason');
+  if (rootCol <= 0 || apptCol <= 0 || statusCol <= 0) return [];
+
+  var roots = sh.getRange(2, rootCol, rowCount, 1).getDisplayValues();
+  var appts = sh.getRange(2, apptCol, rowCount, 1).getDisplayValues();
+  var out = [];
+  for (var i = 0; i < rowCount; i++) {
+    if (swTrim_(roots[i][0]) !== root && swTrim_(appts[i][0]) !== root) continue;
+    var rowNumber = i + 2;
+    var coreRow = sh.getRange(rowNumber, 1, 1, statusCol).getDisplayValues()[0];
+    var extraRow = [];
+    if (primaryActionCol > 0 && snoozeReasonCol >= primaryActionCol && sh.getLastColumn() >= primaryActionCol) {
+      var extraWidth = Math.min(sh.getLastColumn(), snoozeReasonCol) - primaryActionCol + 1;
+      extraRow = sh.getRange(rowNumber, primaryActionCol, 1, extraWidth).getDisplayValues()[0];
+    }
+    var task = swTaskListFromListValues_(coreRow, extraRow, rowNumber);
+    if (task.taskId) out.push(task);
+  }
+  return out;
+}
+
 function swBuildTaskStateFromTasks_(rawTasks, rows, options) {
   options = options || {};
   var byId = {};

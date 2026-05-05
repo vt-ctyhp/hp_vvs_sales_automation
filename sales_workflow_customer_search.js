@@ -16,6 +16,9 @@ function sw_searchCustomers(authToken, query, filters) {
     query = swTrim_(query || filters.query || '');
 
     var appointments = swReadAppointments_(ss);
+    if (filters.defaultAdvisor && !filters.clientAdvisor) {
+      filters.clientAdvisor = swCustomerSearchDefaultAdvisor_(appointments, user);
+    }
     var rows = swCustomerSearchFilteredRows_(appointments, query, filters);
     var groups = swAdminDashboardRowsByRoot_(rows);
     var master = ss.getSheetByName(SW_SHEETS.MASTER);
@@ -207,6 +210,7 @@ function swCustomerSearchNormalizeFilters_(filters) {
     brand: swTrim_(filters.brand || ''),
     clientAdvisor: swTrim_(filters.clientAdvisor || ''),
     joc: swTrim_(filters.joc || ''),
+    defaultAdvisor: filters.defaultAdvisor === true || String(filters.defaultAdvisor || '').toLowerCase() === 'true',
     activeOnly: activeOnly
   };
 }
@@ -217,6 +221,7 @@ function swCustomerSearchPublicFilters_(filters) {
     brand: filters.brand || '',
     clientAdvisor: filters.clientAdvisor || '',
     joc: filters.joc || '',
+    defaultAdvisor: false,
     activeOnly: filters.activeOnly !== false
   };
 }
@@ -228,7 +233,7 @@ function swCustomerSearchFilteredRows_(appointments, query, filters) {
   var baseRows = (appointments || []).filter(function (rec) {
     if (filters.activeOnly && !swIsAppointmentActive_(rec)) return false;
     if (filters.brand && swNorm_(rec.brand) !== swNorm_(filters.brand)) return false;
-    if (filters.clientAdvisor && swNorm_(rec.assignedRep) !== swNorm_(filters.clientAdvisor)) return false;
+    if (filters.clientAdvisor && !swCustomerSearchAdvisorMatches_(rec.assignedRep, filters.clientAdvisor)) return false;
     if (filters.joc && swNorm_(rec.assistedRep) !== swNorm_(filters.joc)) return false;
     return true;
   });
@@ -264,7 +269,7 @@ function swCustomerSearchFilterOptions_(appointments) {
   (appointments || []).forEach(function (rec) {
     if (!swIsAppointmentActive_(rec)) return;
     if (rec.brand) brands.push(rec.brand);
-    if (rec.assignedRep) advisors.push(rec.assignedRep);
+    swCustomerSearchAdvisorParts_(rec.assignedRep).forEach(function (advisor) { advisors.push(advisor); });
     if (rec.assistedRep) jocs.push(rec.assistedRep);
   });
   return {
@@ -272,6 +277,69 @@ function swCustomerSearchFilterOptions_(appointments) {
     clientAdvisors: swUnique_(advisors).sort(),
     jocs: swUnique_(jocs).sort()
   };
+}
+
+function swCustomerSearchAdvisorParts_(value) {
+  var seen = {};
+  var out = [];
+  String(value || '').split(/\s*(?:\/|,|;|\+|&|\band\b)\s*/i).forEach(function (part) {
+    part = swTrim_(part);
+    var key = swNorm_(part);
+    if (!part || seen[key]) return;
+    seen[key] = true;
+    out.push(part);
+  });
+  return out;
+}
+
+function swCustomerSearchAdvisorMatches_(value, filter) {
+  var want = swNorm_(filter);
+  if (!want) return true;
+  var parts = swCustomerSearchAdvisorParts_(value);
+  for (var i = 0; i < parts.length; i++) {
+    if (swNorm_(parts[i]) === want) return true;
+  }
+  return swNorm_(value).indexOf(want) >= 0;
+}
+
+function swCustomerSearchDefaultAdvisor_(appointments, user) {
+  user = user || {};
+  if (!user.isRep) return '';
+  var candidates = swCustomerSearchUserAdvisorCandidates_(user);
+  if (!candidates.length) return '';
+  var candidateMap = {};
+  candidates.forEach(function (candidate) {
+    var key = swNorm_(candidate);
+    if (key) candidateMap[key] = true;
+  });
+  var active = (appointments || []).filter(function (rec) { return swIsAppointmentActive_(rec); });
+  for (var i = 0; i < active.length; i++) {
+    var parts = swCustomerSearchAdvisorParts_(active[i].assignedRep);
+    for (var j = 0; j < parts.length; j++) {
+      if (candidateMap[swNorm_(parts[j])]) return parts[j];
+    }
+  }
+  return '';
+}
+
+function swCustomerSearchUserAdvisorCandidates_(user) {
+  var out = [];
+  var name = swTrim_(user && user.name);
+  if (name) {
+    out.push(name);
+    var nameParts = name.split(/\s+/).filter(Boolean);
+    if (nameParts.length) out.push(nameParts[0]);
+  }
+  var email = swNormEmail_(user && user.email);
+  if (email) {
+    var local = email.split('@')[0].replace(/[._-]+/g, ' ');
+    if (local) {
+      out.push(local);
+      var localParts = local.split(/\s+/).filter(Boolean);
+      if (localParts.length) out.push(localParts[0]);
+    }
+  }
+  return swUnique_(out);
 }
 
 function swCustomerSearchCard_(ss, masterGid, root, rec, rootRows, stage) {
@@ -309,9 +377,13 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
   var card = swCustomerSearchCard_(ss, masterGid, target.root, target.rec, target.rows, stage);
   mark('card');
   var now = new Date().getTime();
-  var state = swReadTaskListState_(ss, true);
-  var tasks = (state.tasks || []).filter(function (t) {
-    return (swTrim_(t.root) === target.root || swTrim_(t.appt) === target.root) && t.status !== SW_STATUSES.COMPLETED;
+  var rootTasks = typeof swReadTaskListForRoot_ === 'function'
+    ? swReadTaskListForRoot_(ss, target.root)
+    : (swReadTaskListState_(ss, true).tasks || []).filter(function (t) {
+      return swTrim_(t.root) === target.root || swTrim_(t.appt) === target.root;
+    });
+  var tasks = (rootTasks || []).filter(function (t) {
+    return t.status !== SW_STATUSES.COMPLETED;
   }).map(function (t) {
     return swPublicTask_(t, now);
   });
