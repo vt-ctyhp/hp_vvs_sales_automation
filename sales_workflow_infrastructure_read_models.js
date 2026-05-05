@@ -5,6 +5,13 @@
  * narrow hidden projections in the 100 workbook, with live-source fallbacks.
  */
 
+var SW_DIAMOND_READ_MODEL_CACHE_SECONDS = 10 * 60;
+var SW_CALENDAR_MONTH_READ_MODEL_CACHE_SECONDS = 10 * 60;
+var SW_ADMIN_DASHBOARD_READ_MODEL_CACHE_SECONDS = 10 * 60;
+var SW_DIAMOND_READ_MODEL_MEMORY_CACHE_ = {};
+var SW_CALENDAR_MONTH_READ_MODEL_MEMORY_CACHE_ = {};
+var SW_ADMIN_DASHBOARD_READ_MODEL_MEMORY_CACHE_ = {};
+
 function swBuildDiamondReadModels_(ss, builtAt) {
   var started = new Date().getTime();
   var builtAtIso = swIso_(builtAt || new Date());
@@ -15,6 +22,7 @@ function swBuildDiamondReadModels_(ss, builtAt) {
     if (target && target.sheet) {
       var sh = target.sheet;
       sourceName = target.tab || sh.getName();
+      var sourceMeta = swDiamondReadModelSourceMeta_(target, sourceName);
       var lr = sh.getLastRow();
       var lc = sh.getLastColumn();
       if (lr >= 3 && lc >= 1) {
@@ -22,7 +30,7 @@ function swBuildDiamondReadModels_(ss, builtAt) {
         var C = swDiamondReadModelColumns_(hm);
         var values = swDiamondRead200Rows_(sh, 3, lr - 2, C, lc);
         values.forEach(function (row, i) {
-          var rec = swDiamondReadModelRecordFromRow_(row, i + 3, C, target);
+          var rec = swDiamondReadModelRecordFromRow_(row, i + 3, C, sourceMeta);
           if (rec.root || rec.certNo || rec.vendor || rec.diamond) records.push(rec);
         });
       }
@@ -32,6 +40,7 @@ function swBuildDiamondReadModels_(ss, builtAt) {
     var rowWrite = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_DIAMONDS, SW_DIAMOND_READ_MODEL_HEADERS, rowValues);
     var rootRows = swDiamondRootReadModelRows_(records, builtAtIso);
     var rootWrite = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_DIAMOND_ROOTS, SW_DIAMOND_ROOT_READ_MODEL_HEADERS, rootRows);
+    var cacheResult = swCacheDiamondReadModelRecords_(ss, records, { builtAt: builtAtIso });
     return {
       ok: rowWrite.ok !== false && rootWrite.ok !== false,
       sheet: SW_SHEETS.READ_MODEL_DIAMONDS,
@@ -42,11 +51,26 @@ function swBuildDiamondReadModels_(ss, builtAt) {
       rowBuildMs: rowWrite.buildMs || 0,
       rootBuildMs: rootWrite.buildMs || 0,
       sourceSheet: sourceName,
+      cacheOk: cacheResult.ok === true,
+      cacheChunks: cacheResult.chunks || 0,
+      cacheBytes: cacheResult.bytes || 0,
+      cacheError: cacheResult.reason || '',
       error: rowWrite.error || rootWrite.error || ''
     };
   } catch (err) {
     return swReadModelErrorResult_(err, started, SW_SHEETS.READ_MODEL_DIAMONDS);
   }
+}
+
+function swDiamondReadModelSourceMeta_(target, sourceName) {
+  var meta = {
+    sourceSpreadsheetUrl: '',
+    sourceSpreadsheetName: '',
+    sourceTab: sourceName || ''
+  };
+  try { meta.sourceSpreadsheetUrl = target && target.ss ? target.ss.getUrl() : ''; } catch (_) {}
+  try { meta.sourceSpreadsheetName = target && target.ss ? target.ss.getName() : ''; } catch (_) {}
+  return meta;
 }
 
 function swDiamondReadModelColumns_(hm) {
@@ -66,7 +90,7 @@ function swDiamondReadModelColumns_(hm) {
   return C;
 }
 
-function swDiamondReadModelRecordFromRow_(row, rowIndex, C, target) {
+function swDiamondReadModelRecordFromRow_(row, rowIndex, C, sourceMeta) {
   var shape = swDiamondCell_(row, C.shape);
   var carat = swDiamondCell_(row, C.carat);
   var color = swDiamondCell_(row, C.color);
@@ -109,9 +133,9 @@ function swDiamondReadModelRecordFromRow_(row, rowIndex, C, target) {
     invoice: swDiamondCell_(row, C.invoice),
     syncAt: swDiamondCell_(row, C.syncAt),
     diamond: diamond,
-    sourceSpreadsheetUrl: target && target.ss ? target.ss.getUrl() : '',
-    sourceSpreadsheetName: target && target.ss ? target.ss.getName() : '',
-    sourceTab: target && target.tab ? target.tab : ''
+    sourceSpreadsheetUrl: sourceMeta && sourceMeta.sourceSpreadsheetUrl || '',
+    sourceSpreadsheetName: sourceMeta && sourceMeta.sourceSpreadsheetName || '',
+    sourceTab: sourceMeta && sourceMeta.sourceTab || ''
   };
 }
 
@@ -262,6 +286,7 @@ function swBuildAppointmentReadModels_(ss, builtAt) {
     var appointmentWrite = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_APPOINTMENTS, SW_APPOINTMENT_READ_MODEL_HEADERS, rows);
     var calendarRows = swCalendarMonthReadModelRows_(ss, appointments, builtAtIso);
     var calendarWrite = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_CALENDAR_MONTHS, SW_CALENDAR_MONTH_READ_MODEL_HEADERS, calendarRows);
+    var calendarCache = swCacheCalendarMonthReadModels_(ss, calendarRows, { builtAt: builtAtIso });
     return {
       ok: appointmentWrite.ok !== false && calendarWrite.ok !== false,
       sheet: SW_SHEETS.READ_MODEL_APPOINTMENTS,
@@ -271,6 +296,10 @@ function swBuildAppointmentReadModels_(ss, builtAt) {
       buildMs: new Date().getTime() - started,
       appointmentBuildMs: appointmentWrite.buildMs || 0,
       calendarBuildMs: calendarWrite.buildMs || 0,
+      cacheOk: calendarCache.ok === true,
+      cacheChunks: calendarCache.chunks || 0,
+      cacheBytes: calendarCache.bytes || 0,
+      cacheError: calendarCache.reason || '',
       error: appointmentWrite.error || calendarWrite.error || ''
     };
   } catch (err) {
@@ -565,10 +594,15 @@ function swBuildAdminDashboardReadModel_(ss, builtAt) {
       rows.push(values);
     });
     var write = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD, SW_ADMIN_DASHBOARD_READ_MODEL_HEADERS, rows);
+    var adminCache = swCacheAdminDashboardReadModels_(ss, rows, { builtAt: builtAtIso });
     write.sourceRows = presets.length;
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
     write.oversizedPayloads = oversized;
+    write.cacheOk = adminCache.ok === true;
+    write.cacheChunks = adminCache.chunks || 0;
+    write.cacheBytes = adminCache.bytes || 0;
+    write.cacheError = adminCache.reason || '';
     if (oversized) write.notes = oversized + ' oversized admin dashboard payload(s) skipped.';
     return write;
   } catch (err) {
@@ -582,17 +616,26 @@ function swTryGetCalendarAppointmentsFromReadModel_(ss, monthKey) {
   var status = swReadModelFreshStatus_(ss, 'calendarMonths', SW_SHEETS.READ_MODEL_CALENDAR_MONTHS);
   if (!status.fresh) return null;
   var month = swCalendarMonthRange_(monthKey);
-  var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_CALENDAR_MONTHS);
-  var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_CALENDAR_MONTH_READ_MODEL_HEADERS);
-  var found = null;
-  for (var i = 0; i < rows.length; i++) {
-    if (swTrim_(rows[i]['Month Key']) === month.key) {
-      found = rows[i];
-      break;
+  var cached = swCachedCalendarMonthReadModels_(ss, status);
+  var found = cached && cached.months ? cached.months[month.key] : null;
+  if (!found) {
+    var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_CALENDAR_MONTHS);
+    var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_CALENDAR_MONTH_READ_MODEL_HEADERS);
+    for (var i = 0; i < rows.length; i++) {
+      if (swTrim_(rows[i]['Month Key']) === month.key) {
+        found = {
+          monthKey: rows[i]['Month Key'] || '',
+          monthLabel: rows[i]['Month Label'] || '',
+          appointmentCount: rows[i]['Appointment Count'] || '',
+          appointments: swParseJson_(rows[i]['Appointments JSON'] || '[]', [])
+        };
+        break;
+      }
     }
+    try { swCacheCalendarMonthReadModels_(ss, rows, status); } catch (_) {}
   }
   if (!found) return null;
-  var appointments = swParseJson_(found['Appointments JSON'] || '[]', []);
+  var appointments = found.appointments || [];
   if (!Array.isArray(appointments)) appointments = [];
   var today = new Date();
   var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
@@ -607,7 +650,7 @@ function swTryGetCalendarAppointmentsFromReadModel_(ss, monthKey) {
     source: 'calendarMonthReadModel',
     readModelAgeSeconds: status.ageSeconds || 0,
     monthKey: month.key,
-    monthLabel: found['Month Label'] || Utilities.formatDate(month.start, swTimezone_(), 'MMMM yyyy'),
+    monthLabel: found.monthLabel || Utilities.formatDate(month.start, swTimezone_(), 'MMMM yyyy'),
     prevMonthKey: swCalendarMonthKey_(new Date(month.start.getFullYear(), month.start.getMonth() - 1, 1)),
     nextMonthKey: swCalendarMonthKey_(new Date(month.start.getFullYear(), month.start.getMonth() + 1, 1)),
     todayKey: swDateKey_(todayStart),
@@ -781,8 +824,11 @@ function swReadDiamondReadModelRecords_(ss, config) {
   if (!swReadModelServingFlag_(config || [], 'READ_MODEL_SERVE_DIAMONDS', 'Y')) return null;
   var status = swReadModelFreshStatus_(ss, 'diamonds', SW_SHEETS.READ_MODEL_DIAMONDS);
   if (!status.fresh) return null;
+  var cached = swCachedDiamondReadModelRecords_(ss, status);
+  if (cached) return cached;
   var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_DIAMONDS);
   var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_DIAMOND_READ_MODEL_HEADERS).map(swDiamondReadModelRecordFromObject_);
+  try { swCacheDiamondReadModelRecords_(ss, rows, status); } catch (_) {}
   return { rows: rows, ageSeconds: status.ageSeconds || 0 };
 }
 
@@ -868,6 +914,14 @@ function swTryReadAdminDashboardFromReadModel_(ss, filters) {
   var status = swReadModelFreshStatus_(ss, 'adminDashboard', SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD);
   if (!status.fresh) return null;
   var key = swAdminDashboardReadModelKey_(filters);
+  var cached = swCachedAdminDashboardReadModels_(ss, status);
+  if (cached && cached.payloads && cached.payloads[key]) {
+    var cachedPayload = cached.payloads[key];
+    if (!cachedPayload || cachedPayload.ok === false) return null;
+    cachedPayload.source = 'adminDashboardReadModel';
+    cachedPayload.readModelAgeSeconds = status.ageSeconds || 0;
+    return cachedPayload;
+  }
   var sh = ss.getSheetByName(SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD);
   var rows = swReadSheetObjectsExpectedHeaders_(sh, SW_ADMIN_DASHBOARD_READ_MODEL_HEADERS);
   for (var i = 0; i < rows.length; i++) {
@@ -876,6 +930,7 @@ function swTryReadAdminDashboardFromReadModel_(ss, filters) {
     if (!payload || payload.ok === false) return null;
     payload.source = 'adminDashboardReadModel';
     payload.readModelAgeSeconds = status.ageSeconds || 0;
+    try { swCacheAdminDashboardReadModels_(ss, rows, status); } catch (_) {}
     return payload;
   }
   return null;
@@ -896,6 +951,196 @@ function swAdminDashboardReadModelKey_(filters) {
     swNorm_(filters.joc || ''),
     filters.includeClosed ? 'closed' : 'open'
   ].join('|');
+}
+
+function swDiamondReadModelCacheKey_(ss) {
+  return 'sw:diamondReadModel:v1:' + ss.getId();
+}
+
+function swCalendarMonthReadModelCacheKey_(ss) {
+  return 'sw:calendarMonthReadModel:v1:' + ss.getId();
+}
+
+function swAdminDashboardReadModelCacheKey_(ss) {
+  return 'sw:adminDashboardReadModel:v1:' + ss.getId();
+}
+
+function swCacheDiamondReadModelRecords_(ss, records, status) {
+  var key = swDiamondReadModelCacheKey_(ss);
+  var payload = {
+    cachedAt: swIso_(new Date()),
+    modelBuiltAt: status && status.builtAt || '',
+    rows: records || []
+  };
+  try {
+    SW_DIAMOND_READ_MODEL_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_DIAMOND_READ_MODEL_CACHE_SECONDS * 1000,
+      modelBuiltAt: payload.modelBuiltAt,
+      rows: payload.rows
+    };
+  } catch (_) {}
+  if (typeof swTaskListCachePut_ === 'function') return swTaskListCachePut_(key, payload);
+  return { ok: false, reason: 'chunkCacheUnavailable', chunks: 0, bytes: 0 };
+}
+
+function swCachedDiamondReadModelRecords_(ss, status) {
+  var key = swDiamondReadModelCacheKey_(ss);
+  var builtAt = status && status.builtAt || '';
+  var now = new Date().getTime();
+  try {
+    var memory = SW_DIAMOND_READ_MODEL_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > now && (!builtAt || memory.modelBuiltAt === builtAt)) {
+      return { rows: memory.rows || [], ageSeconds: status.ageSeconds || 0, cacheHit: true };
+    }
+  } catch (_) {}
+  try {
+    var payload = typeof swTaskListCacheGet_ === 'function' ? swTaskListCacheGet_(key) : null;
+    if (payload && (!builtAt || payload.modelBuiltAt === builtAt)) {
+      SW_DIAMOND_READ_MODEL_MEMORY_CACHE_[key] = {
+        expiresAt: now + SW_DIAMOND_READ_MODEL_CACHE_SECONDS * 1000,
+        modelBuiltAt: payload.modelBuiltAt || '',
+        rows: payload.rows || []
+      };
+      return { rows: payload.rows || [], ageSeconds: status.ageSeconds || 0, cacheHit: true };
+    }
+  } catch (_) {}
+  return null;
+}
+
+function swInvalidateDiamondReadModelCache_(ss) {
+  var key = swDiamondReadModelCacheKey_(ss);
+  try { delete SW_DIAMOND_READ_MODEL_MEMORY_CACHE_[key]; } catch (_) {}
+  try { if (typeof swTaskListCacheRemove_ === 'function') swTaskListCacheRemove_(key); } catch (_) {}
+}
+
+function swCacheCalendarMonthReadModels_(ss, rows, status) {
+  var key = swCalendarMonthReadModelCacheKey_(ss);
+  var months = {};
+  (rows || []).forEach(function (row) {
+    var monthKey = '';
+    var monthLabel = '';
+    var appointmentCount = 0;
+    var appointments = [];
+    if (Array.isArray(row)) {
+      monthKey = swTrim_(row[0]);
+      monthLabel = row[1] || '';
+      appointmentCount = Number(row[2] || 0) || 0;
+      appointments = swParseJson_(row[3] || '[]', []);
+    } else {
+      monthKey = swTrim_(row['Month Key']);
+      monthLabel = row['Month Label'] || '';
+      appointmentCount = Number(row['Appointment Count'] || 0) || 0;
+      appointments = swParseJson_(row['Appointments JSON'] || '[]', []);
+    }
+    if (!monthKey) return;
+    if (!Array.isArray(appointments)) appointments = [];
+    months[monthKey] = {
+      monthKey: monthKey,
+      monthLabel: monthLabel,
+      appointmentCount: appointmentCount,
+      appointments: appointments
+    };
+  });
+  var payload = {
+    cachedAt: swIso_(new Date()),
+    modelBuiltAt: status && status.builtAt || '',
+    months: months
+  };
+  try {
+    SW_CALENDAR_MONTH_READ_MODEL_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_CALENDAR_MONTH_READ_MODEL_CACHE_SECONDS * 1000,
+      modelBuiltAt: payload.modelBuiltAt,
+      months: payload.months
+    };
+  } catch (_) {}
+  if (typeof swTaskListCachePut_ === 'function') return swTaskListCachePut_(key, payload);
+  return { ok: false, reason: 'chunkCacheUnavailable', chunks: 0, bytes: 0 };
+}
+
+function swCachedCalendarMonthReadModels_(ss, status) {
+  var key = swCalendarMonthReadModelCacheKey_(ss);
+  var builtAt = status && status.builtAt || '';
+  var now = new Date().getTime();
+  try {
+    var memory = SW_CALENDAR_MONTH_READ_MODEL_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > now && (!builtAt || memory.modelBuiltAt === builtAt)) {
+      return { months: memory.months || {}, cacheHit: true };
+    }
+  } catch (_) {}
+  try {
+    var payload = typeof swTaskListCacheGet_ === 'function' ? swTaskListCacheGet_(key) : null;
+    if (payload && (!builtAt || payload.modelBuiltAt === builtAt)) {
+      SW_CALENDAR_MONTH_READ_MODEL_MEMORY_CACHE_[key] = {
+        expiresAt: now + SW_CALENDAR_MONTH_READ_MODEL_CACHE_SECONDS * 1000,
+        modelBuiltAt: payload.modelBuiltAt || '',
+        months: payload.months || {}
+      };
+      return { months: payload.months || {}, cacheHit: true };
+    }
+  } catch (_) {}
+  return null;
+}
+
+function swInvalidateCalendarMonthReadModelCache_(ss) {
+  var key = swCalendarMonthReadModelCacheKey_(ss);
+  try { delete SW_CALENDAR_MONTH_READ_MODEL_MEMORY_CACHE_[key]; } catch (_) {}
+  try { if (typeof swTaskListCacheRemove_ === 'function') swTaskListCacheRemove_(key); } catch (_) {}
+}
+
+function swCacheAdminDashboardReadModels_(ss, rows, status) {
+  var key = swAdminDashboardReadModelCacheKey_(ss);
+  var payloads = {};
+  (rows || []).forEach(function (row) {
+    var rowKey = Array.isArray(row) ? row[0] : row['Key'];
+    var text = Array.isArray(row) ? row[7] : row['Payload JSON'];
+    if (!rowKey || !text) return;
+    var payload = swParseJson_(text, null);
+    if (payload) payloads[rowKey] = payload;
+  });
+  var payload = {
+    cachedAt: swIso_(new Date()),
+    modelBuiltAt: status && status.builtAt || '',
+    payloads: payloads
+  };
+  try {
+    SW_ADMIN_DASHBOARD_READ_MODEL_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_ADMIN_DASHBOARD_READ_MODEL_CACHE_SECONDS * 1000,
+      modelBuiltAt: payload.modelBuiltAt,
+      payloads: payload.payloads
+    };
+  } catch (_) {}
+  if (typeof swTaskListCachePut_ === 'function') return swTaskListCachePut_(key, payload);
+  return { ok: false, reason: 'chunkCacheUnavailable', chunks: 0, bytes: 0 };
+}
+
+function swCachedAdminDashboardReadModels_(ss, status) {
+  var key = swAdminDashboardReadModelCacheKey_(ss);
+  var builtAt = status && status.builtAt || '';
+  var now = new Date().getTime();
+  try {
+    var memory = SW_ADMIN_DASHBOARD_READ_MODEL_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > now && (!builtAt || memory.modelBuiltAt === builtAt)) {
+      return { payloads: memory.payloads || {}, cacheHit: true };
+    }
+  } catch (_) {}
+  try {
+    var payload = typeof swTaskListCacheGet_ === 'function' ? swTaskListCacheGet_(key) : null;
+    if (payload && (!builtAt || payload.modelBuiltAt === builtAt)) {
+      SW_ADMIN_DASHBOARD_READ_MODEL_MEMORY_CACHE_[key] = {
+        expiresAt: now + SW_ADMIN_DASHBOARD_READ_MODEL_CACHE_SECONDS * 1000,
+        modelBuiltAt: payload.modelBuiltAt || '',
+        payloads: payload.payloads || {}
+      };
+      return { payloads: payload.payloads || {}, cacheHit: true };
+    }
+  } catch (_) {}
+  return null;
+}
+
+function swInvalidateAdminDashboardReadModelCache_(ss) {
+  var key = swAdminDashboardReadModelCacheKey_(ss);
+  try { delete SW_ADMIN_DASHBOARD_READ_MODEL_MEMORY_CACHE_[key]; } catch (_) {}
+  try { if (typeof swTaskListCacheRemove_ === 'function') swTaskListCacheRemove_(key); } catch (_) {}
 }
 
 function swReadModelFreshStatus_(ss, modelName, sheetName) {
@@ -930,6 +1175,7 @@ function swReadModelServingFlag_(config, key, fallback) {
 }
 
 function swInvalidateDiamondReadModelsAfterWrite_(ss, reason) {
+  try { swInvalidateDiamondReadModelCache_(ss || swSpreadsheet_()); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Diamond source updated', 'diamonds'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Diamond source updated', 'diamondRoots'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Diamond source updated', 'customers'); } catch (_) {}
@@ -938,6 +1184,7 @@ function swInvalidateDiamondReadModelsAfterWrite_(ss, reason) {
 }
 
 function swInvalidatePaymentReadModelsAfterWrite_(ss, reason) {
+  try { swInvalidateAdminDashboardReadModelCache_(ss || swSpreadsheet_()); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Payment source updated', 'payments'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Payment source updated', 'customers'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Payment source updated', 'appointments'); } catch (_) {}
@@ -950,6 +1197,8 @@ function swInvalidatePaymentReadModelsAfterWrite_(ss, reason) {
 }
 
 function swInvalidateAppointmentReadModelsAfterWrite_(ss, reason) {
+  try { swInvalidateCalendarMonthReadModelCache_(ss || swSpreadsheet_()); } catch (_) {}
+  try { swInvalidateAdminDashboardReadModelCache_(ss || swSpreadsheet_()); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Appointment source updated', 'appointments'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Appointment source updated', 'calendarMonths'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Appointment source updated', 'customers'); } catch (_) {}

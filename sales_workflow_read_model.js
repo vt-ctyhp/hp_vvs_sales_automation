@@ -54,6 +54,27 @@ function swMarkWorkflowReadModelsStale_(ss, reason, modelName) {
       }
     } catch (_) {}
   }
+  if (!modelName || modelName === 'diamonds' || modelName === 'diamondRoots') {
+    try {
+      if (typeof swInvalidateDiamondReadModelCache_ === 'function') {
+        swInvalidateDiamondReadModelCache_(ss);
+      }
+    } catch (_) {}
+  }
+  if (!modelName || modelName === 'appointments' || modelName === 'calendarMonths') {
+    try {
+      if (typeof swInvalidateCalendarMonthReadModelCache_ === 'function') {
+        swInvalidateCalendarMonthReadModelCache_(ss);
+      }
+    } catch (_) {}
+  }
+  if (!modelName || modelName === 'adminDashboard') {
+    try {
+      if (typeof swInvalidateAdminDashboardReadModelCache_ === 'function') {
+        swInvalidateAdminDashboardReadModelCache_(ss);
+      }
+    } catch (_) {}
+  }
   var key = ss.getId() + ':' + (modelName || 'all');
   if (SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_[key]) {
     return {
