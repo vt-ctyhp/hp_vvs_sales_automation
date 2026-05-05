@@ -184,8 +184,51 @@ function swReadAppointments_(ss) {
   var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
   var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
   var headers = display[0].map(function (h) { return swTrim_(h); });
+  var idx = swAppointmentColumnIndex_(headers);
+
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    out.push(swAppointmentRecordFromRows_(display[i], values[i], idx, i + 1));
+  }
+  return out;
+}
+
+function swReadAppointmentsForRoot_(ss, rootApptId) {
+  var want = swTrim_(rootApptId);
+  if (!want) return [];
+  var sh = ss.getSheetByName(SW_SHEETS.MASTER);
+  if (!sh) throw new Error('Missing sheet: ' + SW_SHEETS.MASTER);
+  if (sh.getLastRow() < 2 || sh.getLastColumn() < 1) return [];
+
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+  var idx = swAppointmentColumnIndex_(headers);
+  if (idx.root < 0 && idx.appt < 0) {
+    return swReadAppointments_(ss).filter(function (rec) {
+      return swTrim_(rec.root) === want || swTrim_(rec.appt) === want;
+    });
+  }
+
+  var rowCount = lastRow - 1;
+  var roots = idx.root >= 0 ? sh.getRange(2, idx.root + 1, rowCount, 1).getDisplayValues() : [];
+  var appts = idx.appt >= 0 ? sh.getRange(2, idx.appt + 1, rowCount, 1).getDisplayValues() : [];
+  var out = [];
+  for (var i = 0; i < rowCount; i++) {
+    var root = roots.length ? swTrim_(roots[i][0]) : '';
+    var appt = appts.length ? swTrim_(appts[i][0]) : '';
+    if (root !== want && appt !== want) continue;
+    var rowNumber = i + 2;
+    var values = sh.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
+    var display = sh.getRange(rowNumber, 1, 1, lastCol).getDisplayValues()[0];
+    out.push(swAppointmentRecordFromRows_(display, values, idx, rowNumber));
+  }
+  return out;
+}
+
+function swAppointmentColumnIndex_(headers) {
   var H = swHeaderMapFromArray_(headers);
-  var idx = {
+  return {
     appt: swPickIndex_(H, ['APPT_ID', 'Appt ID', 'Appointment ID']),
     root: swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'Root Appointment ID']),
     uid: swPickIndex_(H, ['CalendlyEventUID', 'Calendly Event UID', 'Admin: Calendly Event UID', 'Acuity ID', 'UID']),
@@ -243,79 +286,75 @@ function swReadAppointments_(ss) {
     deadline3dMoves: swPickIndex_(H, ['# of Times 3D Deadline Moved', '3D Deadline Moves', '# 3D Deadline Moves']),
     productionDeadlineMoves: swPickIndex_(H, ['# of Times Prod. Deadline Moved', 'Prod Deadline Moves', '# Prod Deadline Moves'])
   };
+}
 
-  var out = [];
-  for (var i = 1; i < values.length; i++) {
-    var drow = display[i];
-    var vrow = values[i];
-    var rec = {
-      row: i + 1,
-      appt: swTrim_(swCell_(drow, idx.appt)),
-      root: swTrim_(swCell_(drow, idx.root)),
-      uid: swTrim_(swCell_(drow, idx.uid)),
-      name: swTrim_(swCell_(drow, idx.name)),
-      email: swNormEmail_(swCell_(drow, idx.emailLower) || swCell_(drow, idx.email)),
-      phone: swNormPhone_(swCell_(drow, idx.phoneNorm) || swCell_(drow, idx.phone)),
-      brand: swTrim_(swCell_(drow, idx.brand)),
-      bookedAt: swTrim_(swCell_(drow, idx.bookedAt)),
-      bookedAtRaw: swCell_(vrow, idx.bookedAt),
-      canceledAt: swTrim_(swCell_(drow, idx.canceledAt)),
-      canceledAtRaw: swCell_(vrow, idx.canceledAt),
-      rescheduledFromUid: swTrim_(swCell_(drow, idx.rescheduledFromUid)),
-      rescheduledToUid: swTrim_(swCell_(drow, idx.rescheduledToUid)),
-      visitDate: swTrim_(swCell_(drow, idx.visitDate)),
-      visitTime: swFormatAppointmentTime_(swCell_(drow, idx.visitTime), swCell_(vrow, idx.visitTime)),
-      visitType: swTrim_(swCell_(drow, idx.visitType)),
-      visitDateRaw: swCell_(vrow, idx.visitDate),
-      visitTimeRaw: swCell_(vrow, idx.visitTime),
-      status: swTrim_(swCell_(drow, idx.status)),
-      active: swTrim_(swCell_(drow, idx.active)),
-      assignedRep: swTrim_(swCell_(drow, idx.assignedRep)),
-      assignedRepEmail: swNormEmail_(swCell_(drow, idx.assignedRepEmail)),
-      assistedRep: swTrim_(swCell_(drow, idx.assistedRep)),
-      assistedRepEmail: swNormEmail_(swCell_(drow, idx.assistedRepEmail)),
-      clientFolder: swTrim_(swCell_(drow, idx.clientFolder)),
-      reportUrl: swTrim_(swCell_(drow, idx.reportUrl)),
-      quotationUrl: swTrim_(swCell_(drow, idx.quotationUrl)),
-      tracker3dUrl: swTrim_(swCell_(drow, idx.tracker3d)),
-      salesStage: swTrim_(swCell_(drow, idx.salesStage)),
-      convStatus: swTrim_(swCell_(drow, idx.convStatus)),
-      customOrder: swTrim_(swCell_(drow, idx.customOrder)),
-      inProduction: swTrim_(swCell_(drow, idx.inProduction)),
-      nextSteps: swTrim_(swCell_(drow, idx.nextSteps)),
-      designRequest: swTrim_(swCell_(drow, idx.designRequest)),
-      deadline3d: swTrim_(swCell_(drow, idx.deadline3d)),
-      productionDeadline: swTrim_(swCell_(drow, idx.productionDeadline)),
-      waxStatus: swTrim_(swCell_(drow, idx.waxStatus)),
-      waxDeadlineAdmin: swTrim_(swCell_(drow, idx.waxDeadlineAdmin)),
-      waxRequestUrl: swTrim_(swCell_(drow, idx.waxRequestUrl)),
-      centerStoneStatus: swTrim_(swCell_(drow, idx.centerStoneStatus)),
-      dvStonesJson: swTrim_(swCell_(drow, idx.dvStonesJson)),
-      dvStonesSummary: swTrim_(swCell_(drow, idx.dvStonesSummary)),
-      dvCustomerLookingFor: swTrim_(swCell_(drow, idx.dvCustomerLookingFor)),
-      dvVarietyStrategy: swTrim_(swCell_(drow, idx.dvVarietyStrategy)),
-      dvCustomerRequirementsJson: swTrim_(swCell_(drow, idx.dvCustomerRequirementsJson)),
-      so: swTrim_(swCell_(drow, idx.so)),
-      orderFolder: swTrim_(swCell_(drow, idx.orderFolder)),
-      source: swTrim_(swCell_(drow, idx.source)),
-      budgetMin: swTrim_(swCell_(drow, idx.budgetMin)),
-      budgetMax: swTrim_(swCell_(drow, idx.budgetMax)),
-      orderTotal: swTrim_(swCell_(drow, idx.orderTotal)),
-      paidToDate: swTrim_(swCell_(drow, idx.paidToDate)),
-      remainingBalance: swTrim_(swCell_(drow, idx.remainingBalance)),
-      lastPaymentDate: swTrim_(swCell_(drow, idx.lastPaymentDate)),
-      lastPaymentDateRaw: swCell_(vrow, idx.lastPaymentDate),
-      orderDate: swTrim_(swCell_(drow, idx.orderDate)),
-      orderDateRaw: swCell_(vrow, idx.orderDate),
-      updatedAt: swTrim_(swCell_(drow, idx.updatedAt)),
-      updatedAtRaw: swCell_(vrow, idx.updatedAt),
-      deadline3dMoves: swTrim_(swCell_(drow, idx.deadline3dMoves)),
-      productionDeadlineMoves: swTrim_(swCell_(drow, idx.productionDeadlineMoves))
-    };
-    rec.root = rec.root || rec.appt;
-    rec.statusNorm = swNorm_(rec.status);
-    rec.activeNorm = swNorm_(rec.active);
-    out.push(rec);
-  }
-  return out;
+function swAppointmentRecordFromRows_(drow, vrow, idx, rowNumber) {
+  var rec = {
+    row: rowNumber,
+    appt: swTrim_(swCell_(drow, idx.appt)),
+    root: swTrim_(swCell_(drow, idx.root)),
+    uid: swTrim_(swCell_(drow, idx.uid)),
+    name: swTrim_(swCell_(drow, idx.name)),
+    email: swNormEmail_(swCell_(drow, idx.emailLower) || swCell_(drow, idx.email)),
+    phone: swNormPhone_(swCell_(drow, idx.phoneNorm) || swCell_(drow, idx.phone)),
+    brand: swTrim_(swCell_(drow, idx.brand)),
+    bookedAt: swTrim_(swCell_(drow, idx.bookedAt)),
+    bookedAtRaw: swCell_(vrow, idx.bookedAt),
+    canceledAt: swTrim_(swCell_(drow, idx.canceledAt)),
+    canceledAtRaw: swCell_(vrow, idx.canceledAt),
+    rescheduledFromUid: swTrim_(swCell_(drow, idx.rescheduledFromUid)),
+    rescheduledToUid: swTrim_(swCell_(drow, idx.rescheduledToUid)),
+    visitDate: swTrim_(swCell_(drow, idx.visitDate)),
+    visitTime: swFormatAppointmentTime_(swCell_(drow, idx.visitTime), swCell_(vrow, idx.visitTime)),
+    visitType: swTrim_(swCell_(drow, idx.visitType)),
+    visitDateRaw: swCell_(vrow, idx.visitDate),
+    visitTimeRaw: swCell_(vrow, idx.visitTime),
+    status: swTrim_(swCell_(drow, idx.status)),
+    active: swTrim_(swCell_(drow, idx.active)),
+    assignedRep: swTrim_(swCell_(drow, idx.assignedRep)),
+    assignedRepEmail: swNormEmail_(swCell_(drow, idx.assignedRepEmail)),
+    assistedRep: swTrim_(swCell_(drow, idx.assistedRep)),
+    assistedRepEmail: swNormEmail_(swCell_(drow, idx.assistedRepEmail)),
+    clientFolder: swTrim_(swCell_(drow, idx.clientFolder)),
+    reportUrl: swTrim_(swCell_(drow, idx.reportUrl)),
+    quotationUrl: swTrim_(swCell_(drow, idx.quotationUrl)),
+    tracker3dUrl: swTrim_(swCell_(drow, idx.tracker3d)),
+    salesStage: swTrim_(swCell_(drow, idx.salesStage)),
+    convStatus: swTrim_(swCell_(drow, idx.convStatus)),
+    customOrder: swTrim_(swCell_(drow, idx.customOrder)),
+    inProduction: swTrim_(swCell_(drow, idx.inProduction)),
+    nextSteps: swTrim_(swCell_(drow, idx.nextSteps)),
+    designRequest: swTrim_(swCell_(drow, idx.designRequest)),
+    deadline3d: swTrim_(swCell_(drow, idx.deadline3d)),
+    productionDeadline: swTrim_(swCell_(drow, idx.productionDeadline)),
+    waxStatus: swTrim_(swCell_(drow, idx.waxStatus)),
+    waxDeadlineAdmin: swTrim_(swCell_(drow, idx.waxDeadlineAdmin)),
+    waxRequestUrl: swTrim_(swCell_(drow, idx.waxRequestUrl)),
+    centerStoneStatus: swTrim_(swCell_(drow, idx.centerStoneStatus)),
+    dvStonesJson: swTrim_(swCell_(drow, idx.dvStonesJson)),
+    dvStonesSummary: swTrim_(swCell_(drow, idx.dvStonesSummary)),
+    dvCustomerLookingFor: swTrim_(swCell_(drow, idx.dvCustomerLookingFor)),
+    dvVarietyStrategy: swTrim_(swCell_(drow, idx.dvVarietyStrategy)),
+    dvCustomerRequirementsJson: swTrim_(swCell_(drow, idx.dvCustomerRequirementsJson)),
+    so: swTrim_(swCell_(drow, idx.so)),
+    orderFolder: swTrim_(swCell_(drow, idx.orderFolder)),
+    source: swTrim_(swCell_(drow, idx.source)),
+    budgetMin: swTrim_(swCell_(drow, idx.budgetMin)),
+    budgetMax: swTrim_(swCell_(drow, idx.budgetMax)),
+    orderTotal: swTrim_(swCell_(drow, idx.orderTotal)),
+    paidToDate: swTrim_(swCell_(drow, idx.paidToDate)),
+    remainingBalance: swTrim_(swCell_(drow, idx.remainingBalance)),
+    lastPaymentDate: swTrim_(swCell_(drow, idx.lastPaymentDate)),
+    lastPaymentDateRaw: swCell_(vrow, idx.lastPaymentDate),
+    orderDate: swTrim_(swCell_(drow, idx.orderDate)),
+    orderDateRaw: swCell_(vrow, idx.orderDate),
+    updatedAt: swTrim_(swCell_(drow, idx.updatedAt)),
+    updatedAtRaw: swCell_(vrow, idx.updatedAt),
+    deadline3dMoves: swTrim_(swCell_(drow, idx.deadline3dMoves)),
+    productionDeadlineMoves: swTrim_(swCell_(drow, idx.productionDeadlineMoves))
+  };
+  rec.root = rec.root || rec.appt;
+  rec.statusNorm = swNorm_(rec.status);
+  rec.activeNorm = swNorm_(rec.active);
+  return rec;
 }

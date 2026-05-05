@@ -1913,6 +1913,10 @@
           var adminModeButton = closestMatch_(event.target, '.js-admin-dashboard-mode');
           if (adminModeButton) {
             appState.adminDashboardMode = adminModeButton.getAttribute('data-mode') || 'health';
+            if (!appState.adminDashboard || !appState.adminDashboard[appState.adminDashboardMode]) {
+              loadAdminDashboard(appState.adminDashboardFilters || {});
+              return;
+            }
             renderAdminDashboard(appState.adminDashboard || {});
             if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(appState.adminDashboard || {});
             else renderAdminDashboardHealthSummary(appState.adminDashboard || {});
@@ -2610,14 +2614,48 @@
       renderViewHeader('adminDashboard');
       document.getElementById('taskList').innerHTML = '<div class="loading">LOADING ADMIN DASHBOARD</div>';
       document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Admin Dashboard</div><h2>Loading</h2></div><div class="loading">LOADING</div>';
-      serverCall('sw_getAdminDashboard', [filters || appState.adminDashboardFilters || {}], function (res) {
+      filters = filters || appState.adminDashboardFilters || {};
+      filters.mode = appState.adminDashboardMode || 'health';
+      var dashboardCacheKey = adminDashboardFilterCacheKey(filters);
+      var previousDashboard = appState.adminDashboardCacheKey === dashboardCacheKey ? (appState.adminDashboard || {}) : {};
+      serverCall('sw_getAdminDashboard', [filters], function (res) {
         if (!isCurrentMainRequest(requestId, 'adminDashboard')) return;
-        appState.adminDashboard = res || {};
+        appState.adminDashboard = mergeAdminDashboardResponse(previousDashboard, res || {});
+        appState.adminDashboardCacheKey = dashboardCacheKey;
         appState.adminDashboardFilters = (res && res.filters) || filters || {};
-        renderAdminDashboard(res || {});
-        if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(res || {});
-        else renderAdminDashboardHealthSummary(res || {});
+        renderAdminDashboard(appState.adminDashboard || {});
+        if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(appState.adminDashboard || {});
+        else renderAdminDashboardHealthSummary(appState.adminDashboard || {});
       }, 'Loading admin dashboard');
+    }
+
+    function adminDashboardFilterCacheKey(filters) {
+      filters = filters || {};
+      return [
+        filters.windowPreset || '',
+        filters.startDate || '',
+        filters.endDate || '',
+        filters.brand || '',
+        filters.clientAdvisor || '',
+        filters.joc || '',
+        filters.includeClosed ? '1' : '0'
+      ].join('|');
+    }
+
+    function mergeAdminDashboardResponse(prev, next) {
+      prev = prev || {};
+      next = next || {};
+      return {
+        ok: next.ok,
+        generatedAt: next.generatedAt || prev.generatedAt || '',
+        filters: next.filters || prev.filters || {},
+        filterOptions: next.filterOptions || prev.filterOptions || {},
+        metrics: next.metrics || prev.metrics || {},
+        health: next.health || prev.health || null,
+        kanban: next.kanban || prev.kanban || null,
+        taskCount: next.taskCount == null ? prev.taskCount : next.taskCount,
+        warnings: next.warnings || prev.warnings || []
+      };
     }
 
     function collectAdminDashboardFilters() {
@@ -2625,6 +2663,7 @@
         windowPreset: valueOf('adminDashWindow'),
         startDate: valueOf('adminDashStartDate'),
         endDate: valueOf('adminDashEndDate'),
+        mode: appState.adminDashboardMode || 'health',
         brand: valueOf('adminDashBrand'),
         clientAdvisor: valueOf('adminDashClientAdvisor'),
         joc: valueOf('adminDashJoc'),

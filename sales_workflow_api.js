@@ -2127,7 +2127,7 @@ function swBenchmarkSalesWorkflowAdminDashboardSummary_(res) {
     paymentsCount: metrics.paymentsCount || 0,
     adminOpenTasks: metrics.adminOpenTasks || 0,
     kanbanCards: cards,
-    taskRows: res && res.tasks ? res.tasks.length : 0,
+    taskRows: res && res.taskCount != null ? res.taskCount : (res && res.tasks ? res.tasks.length : 0),
     warnings: res && res.warnings ? res.warnings.length : 0
   };
 }

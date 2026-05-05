@@ -56,11 +56,20 @@ function sw_searchCustomers(authToken, query, filters) {
 
 function sw_getCustomerSearchDetail(authToken, rootApptId) {
   return swTimed_('sw_getCustomerSearchDetail', function () {
+    var mark = swStepTimer_('sw_getCustomerSearchDetail');
     var ss = swSpreadsheet_();
     swRequireWorkflowReadSheets_(ss, { templates: false });
+    mark('requiredSheets');
     var user = swAuthUserForApi_(ss, authToken);
+    mark('identity');
     swRequireCustomerSearchUser_(user);
-    return swCustomerSearchDetailPayload_(ss, user, rootApptId);
+    var out = swCustomerSearchDetailPayload_(ss, user, rootApptId);
+    mark('payload', {
+      appointments: out.appointments ? out.appointments.length : 0,
+      tasks: out.tasks ? out.tasks.length : 0,
+      logs: out.logs ? out.logs.length : 0
+    });
+    return out;
   });
 }
 
@@ -291,11 +300,14 @@ function swCustomerSearchBadges_(rec) {
 }
 
 function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
+  var mark = swStepTimer_('swCustomerSearchDetailPayload');
   var target = swCustomerSearchResolveRoot_(ss, rootApptId);
+  mark('resolveRoot', { rows: target.rows.length });
   var master = ss.getSheetByName(SW_SHEETS.MASTER);
   var masterGid = master ? master.getSheetId() : '';
   var stage = swAdminDashboardPipelineStage_(target.rec, target.rows);
   var card = swCustomerSearchCard_(ss, masterGid, target.root, target.rec, target.rows, stage);
+  mark('card');
   var now = new Date().getTime();
   var state = swReadTaskListState_(ss, true);
   var tasks = (state.tasks || []).filter(function (t) {
@@ -303,6 +315,11 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
   }).map(function (t) {
     return swPublicTask_(t, now);
   });
+  mark('tasks', { tasks: tasks.length });
+  var logs = swCustomerSearchRecentLogs_(ss, target.root);
+  mark('logs', { logs: logs.length });
+  var formOptions = swTaskFormOptions_(ss, { taskType: SW_TASKS.POST_CONSULT_STATUS });
+  mark('formOptions', { groups: formOptions ? Object.keys(formOptions).length : 0 });
 
   return {
     ok: true,
@@ -312,8 +329,8 @@ function swCustomerSearchDetailPayload_(ss, user, rootApptId) {
     card: card,
     appointments: target.rows.map(swCustomerSearchPublicAppointment_),
     tasks: tasks,
-    logs: swCustomerSearchRecentLogs_(ss, target.root),
-    formOptions: swTaskFormOptions_(ss, { taskType: SW_TASKS.POST_CONSULT_STATUS }),
+    logs: logs,
+    formOptions: formOptions,
     actions: {
       updateStatus: true,
       update3dDeadline: true,
@@ -373,10 +390,11 @@ function swCustomerSearchRecentLogs_(ss, root) {
 function swCustomerSearchResolveRoot_(ss, rootApptId) {
   var want = swTrim_(rootApptId);
   if (!want) throw new Error('Missing customer/root id.');
-  var appointments = swReadAppointments_(ss);
-  var rows = appointments.filter(function (rec) {
-    return swTrim_(rec.root) === want || swTrim_(rec.appt) === want;
-  });
+  var rows = typeof swReadAppointmentsForRoot_ === 'function'
+    ? swReadAppointmentsForRoot_(ss, want)
+    : swReadAppointments_(ss).filter(function (rec) {
+      return swTrim_(rec.root) === want || swTrim_(rec.appt) === want;
+    });
   if (!rows.length) throw new Error('Customer not found: ' + want);
   var active = rows.filter(function (rec) { return swIsAppointmentActive_(rec); });
   var rec = swAdminDashboardLatestRow_(active.length ? active : rows);

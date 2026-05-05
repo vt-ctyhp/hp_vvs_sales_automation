@@ -260,11 +260,23 @@ function swMasterRowForTask_(ss, task) {
 }
 
 function swTaskFormOptions_(ss, task) {
+  var taskType = task && task.taskType ? task.taskType : '';
+  var cacheKey = '';
+  if (taskType) {
+    try {
+      cacheKey = 'sw:formOptions:v1:' + ss.getId() + ':' + taskType;
+      var cached = CacheService.getScriptCache().get(cacheKey);
+      if (cached) return swParseJson_(cached, {});
+    } catch (_) {}
+  }
+  var out;
   if (task && typeof swIsDataCleanupTaskType_ === 'function' && swIsDataCleanupTaskType_(task.taskType)) {
-    return swDataCleanupFormOptions_(ss, task);
+    out = swDataCleanupFormOptions_(ss, task);
+    swCacheTaskFormOptions_(cacheKey, out);
+    return out;
   }
   if (!task || !swIsPostConsultTaskType_(task.taskType)) return {};
-  var out = {
+  out = {
     salesStages: ['Lead', 'Follow-Up Required', 'Viewing Scheduled', 'Order In Progress', 'Lost Lead'],
     convStatuses: ['Quotation Requested', 'Viewing Scheduled', 'Deposit Paid', 'Confirmed Order', 'Order In Progress', 'Lost Lead'],
     customOrderStatuses: ['', '3D Requested', '3D Revision Requested', '3D Received', 'Approved for Production', 'Waiting Production Timeline', 'In Production', 'Order Completed'],
@@ -286,5 +298,14 @@ function swTaskFormOptions_(ss, task) {
     if (typeof wax_statusOptions === 'function') out.waxStatuses = wax_statusOptions();
   } catch (_) {}
   if (!out.waxStatuses.length) out.waxStatuses = ['Wax Requested', 'In Progress', 'Completed', 'Canceled'];
+  swCacheTaskFormOptions_(cacheKey, out);
   return out;
+}
+
+function swCacheTaskFormOptions_(cacheKey, out) {
+  if (!cacheKey) return;
+  try {
+    var json = JSON.stringify(out || {});
+    if (json.length <= 90000) CacheService.getScriptCache().put(cacheKey, json, 300);
+  } catch (_) {}
 }

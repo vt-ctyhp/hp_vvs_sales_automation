@@ -49,16 +49,32 @@ function sw_getAdminDashboard(authToken, filters) {
     var user = swAuthUserForApi_(ss, authToken);
     if (!user.isAdmin) throw new Error('Admin access required.');
 
+    var mark = swStepTimer_('sw_getAdminDashboard');
     filters = swAdminDashboardNormalizeFilters_(filters);
+    mark('normalize', { mode: filters.mode });
     var appointments = swReadAppointments_(ss);
+    mark('appointments', { rows: appointments.length });
     var scope = swAdminDashboardBuildScope_(appointments, filters);
     var warnings = [];
     var payments = swAdminDashboardReadPayments_(scope, filters, warnings);
+    mark('payments', { receipts: payments.receipts ? payments.receipts.length : 0 });
     var state = swReadTaskListState_(ss, true);
     var tasks = swListVisibleTasksFromState_(state, user, 'admin');
-    var currentByRoot = swAdminDashboardCurrentRowsByRoot_(appointments);
+    mark('tasks', { rows: tasks.length });
+    var indexes = swAdminDashboardBuildIndexes_(appointments);
+    mark('indexes', { roots: Object.keys(indexes.currentByRoot || {}).length });
+    var currentByRoot = indexes.currentByRoot;
     var metrics = swAdminDashboardMetrics_(appointments, tasks, currentByRoot, payments, filters);
-    var healthContext = swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings);
+    mark('metrics');
+    var healthContext = filters.mode === 'health'
+      ? swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings, indexes)
+      : null;
+    var health = healthContext ? swAdminDashboardHealth_(healthContext, metrics) : null;
+    mark('health', { included: !!health });
+    var kanban = filters.mode === 'kanban'
+      ? swAdminDashboardKanban_(ss, appointments, payments, filters, indexes)
+      : null;
+    mark('kanban', { included: !!kanban });
 
     return {
       ok: true,
@@ -66,9 +82,9 @@ function sw_getAdminDashboard(authToken, filters) {
       filters: swAdminDashboardPublicFilters_(filters),
       filterOptions: swAdminDashboardFilterOptions_(ss, appointments, filters),
       metrics: metrics,
-      health: swAdminDashboardHealth_(healthContext, metrics),
-      kanban: swAdminDashboardKanban_(ss, appointments, payments, filters),
-      tasks: tasks,
+      health: health,
+      kanban: kanban,
+      taskCount: tasks.length,
       warnings: warnings
     };
   });
@@ -101,11 +117,17 @@ function swAdminDashboardNormalizeFilters_(filters) {
     endDate: swAdminDashboardDateKey_(end),
     windowPreset: preset,
     windowLabel: swAdminDashboardWindowLabel_(preset, start, end),
+    mode: swAdminDashboardNormalizeMode_(filters.mode || filters.dashboardMode || filters.view),
     brand: swTrim_(filters.brand),
     clientAdvisor: swTrim_(filters.clientAdvisor),
     joc: swTrim_(filters.joc),
     includeClosed: filters.includeClosed === true || String(filters.includeClosed || '').toLowerCase() === 'true'
   };
+}
+
+function swAdminDashboardNormalizeMode_(mode) {
+  var key = swNorm_(mode);
+  return key === 'kanban' ? 'kanban' : 'health';
 }
 
 function swAdminDashboardPublicFilters_(filters) {
@@ -114,6 +136,7 @@ function swAdminDashboardPublicFilters_(filters) {
     endDate: filters.endDate,
     windowPreset: filters.windowPreset || 'last7',
     windowLabel: filters.windowLabel || '',
+    mode: filters.mode || 'health',
     brand: filters.brand || '',
     clientAdvisor: filters.clientAdvisor || '',
     joc: filters.joc || '',
@@ -298,6 +321,20 @@ function swAdminDashboardTaskMatchesFilters_(task, currentByRoot, filters) {
   if (filters.clientAdvisor && swNorm_(task.currentOwner || task.intendedOwner) !== swNorm_(filters.clientAdvisor)) return false;
   if (filters.joc && swNorm_(task.currentOwner || task.intendedOwner) !== swNorm_(filters.joc)) return false;
   return true;
+}
+
+function swAdminDashboardBuildIndexes_(appointments) {
+  var groups = swAdminDashboardRowsByRoot_(appointments);
+  var currentByRoot = {};
+  Object.keys(groups).forEach(function (root) {
+    var rows = groups[root];
+    var active = rows.filter(function (rec) { return swIsAppointmentActive_(rec); });
+    currentByRoot[root] = swAdminDashboardLatestRow_(active.length ? active : rows);
+  });
+  return {
+    groups: groups,
+    currentByRoot: currentByRoot
+  };
 }
 
 function swAdminDashboardFilterOptions_(ss, appointments, filters) {
@@ -496,8 +533,9 @@ function swAdminDashboardNumberOrBlank_(value) {
   return isFinite(n) ? n : '';
 }
 
-function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings) {
-  var groups = swAdminDashboardRowsByRoot_(appointments);
+function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings, indexes) {
+  indexes = indexes || {};
+  var groups = indexes.groups || swAdminDashboardRowsByRoot_(appointments);
   var rootIndex = swAdminDashboardReadRootIndex_(ss, warnings);
   var statusLog = swAdminDashboardReadStatusLog_(ss, appointments, warnings);
   var stageWeights = swAdminDashboardStageWeights_(ss);
@@ -1141,9 +1179,10 @@ function swAdminDashboardFirstDepositsInRange_(payments, start, end) {
   return count;
 }
 
-function swAdminDashboardKanban_(ss, appointments, payments, filters) {
-  var groups = swAdminDashboardRowsByRoot_(appointments);
-  var currentByRoot = swAdminDashboardCurrentRowsByRoot_(appointments);
+function swAdminDashboardKanban_(ss, appointments, payments, filters, indexes) {
+  indexes = indexes || {};
+  var groups = indexes.groups || swAdminDashboardRowsByRoot_(appointments);
+  var currentByRoot = indexes.currentByRoot || swAdminDashboardCurrentRowsByRoot_(appointments);
   var master = ss.getSheetByName(SW_SHEETS.MASTER);
   var masterGid = master ? master.getSheetId() : '';
   var columnsByKey = {};
