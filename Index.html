@@ -96,6 +96,40 @@
       line-height: 1.45;
     }
 
+    .user-chip {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .user-avatar {
+      align-items: center;
+      background: var(--ink-primary);
+      border-radius: 50%;
+      color: var(--bg-foundation);
+      display: inline-flex;
+      flex: 0 0 auto;
+      font-size: 12px;
+      height: 30px;
+      justify-content: center;
+      width: 30px;
+    }
+
+    .user-name-line {
+      color: var(--ink-primary);
+      display: block;
+      font-weight: 500;
+    }
+
+    .user-role-line {
+      color: var(--ink-muted);
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -110,12 +144,14 @@
       gap: 8px;
     }
 
-    button {
+    button,
+    .button-like {
       border-radius: 2px;
       border: 1px solid var(--ink-primary);
       background: transparent;
       color: var(--ink-primary);
       cursor: pointer;
+      display: inline-block;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       font-size: 11px;
       font-weight: 500;
@@ -125,7 +161,8 @@
       transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
     }
 
-    button:hover:not(:disabled) {
+    button:hover:not(:disabled),
+    .button-like:hover {
       background: var(--ink-primary);
       color: var(--bg-foundation);
     }
@@ -1128,6 +1165,244 @@
       min-height: 18px;
     }
 
+    .task-workspace {
+      margin-top: 24px;
+    }
+
+    .proposal-workspace-mode .layout {
+      display: none;
+    }
+
+    .shell.proposal-workspace-mode {
+      max-width: none;
+    }
+
+    .proposal-page {
+      display: grid;
+      gap: 24px;
+    }
+
+    .proposal-task-head {
+      align-items: flex-start;
+      border-bottom: 1px solid var(--rule);
+      display: flex;
+      gap: 24px;
+      justify-content: space-between;
+      padding-bottom: 24px;
+    }
+
+    .proposal-task-head h2 {
+      font-size: 32px;
+      line-height: 1;
+      margin-top: 4px;
+    }
+
+    .proposal-meta-row {
+      align-items: center;
+      color: var(--ink-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .proposal-dot {
+      background: var(--rule);
+      border-radius: 50%;
+      height: 4px;
+      width: 4px;
+    }
+
+    .proposal-actions {
+      align-items: center;
+      display: flex;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .proposal-work-grid {
+      align-items: start;
+      display: grid;
+      gap: 24px;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    }
+
+    .proposal-main {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .proposal-card,
+    .proposal-side-panel {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      min-width: 0;
+      padding: 24px;
+    }
+
+    .proposal-card.inset,
+    .proposal-side-panel {
+      background: var(--surface-inset);
+    }
+
+    .proposal-card-head {
+      align-items: baseline;
+      border-bottom: 1px solid var(--rule);
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+    }
+
+    .proposal-card-head h3 {
+      font-size: 22px;
+    }
+
+    .proposal-field-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .proposal-field-grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .proposal-field-grid .wide {
+      grid-column: 1 / -1;
+    }
+
+    .proposal-match-band {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+      padding: 24px;
+    }
+
+    .proposal-match-band h3 {
+      color: var(--bg-foundation);
+      font-size: 24px;
+    }
+
+    .proposal-match-band .meta {
+      color: var(--rule);
+      margin-top: 6px;
+    }
+
+    .proposal-match-band .task-top {
+      align-items: center;
+    }
+
+    .proposal-match-band button.primary {
+      background: var(--bg-foundation);
+      border-color: var(--bg-foundation);
+      color: var(--ink-primary);
+    }
+
+    .proposal-match-band button.primary:hover:not(:disabled) {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg-foundation);
+    }
+
+    .proposal-match-results {
+      display: none;
+    }
+
+    .proposal-results-toolbar {
+      align-items: end;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .proposal-inventory-list {
+      border-top: 1px solid var(--rule);
+    }
+
+    .proposal-inventory-row {
+      align-items: center;
+      border-bottom: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 22px minmax(180px, 1.25fr) repeat(7, minmax(72px, 0.6fr));
+      letter-spacing: 0;
+      margin: 0;
+      padding: 14px 0;
+      text-transform: none;
+    }
+
+    .proposal-inventory-row input {
+      width: auto;
+    }
+
+    .proposal-inventory-cert {
+      color: var(--ink-primary);
+      font-weight: 500;
+    }
+
+    .proposal-inventory-cell {
+      font-size: 12px;
+      min-width: 0;
+    }
+
+    .proposal-inventory-cell .eyebrow {
+      margin-bottom: 2px;
+    }
+
+    .proposal-inventory-value {
+      color: var(--ink-primary);
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+
+    .proposal-inventory-footer {
+      align-items: center;
+      border-top: 1px solid var(--rule);
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-top: 16px;
+      padding-top: 16px;
+    }
+
+    .proposal-aside {
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .proposal-side-panel .mini-row {
+      grid-template-columns: minmax(90px, 1fr) minmax(80px, auto);
+    }
+
+    .proposal-link-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .proposal-link-list a {
+      overflow-wrap: anywhere;
+    }
+
+    .proposal-checklist {
+      display: grid;
+      gap: 10px;
+    }
+
+    .proposal-checklist .check-row {
+      align-items: flex-start;
+    }
+
+    .proposal-row.imported {
+      border-top-color: var(--ink-primary);
+    }
+
     .login-status {
       min-height: 18px;
       margin-top: 12px;
@@ -1183,6 +1458,36 @@
 
       .userline, .status {
         text-align: left;
+      }
+
+      .user-chip {
+        justify-content: flex-start;
+      }
+
+      .proposal-task-head,
+      .proposal-match-band .task-top,
+      .proposal-results-toolbar,
+      .proposal-inventory-footer {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .proposal-actions {
+        justify-content: flex-start;
+      }
+
+      .proposal-work-grid,
+      .proposal-field-grid,
+      .proposal-field-grid.three {
+        grid-template-columns: 1fr;
+      }
+
+      .proposal-inventory-row {
+        grid-template-columns: 22px minmax(0, 1fr);
+      }
+
+      .proposal-inventory-row > *:nth-child(n+3) {
+        grid-column: 2;
       }
     }
   </style>
@@ -1259,9 +1564,13 @@
         <div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>
       </aside>
     </section>
+
+    <section class="task-workspace" id="taskWorkspace" style="display:none"></section>
   </main>
 
   <script>
+    var SW_DASHBOARD_BUILD = 'diamond-sync-overwrite-2026-05-05';
+
     var appState = {
       token: '',
       user: null,
@@ -1281,6 +1590,9 @@
         color: '',
         clarity: ''
       },
+      proposalInventoryRows: [],
+      proposalInventoryMatches: [],
+      proposalInventorySource: null,
       bulkReturnRows: [],
       bulkReturnSource: null,
       diamondSyncPreview: null,
@@ -1434,9 +1746,42 @@
           if (closestMatch_(event.target, '.js-admin-save-user')) return saveWorkflowUser();
         });
         detailPanel.addEventListener('change', function () {
+          var fileInput = document.getElementById('loupe360DiamondFile');
+          var fileStatus = document.getElementById('loupe360FileStatus');
+          if (fileInput && fileStatus) {
+            fileStatus.textContent = fileInput.files && fileInput.files.length ? 'File selected' : 'No file selected';
+          }
           updateCompleteButtonState();
         });
         detailPanel.addEventListener('input', function () {
+          updateCompleteButtonState();
+        });
+      }
+
+      var taskWorkspace = document.getElementById('taskWorkspace');
+      if (taskWorkspace) {
+        taskWorkspace.addEventListener('click', function (event) {
+          if (closestMatch_(event.target, '.js-close-task-workspace')) return closeTaskWorkspace(true);
+          var findMatchesButton = closestMatch_(event.target, '.js-find-proposal-inventory');
+          if (findMatchesButton) return findProposalInventoryMatches(findMatchesButton);
+          if (closestMatch_(event.target, '.js-add-matched-stones')) return addSelectedInventoryMatchesToProposal();
+          var addProposalButton = closestMatch_(event.target, '.js-add-proposal-row');
+          if (addProposalButton) return addProposalRow();
+          var removeProposalButton = closestMatch_(event.target, '.js-remove-proposal-row');
+          if (removeProposalButton) return removeProposalRow(removeProposalButton);
+          if (closestMatch_(event.target, '.js-snooze-task')) return snoozeTask();
+          if (closestMatch_(event.target, '.js-claim-task')) return claimTask();
+          if (closestMatch_(event.target, '.js-complete-task')) return completeTask();
+          if (closestMatch_(event.target, '.js-admin-save-assignment')) return adminSaveAssignment();
+          if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
+          if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+        });
+        taskWorkspace.addEventListener('change', function (event) {
+          if (closestMatch_(event.target, '.proposal-inventory-check')) updateProposalInventorySelection();
+          if (closestMatch_(event.target, '#proposalMatchSort')) renderProposalInventoryResults(appState.proposalInventoryMatches || []);
+          updateCompleteButtonState();
+        });
+        taskWorkspace.addEventListener('input', function () {
           updateCompleteButtonState();
         });
       }
@@ -1560,6 +1905,7 @@
     }
 
     function beginMainRequest(view) {
+      setTaskWorkspaceVisible(false);
       appState.mainRequestId += 1;
       appState.view = view;
       return appState.mainRequestId;
@@ -1653,12 +1999,21 @@
     function renderUser(res) {
       var user = res.user || {};
       var parts = [];
-      parts.push(escapeHtml(user.name || user.email || 'Unknown user'));
       if (user.isAdmin) parts.push('Admin');
       if (user.isJoc) parts.push('JOC');
       if (user.isDiamondOrderAdmin) parts.push('Diamond Order Admin');
       if (user.isDiamondOrderAssistant) parts.push('Diamond Order Assistant');
-      document.getElementById('userLine').innerHTML = parts.join('<br>');
+      if (!parts.length && user.isRep) parts.push('Client Advisor');
+      var displayName = user.name || user.email || 'Unknown user';
+      document.getElementById('userLine').innerHTML = [
+        '<span class="user-chip">',
+          '<span class="user-avatar">' + escapeHtml(userInitials(displayName)) + '</span>',
+          '<span>',
+            '<span class="user-name-line">' + escapeHtml(displayName) + '</span>',
+            '<span class="user-role-line">' + escapeHtml(parts.join(' / ') || 'Workflow User') + '</span>',
+          '</span>',
+        '</span>'
+      ].join('');
       document.getElementById('tab-cleanup').style.display = res.views && res.views.cleanup ? '' : 'none';
       document.getElementById('tab-inStockDiamonds').style.display = res.views && res.views.inStockDiamonds !== false ? '' : 'none';
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
@@ -1670,6 +2025,33 @@
       document.getElementById('syncDiamondsButton').style.display = (user.isAdmin || user.isDiamondOrderAdmin) ? '' : 'none';
     }
 
+    function userInitials(value) {
+      var parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return 'U';
+      if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+
+    function setTaskWorkspaceVisible(visible) {
+      var shell = document.getElementById('appShell');
+      var workspace = document.getElementById('taskWorkspace');
+      if (shell) shell.classList.toggle('proposal-workspace-mode', !!visible);
+      if (workspace) workspace.style.display = visible ? '' : 'none';
+      updateAdminDashboardLayoutMode();
+    }
+
+    function closeTaskWorkspace(clearSelection) {
+      setTaskWorkspaceVisible(false);
+      var workspace = document.getElementById('taskWorkspace');
+      if (workspace) workspace.innerHTML = '';
+      if (clearSelection) {
+        appState.selectedTaskId = '';
+        appState.detail = null;
+        appState.proposalInventoryMatches = [];
+        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
+      }
+    }
+
     function openLoupe360SyncPanel() {
       appState.selectedTaskId = '';
       appState.diamondSyncPreview = null;
@@ -1677,19 +2059,20 @@
         '<div class="panel-header">',
           '<div class="eyebrow">Diamond Sync</div>',
           '<h2>Sync Loupe360 Spreadsheet</h2>',
+          '<div class="meta">Build ' + escapeHtml(SW_DASHBOARD_BUILD) + '</div>',
         '</div>',
         '<div class="detail-body">',
           '<div class="detail-section">',
             '<label>Upload</label>',
             '<form id="loupe360SyncForm" class="upload-grid">',
               '<input id="loupe360SyncToken" name="swAuthToken" type="hidden" value="">',
-              '<div><label for="loupe360DiamondFile">Spreadsheet</label><input id="loupe360DiamondFile" name="loupe360DiamondFile" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"></div>',
+              '<div><label>Spreadsheet</label><input id="loupe360DiamondFile" name="loupe360DiamondFile" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none"><label class="button-like" for="loupe360DiamondFile">Choose File</label><div class="meta" id="loupe360FileStatus">No file selected</div></div>',
             '</form>',
             '<div class="actions"><button class="primary js-preview-loupe360-sync" type="button">Preview Sync</button></div>',
           '</div>',
           '<div class="detail-section">',
             '<label>Rules</label>',
-            '<div class="template-box">Preview first. The sync matches by Certificate No, preserves customer/advisor/JOC and purchase/return decisions, and updates active shipment/spec facts only.</div>',
+            '<div class="template-box">Preview first. The sync matches by Certificate No and treats this upload as the current source for shipment, status, and spec facts. Needs Assignment only counts diamonds that are on the way, in stock, or purchased.</div>',
           '</div>',
           '<div id="loupe360SyncPreview"></div>',
         '</div>'
@@ -1713,6 +2096,9 @@
           setBusy(false, '');
           releaseLoadingButton(loadingButton);
           appState.diamondSyncPreview = res || {};
+          input.value = '';
+          var fileStatus = document.getElementById('loupe360FileStatus');
+          if (fileStatus) fileStatus.textContent = 'File uploaded for preview';
           renderLoupe360SyncPreview(res || {});
           setStatus('Preview ready. Review counts before applying.');
         })
@@ -1742,12 +2128,12 @@
           tracker ? '<div class="actions">' + tracker + '</div>' : '',
         '</div>'
       ];
-      if ((stats.protectedConflicts || 0) || (stats.duplicateSourceCerts || 0) || (stats.duplicateTrackerCerts || 0)) {
+      if ((stats.statusOverwrites || 0) || (stats.duplicateSourceCerts || 0) || (stats.duplicateTrackerCerts || 0)) {
         html.push([
           '<div class="detail-section">',
             '<label>Review Flags</label>',
             '<div class="template-box">',
-              'Protected conflicts: ' + escapeHtml(stats.protectedConflicts || 0) + '<br>',
+              'Status overwrites: ' + escapeHtml(stats.statusOverwrites || 0) + '<br>',
               'Duplicate source certificates: ' + escapeHtml(stats.duplicateSourceCerts || 0) + '<br>',
               'Duplicate tracker certificates: ' + escapeHtml(stats.duplicateTrackerCerts || 0),
             '</div>',
@@ -1756,7 +2142,7 @@
       }
       html.push(renderLoupe360SampleList('Rows To Append', samples.appends || []));
       html.push(renderLoupe360SampleList('Rows To Update', samples.updates || []));
-      html.push(renderLoupe360SampleList('Skipped / Conflicts', (samples.conflicts || []).concat(samples.skipped || [])));
+      html.push(renderLoupe360SampleList('Skipped Rows', (samples.conflicts || []).concat(samples.skipped || [])));
       html.push('<div class="actions"><button class="primary js-apply-loupe360-sync" type="button">Apply Sync</button></div>');
       var el = document.getElementById('loupe360SyncPreview');
       if (el) el.innerHTML = html.join('');
@@ -1832,7 +2218,7 @@
     function updateAdminDashboardLayoutMode() {
       var shell = document.getElementById('appShell');
       if (!shell) return;
-      shell.classList.toggle('admin-dashboard-wide', appState.view === 'adminDashboard' && appState.adminDashboardMode !== 'kanban');
+      shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard' && appState.adminDashboardMode !== 'kanban');
     }
 
     function renderViewHeader(view) {
@@ -3266,13 +3652,18 @@
       appState.detailRequestId += 1;
       var detailRequestId = appState.detailRequestId;
       var mainRequestId = appState.mainRequestId;
+      setTaskWorkspaceVisible(false);
       document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING</div>';
       serverCall('sw_getTaskDetail', [taskId], function (res) {
         if (detailRequestId !== appState.detailRequestId ||
             mainRequestId !== appState.mainRequestId ||
             appState.selectedTaskId !== taskId) return;
         appState.detail = res;
-        renderDetail(res);
+        if ((res.task || {}).taskType === 'PROPOSE_DIAMONDS') {
+          renderProposalWorkspace(res);
+        } else {
+          renderDetail(res);
+        }
       });
     }
 
@@ -3694,6 +4085,546 @@
       return '';
     }
 
+    function renderProposalWorkspace(res) {
+      res = res || {};
+      var task = res.task || {};
+      var payload = res.payload || {};
+      var appt = payload.appointment || {};
+      var extra = payload.extra || {};
+      var diamond = extra.diamond || {};
+      var requirements = normalizeCustomerDiamondRequirements(extra.customerDiamondRequirements || appt.customerDiamondRequirements || {});
+      var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete Task') + '</button>' : '';
+      var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
+      var brand = taskBrandChipHtml(task.brand || appt.brand || '');
+      var overdue = /^Overdue/.test(task.dueLabel || '') ? '<span class="badge">' + escapeHtml(task.dueLabel || '') + '</span>' : '<span class="badge">' + escapeHtml(task.dueLabel || 'Open') + '</span>';
+      var workspace = document.getElementById('taskWorkspace');
+      if (!workspace) return;
+      workspace.innerHTML = [
+        '<div class="proposal-page">',
+          '<div class="proposal-task-head">',
+            '<div>',
+              '<div class="eyebrow">' + escapeHtml(task.lifecycleStage || 'Diamond Viewing') + '</div>',
+              '<h2>' + escapeHtml(task.taskTitle || 'Propose diamonds for viewing') + '</h2>',
+              '<div class="proposal-meta-row">',
+                '<strong>' + escapeHtml(task.customerName || appt.customerName || 'No customer') + '</strong>',
+                '<span class="proposal-dot"></span>',
+                '<span>' + escapeHtml([task.visitDate || appt.visitDate || '', formatCalendarTime(task.visitTime || appt.visitTime || '')].filter(Boolean).join(' ')) + '</span>',
+                '<span class="proposal-dot"></span>',
+                '<span>Owner: ' + escapeHtml(task.currentOwner || 'Unassigned') + '</span>',
+                brand,
+                overdue,
+              '</div>',
+            '</div>',
+            '<div class="proposal-actions">',
+              '<button class="js-close-task-workspace" type="button">Back To Queue</button>',
+              claim,
+              complete,
+            '</div>',
+          '</div>',
+          '<div class="proposal-work-grid">',
+            '<section class="proposal-main">',
+              renderProposalRequirementsCard(requirements),
+              renderProposalVarietyCard(requirements),
+              renderProposalMatchBand(task, appt, extra),
+              renderProposalInventoryResultsShell(),
+              renderProposalStoneEntryCard(appt),
+              renderProposalInternalNotesCard(requirements),
+              res.canComplete ? renderSnoozeControls(task) : '',
+            '</section>',
+            '<aside class="proposal-aside">',
+              renderProposalContextPanel(task, appt, extra),
+              renderProposalStatusPanel(diamond),
+              renderProposalLinksPanel(res, extra, appt),
+              renderProposalChecklistPanel(res.checklist || []),
+              res.canAdmin ? renderAdminForm(task, res) : '',
+            '</aside>',
+          '</div>',
+        '</div>'
+      ].join('');
+      setTaskWorkspaceVisible(true);
+      window.scrollTo(0, 0);
+      updateCompleteButtonState();
+    }
+
+    function renderProposalRequirementsCard(requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      return [
+        '<div class="proposal-card">',
+          '<div class="proposal-card-head">',
+            '<h3>What the customer is looking for</h3>',
+            '<span class="meta">Required fields control matching and completion.</span>',
+          '</div>',
+          '<div class="proposal-field-grid">',
+            requirementTextareaHtml('summary', 'Buying Brief *', requirements.summary, 'Example: 2-3 ct emerald-cut lab diamond, D-E color, VVS-VS1 clarity, wants to compare ratios.'),
+            requirementSelectHtml('stoneType', 'Stone Type', ['Lab Diamond', 'Natural Diamond', 'Sapphire', 'Emerald', 'Ruby'], requirements.stoneType),
+            requirementSelectHtml('shape', 'Shape', ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other'], requirements.shape),
+            requirementInputHtml('caratMin', 'Carat Min', 'number', requirements.caratMin, '0.01'),
+            requirementInputHtml('caratMax', 'Carat Max', 'number', requirements.caratMax, '0.01'),
+            requirementSelectHtml('colorMin', 'Color From', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMin),
+            requirementSelectHtml('colorMax', 'Color To', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMax),
+            requirementSelectHtml('clarityMin', 'Clarity From', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMin),
+            requirementSelectHtml('clarityMax', 'Clarity To', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMax),
+            requirementSelectHtml('primaryDecisionFactor', 'Primary Deciding Factor *', ['Ratio / shape appearance', 'Carat size', 'Color', 'Clarity', 'Price / value', 'Availability / return date', 'Lab / certification', 'Unsure / compare multiple'], requirements.primaryDecisionFactor),
+            requirementInputHtml('ratioPreference', 'Ratio Preference', 'text', requirements.ratioPreference),
+            requirementInputHtml('budgetNote', 'Budget / Value Note', 'text', requirements.budgetNote),
+            '<div class="wide requirement-status error" id="proposalRequirementStatus"></div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalVarietyCard(requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      return [
+        '<div class="proposal-card">',
+          '<div class="proposal-card-head">',
+            '<h3>Variety to show</h3>',
+          '</div>',
+          '<div class="requirement-checks">',
+            requirementCheckboxHtml('different_ratios', 'Different ratios', requirements.varietyFocus),
+            requirementCheckboxHtml('different_carat_sizes', 'Different carat sizes', requirements.varietyFocus),
+            requirementCheckboxHtml('different_clarities', 'Different clarities', requirements.varietyFocus),
+            requirementCheckboxHtml('different_colors', 'Different colors', requirements.varietyFocus),
+            requirementCheckboxHtml('different_price_points', 'Different price points', requirements.varietyFocus),
+            requirementCheckboxHtml('in_stock_options', 'In-stock options', requirements.varietyFocus),
+            requirementCheckboxHtml('other', 'Other', requirements.varietyFocus),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalMatchBand(task, appt, extra) {
+      var readyBy = [task.visitDate || appt.visitDate || '', formatCalendarTime(task.visitTime || appt.visitTime || '')].filter(Boolean).join(' ');
+      return [
+        '<div class="proposal-match-band">',
+          '<div class="task-top">',
+            '<div>',
+              '<h3>Match against in-stock inventory</h3>',
+              '<div class="meta">Uses current in-stock diamonds from 200_' + (readyBy ? ' for the ' + escapeHtml(readyBy) + ' appointment' : '') + '.</div>',
+            '</div>',
+            '<button class="primary js-find-proposal-inventory" type="button">Find Matches</button>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalInventoryResultsShell() {
+      return [
+        '<div class="proposal-card proposal-match-results" id="proposalInventoryResults">',
+          '<div class="proposal-results-toolbar">',
+            '<div>',
+              '<h3 id="proposalInventoryTitle">Matching inventory</h3>',
+              '<div class="meta" id="proposalInventorySummary"></div>',
+            '</div>',
+            '<div><label for="proposalMatchSort">Sort</label><select id="proposalMatchSort"><option value="best">Best Match</option><option value="caratAsc">Carat Low To High</option><option value="caratDesc">Carat High To Low</option><option value="returnDate">Return Date</option></select></div>',
+          '</div>',
+          '<div id="proposalInventoryList" class="proposal-inventory-list"></div>',
+          '<div class="proposal-inventory-footer" id="proposalInventoryFooter">',
+            '<div class="meta"><strong id="proposalInventorySelectedCount">0 selected</strong></div>',
+            '<button class="primary js-add-matched-stones" type="button">Add Selected To Proposal</button>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalStoneEntryCard(appt) {
+      return [
+        '<div class="proposal-card">',
+          '<div class="proposal-card-head">',
+            '<h3>Proposed diamonds</h3>',
+            '<span class="meta">' + escapeHtml([appt.customerName, appt.visitDate, formatCalendarTime(appt.visitTime)].filter(Boolean).join(' | ')) + '</span>',
+          '</div>',
+          '<div id="proposalRows" class="proposal-rows">',
+            proposalRowHtml(0),
+          '</div>',
+          '<div class="actions"><button class="js-add-proposal-row" type="button">Add Diamond</button></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalInternalNotesCard(requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      return [
+        '<div class="proposal-card">',
+          '<div class="proposal-card-head">',
+            '<h3>Internal notes</h3>',
+          '</div>',
+          requirementTextareaHtml('notes', 'Constraints / Vendor Notes', requirements.notes, ''),
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalContextPanel(task, appt, extra) {
+      var lines = [
+        task.brand || appt.brand || '',
+        appt.visitType || task.visitType || '',
+        appt.salesStage ? 'Stage: ' + appt.salesStage : '',
+        appt.convStatus ? 'Status: ' + appt.convStatus : '',
+        appt.assistedRep ? 'JOC: ' + appt.assistedRep : ''
+      ].filter(Boolean);
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Customer Context</div>',
+          '<h3>' + escapeHtml(task.customerName || appt.customerName || 'No customer') + '</h3>',
+          '<div class="meta" style="margin-top:8px">' + escapeHtml(lines.join('\n')) + '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalStatusPanel(diamond) {
+      var counts = (diamond && diamond.counts) || {};
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Proposal Status</div>',
+          '<div class="mini-table">',
+            '<div class="mini-row"><div class="meta">Proposed</div><strong>' + escapeHtml(counts.proposing || 0) + '</strong></div>',
+            '<div class="mini-row"><div class="meta">On The Way</div><strong>' + escapeHtml(counts.onTheWay || 0) + '</strong></div>',
+            '<div class="mini-row"><div class="meta">Delivered</div><strong>' + escapeHtml(counts.delivered || 0) + '</strong></div>',
+            '<div class="mini-row"><div class="meta">Total</div><strong>' + escapeHtml(counts.total || 0) + '</strong></div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalLinksPanel(res, extra, appt) {
+      var links = [];
+      (res.attachments || (res.attachment && res.attachment.url ? [res.attachment] : []) || []).forEach(function (attachment) {
+        if (attachment && attachment.url) links.push({ label: attachment.label || attachment.url, url: attachment.url });
+      });
+      [
+        { label: 'Open 200_ Diamond Tracker', url: extra.diamondTrackerUrl },
+        { label: 'Open Quotation Sheet', url: extra.quotationUrl || appt.quotationUrl },
+        { label: 'Open 3D Tracker', url: extra.tracker3dUrl || appt.tracker3dUrl },
+        { label: 'Open Client Folder', url: appt.clientFolder }
+      ].forEach(function (link) {
+        if (!link.url) return;
+        var exists = links.some(function (item) { return item.url === link.url; });
+        if (!exists) links.push(link);
+      });
+      if (!links.length) return '';
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Attachments</div>',
+          '<div class="proposal-link-list">',
+            links.map(function (link) {
+              return '<a href="' + escapeHref(link.url) + '" target="_blank">' + escapeHtml(link.label || link.url) + '</a>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalChecklistPanel(checklist) {
+      checklist = checklist || [];
+      if (!checklist.length) return '';
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Checklist</div>',
+          '<div class="proposal-checklist">',
+            checklist.map(function (item) {
+              var required = item.required === false ? '' : ' required';
+              return '<label class="check-row"><input type="checkbox" id="check-' + escapeAttr(item.id) + '"' + required + '><span>' + escapeHtml(item.label || item.id) + (item.required === false ? '' : ' *') + '</span></label>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function findProposalInventoryMatches(sourceButton) {
+      var requirements = collectCustomerDiamondRequirements();
+      var hasCriteria = requirements.stoneType || requirements.shape || requirements.caratMin || requirements.caratMax ||
+        requirements.colorMin || requirements.colorMax || requirements.clarityMin || requirements.clarityMax;
+      if (!hasCriteria) {
+        setStatus('Enter at least a stone type, shape, carat, color, or clarity requirement before matching inventory.', true);
+        return;
+      }
+      serverCall('sw_getInStockDiamonds', [], function (res) {
+        var rows = (res && res.rows) || [];
+        appState.proposalInventoryRows = rows;
+        appState.proposalInventorySource = res || {};
+        appState.proposalInventoryMatches = proposalInventoryMatches(rows, requirements);
+        renderProposalInventoryResults(appState.proposalInventoryMatches || []);
+        setStatus('Found ' + (appState.proposalInventoryMatches || []).length + ' matching in-stock diamond(s).');
+      }, 'Finding matching diamonds', sourceButton);
+    }
+
+    function proposalInventoryMatches(rows, requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      var detail = appState.detail || {};
+      var task = detail.task || {};
+      var payload = detail.payload || {};
+      var appt = payload.appointment || {};
+      var apptMs = proposalDateMs(task.visitDate || appt.visitDate || '');
+      return (rows || []).filter(function (row) {
+        if (!proposalStoneTypeMatches(row.stoneType, requirements.stoneType)) return false;
+        if (!proposalTextMatches(row.shape, requirements.shape)) return false;
+        if (!proposalNumberInRange(row.carat, requirements.caratMin, requirements.caratMax)) return false;
+        if (!proposalQualityInRange(row.color, requirements.colorMin, requirements.colorMax, ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'])) return false;
+        if (!proposalQualityInRange(row.clarity, requirements.clarityMin, requirements.clarityMax, ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'])) return false;
+        if (apptMs && row.returnDueDate) {
+          var returnMs = proposalDateMs(row.returnDueDate);
+          if (returnMs && returnMs < apptMs) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderProposalInventoryResults(matches) {
+      matches = matches || [];
+      var panel = document.getElementById('proposalInventoryResults');
+      var list = document.getElementById('proposalInventoryList');
+      var title = document.getElementById('proposalInventoryTitle');
+      var summary = document.getElementById('proposalInventorySummary');
+      var footer = document.getElementById('proposalInventoryFooter');
+      if (!panel || !list || !title || !summary || !footer) return;
+      panel.style.display = 'block';
+      var sorted = sortProposalInventoryMatches(matches);
+      title.textContent = sorted.length ? sorted.length + ' matching in-stock diamond(s)' : 'No matching in-stock diamonds';
+      summary.textContent = proposalInventorySummaryText(collectCustomerDiamondRequirements());
+      if (!sorted.length) {
+        list.innerHTML = '<div class="empty"><h3>No matching in-stock diamonds</h3><p>Adjust the customer requirements or add a proposal diamond manually below.</p></div>';
+        footer.style.display = 'none';
+        return;
+      }
+      footer.style.display = 'flex';
+      list.innerHTML = sorted.map(renderProposalInventoryRow).join('');
+      updateProposalInventorySelection();
+    }
+
+    function renderProposalInventoryRow(row) {
+      var typeLabel = proposalStoneTypeLabel(row.stoneType);
+      var mainMeta = [
+        typeLabel,
+        row.vendor ? 'Vendor ' + row.vendor : '',
+        row.lab ? 'Lab ' + row.lab : '',
+        row.availabilityLabel || row.stoneStatus || row.orderStatus || ''
+      ].filter(Boolean).join(' | ');
+      return [
+        '<label class="proposal-inventory-row">',
+          '<input class="proposal-inventory-check" type="checkbox" value="' + escapeAttrValue(row.rowIndex || '') + '">',
+          '<div>',
+            '<div class="proposal-inventory-cert">' + escapeHtml(row.certNo ? 'Cert ' + row.certNo : 'Row ' + (row.rowIndex || '')) + '</div>',
+            '<div class="meta">' + escapeHtml(mainMeta) + '</div>',
+          '</div>',
+          proposalInventoryCell('Type', typeLabel),
+          proposalInventoryCell('Carat', row.carat || ''),
+          proposalInventoryCell('Color', row.color || ''),
+          proposalInventoryCell('Clarity', row.clarity || ''),
+          proposalInventoryCell('L/W', row.ratio || ''),
+          proposalInventoryCell('Grading Lab', row.lab || ''),
+          proposalInventoryCell('Return', row.returnDueDate || row.issue || 'Missing'),
+        '</label>'
+      ].join('');
+    }
+
+    function proposalInventoryCell(label, value) {
+      return '<div class="proposal-inventory-cell"><div class="eyebrow">' + escapeHtml(label) + '</div><div class="proposal-inventory-value">' + escapeHtml(value || '-') + '</div></div>';
+    }
+
+    function sortProposalInventoryMatches(matches) {
+      var sorted = (matches || []).slice();
+      var sortEl = document.getElementById('proposalMatchSort');
+      var mode = sortEl ? sortEl.value : 'best';
+      var requirements = collectCustomerDiamondRequirements();
+      sorted.sort(function (a, b) {
+        if (mode === 'caratAsc') return proposalNumber(a.carat) - proposalNumber(b.carat);
+        if (mode === 'caratDesc') return proposalNumber(b.carat) - proposalNumber(a.carat);
+        if (mode === 'returnDate') return (proposalDateMs(a.returnDueDate) || 9999999999999) - (proposalDateMs(b.returnDueDate) || 9999999999999);
+        return proposalInventoryScore(b, requirements) - proposalInventoryScore(a, requirements) ||
+          proposalNumber(b.carat) - proposalNumber(a.carat);
+      });
+      return sorted;
+    }
+
+    function proposalInventoryScore(row, requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      var score = 0;
+      if (requirements.stoneType && proposalStoneTypeMatches(row.stoneType, requirements.stoneType)) score += 20;
+      if (requirements.shape && proposalTextMatches(row.shape, requirements.shape)) score += 20;
+      if (proposalNumberInRange(row.carat, requirements.caratMin, requirements.caratMax)) score += 10;
+      if (proposalQualityInRange(row.color, requirements.colorMin, requirements.colorMax, ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'])) score += 8;
+      if (proposalQualityInRange(row.clarity, requirements.clarityMin, requirements.clarityMax, ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'])) score += 8;
+      if (!row.issue) score += 4;
+      return score;
+    }
+
+    function updateProposalInventorySelection() {
+      var checks = [].slice.call(document.querySelectorAll('.proposal-inventory-check'));
+      var count = checks.filter(function (check) { return check.checked; }).length;
+      var countEl = document.getElementById('proposalInventorySelectedCount');
+      var addButton = document.querySelector('.js-add-matched-stones');
+      if (countEl) countEl.textContent = count + ' selected';
+      if (addButton) addButton.disabled = !count;
+    }
+
+    function addSelectedInventoryMatchesToProposal() {
+      var selected = selectedProposalInventoryRows();
+      if (!selected.length) {
+        setStatus('Select at least one matching diamond to add.', true);
+        return;
+      }
+      var container = document.getElementById('proposalRows');
+      if (!container) return;
+      var existingRows = [].slice.call(container.querySelectorAll('.proposal-row'));
+      if (existingRows.length === 1 && !proposalRowHasData(existingRows[0])) {
+        container.innerHTML = '';
+      }
+      selected.forEach(function (row) {
+        var index = container.querySelectorAll('.proposal-row').length;
+        container.insertAdjacentHTML('beforeend', proposalRowHtml(index, proposalStoneFromInventory(row), true));
+      });
+      updateProposalRowNumbers();
+      updateCompleteButtonState();
+      setStatus('Added ' + selected.length + ' in-stock diamond(s) to the proposal.');
+    }
+
+    function selectedProposalInventoryRows() {
+      var byRow = {};
+      (appState.proposalInventoryMatches || []).forEach(function (row) {
+        byRow[String(row.rowIndex)] = row;
+      });
+      return [].slice.call(document.querySelectorAll('.proposal-inventory-check:checked')).map(function (check) {
+        return byRow[String(check.value)];
+      }).filter(Boolean);
+    }
+
+    function proposalRowHasData(row) {
+      return [].slice.call(row.querySelectorAll('.proposal-field')).some(function (field) {
+        return String(field.value || '').trim();
+      });
+    }
+
+    function proposalStoneFromInventory(row) {
+      row = row || {};
+      return {
+        vendor: row.vendor || 'From In Stock',
+        stoneType: proposalStoneTypeForProposal(row.stoneType),
+        shape: proposalChoiceValue(row.shape, ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other']),
+        carat: row.carat || '',
+        color: proposalColorForProposal(row.color),
+        clarity: proposalChoiceValue(row.clarity, ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2']),
+        lab: proposalChoiceValue(row.lab, ['GIA', 'IGI', 'Other']),
+        certNo: row.certNo || '',
+        measurements: row.measurement || '',
+        lwRatio: row.ratio || ''
+      };
+    }
+
+    function proposalInventorySummaryText(requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      return [
+        requirements.stoneType,
+        requirements.shape,
+        swUiRangeText(requirements.caratMin, requirements.caratMax, 'ct'),
+        swUiRangeText(requirements.colorMin, requirements.colorMax, 'color'),
+        swUiRangeText(requirements.clarityMin, requirements.clarityMax, 'clarity')
+      ].filter(Boolean).join(' | ');
+    }
+
+    function swUiRangeText(min, max, suffix) {
+      if (!min && !max) return '';
+      if (min && max) return min + '-' + max + (suffix === 'ct' ? ' ct' : ' ' + suffix);
+      return (min || max) + (suffix === 'ct' ? ' ct' : ' ' + suffix);
+    }
+
+    function proposalTextMatches(value, expected) {
+      if (!expected) return true;
+      return norm(value) === norm(expected);
+    }
+
+    function proposalStoneTypeMatches(value, expected) {
+      if (!expected) return true;
+      return proposalStoneTypeKey(value) === proposalStoneTypeKey(expected);
+    }
+
+    function proposalStoneTypeKey(value) {
+      var n = norm(value);
+      if (!n) return '';
+      if (/\blab\b|lab grown|lab-grown|lab created|lgd|\blg\b|cvd|hpht|synthetic|man made/.test(n)) return 'lab';
+      if (/natural|earth/.test(n)) return 'natural';
+      if (/sapphire/.test(n)) return 'sapphire';
+      if (/emerald/.test(n)) return 'emerald';
+      if (/ruby/.test(n)) return 'ruby';
+      return n;
+    }
+
+    function proposalStoneTypeLabel(value) {
+      var key = proposalStoneTypeKey(value);
+      if (key === 'lab') return 'Lab Diamond';
+      if (key === 'natural') return 'Natural Diamond';
+      return value || 'Stone type missing';
+    }
+
+    function proposalStoneTypeForProposal(value) {
+      var key = proposalStoneTypeKey(value);
+      if (key === 'lab') return 'Lab Diamond';
+      if (key === 'natural') return 'Natural Diamond';
+      return proposalChoiceValue(value, ['Lab Diamond', 'Natural Diamond', 'Sapphire', 'Emerald', 'Ruby']);
+    }
+
+    function proposalNumberInRange(value, min, max) {
+      var n = proposalNumber(value);
+      if (!min && !max) return true;
+      if (isNaN(n)) return false;
+      var lo = min ? proposalNumber(min) : -Infinity;
+      var hi = max ? proposalNumber(max) : Infinity;
+      if (lo > hi) {
+        var tmp = lo;
+        lo = hi;
+        hi = tmp;
+      }
+      return n >= lo && n <= hi;
+    }
+
+    function proposalNumber(value) {
+      var n = Number(String(value || '').replace(/[^0-9.\-]/g, ''));
+      return isNaN(n) ? 0 : n;
+    }
+
+    function proposalQualityInRange(value, min, max, order) {
+      if (!min && !max) return true;
+      var v = proposalQualityIndex(value, order);
+      if (v < 0) return false;
+      var lo = min ? proposalQualityIndex(min, order) : 0;
+      var hi = max ? proposalQualityIndex(max, order) : order.length - 1;
+      if (lo < 0) lo = 0;
+      if (hi < 0) hi = order.length - 1;
+      if (lo > hi) {
+        var tmp = lo;
+        lo = hi;
+        hi = tmp;
+      }
+      return v >= lo && v <= hi;
+    }
+
+    function proposalQualityIndex(value, order) {
+      var n = norm(value);
+      for (var i = 0; i < order.length; i++) {
+        if (n === norm(order[i]) || (order[i] === 'Fancy' && n.indexOf('fancy') === 0)) return i;
+      }
+      return -1;
+    }
+
+    function proposalColorForProposal(value) {
+      if (/^fancy/i.test(String(value || ''))) return 'Fancy';
+      return proposalChoiceValue(value, ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy']);
+    }
+
+    function proposalChoiceValue(value, options) {
+      var n = norm(value);
+      for (var i = 0; i < options.length; i++) {
+        if (norm(options[i]) === n) return options[i];
+      }
+      return value || '';
+    }
+
+    function proposalDateMs(value) {
+      var iso = dateInputValue(value);
+      if (!iso) return 0;
+      var parts = iso.split('-');
+      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0).getTime();
+    }
+
     function renderDiamondControls(task, res) {
       var payload = res.payload || {};
       var extra = payload.extra || {};
@@ -3866,47 +4797,55 @@
       return '<label class="check-row"><input class="requirement-variety" type="checkbox" value="' + escapeAttrValue(value) + '"' + (selected.indexOf(value) >= 0 ? ' checked' : '') + '><span>' + escapeHtml(label) + '</span></label>';
     }
 
-    function proposalRowHtml(index) {
+    function proposalRowHtml(index, stone, imported) {
+      stone = stone || {};
       return [
-        '<div class="proposal-row" data-proposal-row="' + escapeAttrValue(index) + '">',
+        '<div class="proposal-row ' + (imported ? 'imported' : '') + '" data-proposal-row="' + escapeAttrValue(index) + '">',
           '<div class="task-top">',
             '<h3>Diamond ' + escapeHtml(index + 1) + '</h3>',
             index > 0 ? '<button class="js-remove-proposal-row" type="button">Remove</button>' : '',
           '</div>',
           '<div class="proposal-grid" style="margin-top:12px">',
-            proposalSelectHtml('vendor', 'Vendor', ['Loupe360', 'LG', 'From In Stock', 'Other']),
-            proposalSelectHtml('stoneType', 'Stone Type', ['Lab Diamond', 'Natural Diamond', 'Sapphire', 'Emerald', 'Ruby']),
-            proposalSelectHtml('shape', 'Shape', ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other']),
-            proposalInputHtml('carat', 'Carat', 'number', '0.01'),
-            proposalSelectHtml('color', 'Color', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy']),
-            proposalSelectHtml('clarity', 'Clarity', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2']),
-            proposalSelectHtml('cut', 'Cut', ['EX', 'VG', 'G', 'F', 'P']),
-            proposalSelectHtml('pol', 'Polish', ['EX', 'VG', 'G', 'F', 'P']),
-            proposalSelectHtml('sym', 'Symmetry', ['EX', 'VG', 'G', 'F', 'P']),
-            proposalSelectHtml('fluorIntensity', 'Fluor Intensity', ['None', 'Faint', 'Medium', 'Strong', 'Very Strong']),
-            proposalSelectHtml('fluorColor', 'Fluor Color', ['None', 'Blue', 'Yellow', 'Other']),
-            proposalInputHtml('lwRatio', 'L/W Ratio', 'number', '0.01'),
-            proposalSelectHtml('lab', 'Lab', ['GIA', 'IGI', 'Other']),
-            proposalInputHtml('certNo', 'Certificate No', 'text'),
-            proposalInputHtml('measurements', 'Measurements', 'text'),
-            proposalSelectHtml('fancyColor', 'Fancy Color', ['Yellow', 'Brown', 'Blue', 'Pink', 'Green', 'Orange', 'Purple', 'Red', 'Gray', 'Black', 'Other']),
-            proposalSelectHtml('fancyIntensity', 'Fancy Intensity', ['Faint', 'Light', 'Fancy', 'Intense', 'Vivid', 'Deep', 'Dark']),
+            proposalInputHtml('vendor', 'Vendor', 'text', '', stone.vendor),
+            proposalSelectHtml('stoneType', 'Stone Type', ['Lab Diamond', 'Natural Diamond', 'Sapphire', 'Emerald', 'Ruby'], stone.stoneType),
+            proposalSelectHtml('shape', 'Shape', ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other'], stone.shape),
+            proposalInputHtml('carat', 'Carat', 'number', '0.01', stone.carat),
+            proposalSelectHtml('color', 'Color', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], stone.color),
+            proposalSelectHtml('clarity', 'Clarity', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], stone.clarity),
+            proposalSelectHtml('cut', 'Cut', ['EX', 'VG', 'G', 'F', 'P'], stone.cut),
+            proposalSelectHtml('pol', 'Polish', ['EX', 'VG', 'G', 'F', 'P'], stone.pol),
+            proposalSelectHtml('sym', 'Symmetry', ['EX', 'VG', 'G', 'F', 'P'], stone.sym),
+            proposalSelectHtml('fluorIntensity', 'Fluor Intensity', ['None', 'Faint', 'Medium', 'Strong', 'Very Strong'], stone.fluorIntensity),
+            proposalSelectHtml('fluorColor', 'Fluor Color', ['None', 'Blue', 'Yellow', 'Other'], stone.fluorColor),
+            proposalInputHtml('lwRatio', 'L/W Ratio', 'number', '0.01', stone.lwRatio),
+            proposalSelectHtml('lab', 'Lab', ['GIA', 'IGI', 'Other'], stone.lab),
+            proposalInputHtml('certNo', 'Certificate No', 'text', '', stone.certNo),
+            proposalInputHtml('measurements', 'Measurements', 'text', '', stone.measurements),
+            proposalSelectHtml('fancyColor', 'Fancy Color', ['Yellow', 'Brown', 'Blue', 'Pink', 'Green', 'Orange', 'Purple', 'Red', 'Gray', 'Black', 'Other'], stone.fancyColor),
+            proposalSelectHtml('fancyIntensity', 'Fancy Intensity', ['Faint', 'Light', 'Fancy', 'Intense', 'Vivid', 'Deep', 'Dark'], stone.fancyIntensity),
           '</div>',
         '</div>'
       ].join('');
     }
 
-    function proposalSelectHtml(name, label, options) {
+    function proposalSelectHtml(name, label, options, selected) {
+      selected = selected || '';
+      var foundSelected = !selected;
+      (options || []).forEach(function (option) {
+        if (String(option) === String(selected)) foundSelected = true;
+      });
+      var fullOptions = (options || []).slice();
+      if (!foundSelected) fullOptions.unshift(selected);
       return '<div><label>' + escapeHtml(label) + '</label><select class="proposal-field" data-field="' + escapeAttrValue(name) + '">' +
         '<option value="">Select</option>' +
-        (options || []).filter(function (option) { return option !== ''; }).map(function (option) {
-          return '<option value="' + escapeAttrValue(option) + '">' + escapeHtml(option) + '</option>';
+        fullOptions.filter(function (option) { return option !== ''; }).map(function (option) {
+          return '<option value="' + escapeAttrValue(option) + '"' + (String(option) === String(selected) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>';
         }).join('') +
         '</select></div>';
     }
 
-    function proposalInputHtml(name, label, type, step) {
-      return '<div><label>' + escapeHtml(label) + '</label><input class="proposal-field" data-field="' + escapeAttrValue(name) + '" type="' + escapeAttrValue(type || 'text') + '"' + (step ? ' step="' + escapeAttrValue(step) + '"' : '') + '></div>';
+    function proposalInputHtml(name, label, type, step, value) {
+      return '<div><label>' + escapeHtml(label) + '</label><input class="proposal-field" data-field="' + escapeAttrValue(name) + '" type="' + escapeAttrValue(type || 'text') + '" value="' + escapeAttrValue(value || '') + '"' + (step ? ' step="' + escapeAttrValue(step) + '"' : '') + '></div>';
     }
 
     function addProposalRow() {
