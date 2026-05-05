@@ -729,7 +729,7 @@ function swCustomerSearchReadModelCacheKey_(ss) {
 }
 
 function swCustomerSearchInitialPayloadCacheKey_(ss) {
-  return 'sw:customerSearchInitialPayload:v1:' + ss.getId();
+  return 'sw:customerSearchInitialPayload:v2:' + ss.getId();
 }
 
 function swCustomerSearchInitialPayloadCacheGet_(key) {
@@ -761,7 +761,23 @@ function swPackCustomerSearchInitialPayload_(payload) {
   payload = payload || {};
   var response = payload.payload || {};
   var columns = response && response.kanban && response.kanban.columns ? response.kanban.columns : [];
+  var dict = [];
+  var dictByValue = {};
+  function put(value) {
+    value = String(value || '');
+    if (!value) return 0;
+    if (dictByValue[value]) return dictByValue[value];
+    dict.push(value);
+    dictByValue[value] = dict.length;
+    return dict.length;
+  }
+  function packList(list) {
+    return (list || []).map(put);
+  }
+  var filterOptions = response.filterOptions || {};
   return {
+    z: 2,
+    d: dict,
     ca: payload.cachedAt || '',
     v: payload.version || '',
     m: payload.modelBuiltAt || '',
@@ -772,11 +788,15 @@ function swPackCustomerSearchInitialPayload_(payload) {
     p: {
       ok: response.ok === false ? 0 : 1,
       g: response.generatedAt || '',
-      q: response.query || '',
-      s: response.source || '',
+      q: put(response.query || ''),
+      s: put(response.source || ''),
       f: response.filters || {},
-      o: response.filterOptions || {},
-      k: columns.map(swPackCustomerSearchInitialColumn_)
+      o: [
+        packList(filterOptions.brands || []),
+        packList(filterOptions.clientAdvisors || []),
+        packList(filterOptions.jocs || [])
+      ],
+      k: columns.map(function (col) { return swPackCustomerSearchInitialColumn_(col, put); })
     }
   };
 }
@@ -784,6 +804,7 @@ function swPackCustomerSearchInitialPayload_(payload) {
 function swUnpackCustomerSearchInitialPayload_(payload) {
   if (!payload) return null;
   if (payload.payload && payload.payload.kanban) return payload;
+  if (payload.z === 2 && payload.p && payload.p.k) return swUnpackCustomerSearchInitialPayloadV2_(payload);
   if (!(payload.p && payload.p.k)) return payload;
   return {
     cachedAt: payload.ca || '',
@@ -807,14 +828,53 @@ function swUnpackCustomerSearchInitialPayload_(payload) {
   };
 }
 
-function swPackCustomerSearchInitialColumn_(col) {
+function swUnpackCustomerSearchInitialPayloadV2_(payload) {
+  var dict = payload.d || [];
+  function get(value) {
+    value = Number(value || 0);
+    return value > 0 ? (dict[value - 1] || '') : '';
+  }
+  function unpackList(list) {
+    return (list || []).map(get).filter(Boolean);
+  }
+  var options = payload.p.o || [];
+  return {
+    cachedAt: payload.ca || '',
+    version: payload.v || '',
+    modelBuiltAt: payload.m || '',
+    sourceRows: Number(payload.sr || 0),
+    filteredRows: Number(payload.fr || 0),
+    cards: Number(payload.c || 0),
+    hiddenCards: Number(payload.h || 0),
+    payload: {
+      ok: payload.p.ok !== 0,
+      generatedAt: payload.p.g || '',
+      query: get(payload.p.q),
+      source: get(payload.p.s),
+      filters: payload.p.f || {},
+      filterOptions: {
+        brands: unpackList(options[0] || []),
+        clientAdvisors: unpackList(options[1] || []),
+        jocs: unpackList(options[2] || [])
+      },
+      kanban: {
+        columns: (payload.p.k || []).map(function (col) {
+          return swUnpackCustomerSearchInitialColumnV2_(col, get);
+        })
+      }
+    }
+  };
+}
+
+function swPackCustomerSearchInitialColumn_(col, put) {
   col = col || {};
+  put = put || function (value) { return value || ''; };
   return [
-    col.key || '',
-    col.label || '',
+    put(col.key || ''),
+    put(col.label || ''),
     Number(col.count || 0),
     Number(col.hiddenCount || 0),
-    (col.cards || []).map(swPackCustomerSearchInitialCard_)
+    (col.cards || []).map(function (card) { return swPackCustomerSearchInitialCard_(card, put); })
   ];
 }
 
@@ -829,25 +889,39 @@ function swUnpackCustomerSearchInitialColumn_(col) {
   };
 }
 
-function swPackCustomerSearchInitialCard_(card) {
+function swUnpackCustomerSearchInitialColumnV2_(col, get) {
+  col = col || [];
+  return {
+    key: get(col[0]),
+    label: get(col[1]),
+    count: Number(col[2] || 0),
+    hiddenCount: Number(col[3] || 0),
+    cards: (col[4] || []).map(function (card) {
+      return swUnpackCustomerSearchInitialCardV2_(card, get);
+    })
+  };
+}
+
+function swPackCustomerSearchInitialCard_(card, put) {
   card = card || {};
+  put = put || function (value) { return value || ''; };
   return [
-    card.root || '',
-    card.appt || '',
-    card.customerName || '',
-    card.brand || '',
-    card.clientAdvisor || '',
-    card.joc || '',
-    card.nextVisit || '',
-    card.lastVisit || '',
-    card.salesStage || '',
-    card.conversionStatus || '',
-    card.customOrderStatus || '',
-    card.inProductionStatus || '',
-    card.so || '',
-    card.deadline3d || '',
-    card.waxStatus || '',
-    card.badges || []
+    put(card.root || ''),
+    put(card.appt || ''),
+    put(card.customerName || ''),
+    put(card.brand || ''),
+    put(card.clientAdvisor || ''),
+    put(card.joc || ''),
+    put(card.nextVisit || ''),
+    put(card.lastVisit || ''),
+    put(card.salesStage || ''),
+    put(card.conversionStatus || ''),
+    put(card.customOrderStatus || ''),
+    put(card.inProductionStatus || ''),
+    put(card.so || ''),
+    put(card.deadline3d || ''),
+    put(card.waxStatus || ''),
+    (card.badges || []).map(put)
   ];
 }
 
@@ -870,6 +944,28 @@ function swUnpackCustomerSearchInitialCard_(card) {
     deadline3d: card[13] || '',
     waxStatus: card[14] || '',
     badges: card[15] || []
+  };
+}
+
+function swUnpackCustomerSearchInitialCardV2_(card, get) {
+  card = card || [];
+  return {
+    root: get(card[0]),
+    appt: get(card[1]),
+    customerName: get(card[2]),
+    brand: get(card[3]),
+    clientAdvisor: get(card[4]),
+    joc: get(card[5]),
+    nextVisit: get(card[6]),
+    lastVisit: get(card[7]),
+    salesStage: get(card[8]),
+    conversionStatus: get(card[9]),
+    customOrderStatus: get(card[10]),
+    inProductionStatus: get(card[11]),
+    so: get(card[12]),
+    deadline3d: get(card[13]),
+    waxStatus: get(card[14]),
+    badges: (card[15] || []).map(get).filter(Boolean)
   };
 }
 

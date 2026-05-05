@@ -266,7 +266,11 @@ function swTaskFormOptions_(ss, task) {
   var cacheKey = '';
   if (taskType) {
     try {
-      cacheKey = 'sw:formOptions:v1:' + ss.getId() + ':' + taskType;
+      var cacheTaskType = taskType;
+      if (typeof swIsDataCleanupTaskType_ === 'function' && swIsDataCleanupTaskType_(taskType)) {
+        cacheTaskType = 'DATA_CLEANUP';
+      }
+      cacheKey = 'sw:formOptions:v1:' + ss.getId() + ':' + cacheTaskType;
       var memory = SW_TASK_FORM_OPTIONS_MEMORY_CACHE_[cacheKey];
       if (memory && memory.expiresAt > new Date().getTime()) return memory.value || {};
       var cached = CacheService.getScriptCache().get(cacheKey);
