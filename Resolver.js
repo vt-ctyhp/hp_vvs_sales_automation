@@ -1154,6 +1154,62 @@ function _firstHeaderIndex_(H, names){
   return 0;
 }
 
+function _firstNonBlankFromAliases_(rowVals, H, names){
+  for (let i=0;i<names.length;i++){
+    const c = H[names[i]];
+    if (!c) continue;
+    const v = rowVals[c - 1];
+    if (String(v || '').trim()) return v;
+  }
+  return '';
+}
+
+function inheritOwnersForReschedule_(newRow, oldRow){
+  if (!newRow || !oldRow) return;
+  const s = SH(SHT.MASTER), H = headers_(SHT.MASTER);
+  const totalCols = s.getLastColumn();
+  const oldVals = s.getRange(oldRow, 1, 1, totalCols).getValues()[0];
+  const newVals = s.getRange(newRow, 1, 1, totalCols).getValues()[0];
+  const ownerFields = [
+    {
+      label: 'Client Advisor',
+      read: ['Client Advisor', 'Assigned Rep', 'Rep', 'Owner'],
+      write: ['Client Advisor', 'Assigned Rep', 'Rep', 'Owner']
+    },
+    {
+      label: 'Client Advisor Email',
+      read: ['Client Advisor Email', 'Assigned Rep Email', 'Rep Email', 'Owner Email'],
+      write: ['Client Advisor Email', 'Assigned Rep Email', 'Rep Email', 'Owner Email']
+    },
+    {
+      label: 'JOC',
+      read: ['Assisted Rep', 'Assistant Rep', 'JOC'],
+      write: ['Assisted Rep', 'Assistant Rep', 'JOC']
+    },
+    {
+      label: 'JOC Email',
+      read: ['Assisted Rep Email', 'Assistant Rep Email', 'JOC Email'],
+      write: ['Assisted Rep Email', 'Assistant Rep Email', 'JOC Email']
+    }
+  ];
+  const copied = [];
+
+  ownerFields.forEach(field => {
+    const targetCol = _firstHeaderIndex_(H, field.write);
+    if (!targetCol || String(newVals[targetCol - 1] || '').trim()) return;
+
+    const inherited = _firstNonBlankFromAliases_(oldVals, H, field.read);
+    if (!String(inherited || '').trim()) return;
+
+    s.getRange(newRow, targetCol).setValue(inherited);
+    copied.push(field.label);
+  });
+
+  if (copied.length) {
+    Logger.log('[reschedule] inherited owner fields from row ' + oldRow + ' to row ' + newRow + ': ' + copied.join(', '));
+  }
+}
+
 function _getByAliases_(sheet, row, H, names){
   const c = _firstHeaderIndex_(H, names);
   return c ? String(sheet.getRange(row, c).getValue() || '') : '';
@@ -1875,6 +1931,8 @@ function onFormSubmit(e){
         setCell_(SHT.MASTER, oldRow, 'Automation Notes',
           (prev? prev+'\n':'') + `Rescheduled → ${calUID} @ ${new Date().toISOString()}`);
       });
+
+      inheritOwnersForReschedule_(row, oldRow);
     }
 
     const existingStatusForUpdate = getCell_(SHT.MASTER,row,'Status') || '';
