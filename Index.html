@@ -3135,6 +3135,381 @@
       return null;
     }
 
+    function loadCustomerSearch(filters, preserveDetail) {
+      var requestId = beginMainRequest('customerSearch');
+      var current = appState.customerSearch || {};
+      filters = filters || current.filters || { activeOnly: true };
+      filters.activeOnly = filters.activeOnly !== false;
+      appState.customerSearch.filters = filters;
+      appState.customerSearch.query = filters.query || '';
+      setActiveTab('customerSearch');
+      renderViewHeader('customerSearch');
+      document.getElementById('taskList').innerHTML = '<div class="loading">LOADING CUSTOMER SEARCH</div>';
+      if (!preserveDetail) {
+        appState.customerSearch.detail = null;
+        appState.customerSearch.selectedRoot = '';
+        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Customer Search</div><h2>Select a customer</h2></div><div class="empty">Search and open a customer card to see links, tasks, activity, and action forms.</div>';
+      }
+      serverCall('sw_searchCustomers', [filters.query || '', filters], function (res) {
+        if (!isCurrentMainRequest(requestId, 'customerSearch')) return;
+        appState.customerSearch.result = res || {};
+        renderCustomerSearch(res || {});
+      }, 'Searching customers');
+    }
+
+    function collectCustomerSearchFilters() {
+      return {
+        query: valueOf('customerSearchQuery'),
+        brand: valueOf('customerSearchBrand'),
+        clientAdvisor: valueOf('customerSearchAdvisor'),
+        joc: valueOf('customerSearchJoc'),
+        activeOnly: checkedOf('customerSearchActiveOnly')
+      };
+    }
+
+    function clearCustomerSearchFilters() {
+      appState.customerSearch.filters = { activeOnly: true };
+      appState.customerSearch.query = '';
+      loadCustomerSearch(appState.customerSearch.filters);
+    }
+
+    function renderCustomerSearch(res) {
+      document.getElementById('taskList').innerHTML = [
+        renderCustomerSearchFilters(res),
+        renderCustomerSearchKanban((res || {}).kanban || { columns: [] })
+      ].join('');
+    }
+
+    function renderCustomerSearchFilters(res) {
+      var filters = (res && res.filters) || appState.customerSearch.filters || {};
+      var options = (res && res.filterOptions) || {};
+      return [
+        '<div class="admin-filter-panel">',
+          '<div class="admin-filter-grid">',
+            '<div><label for="customerSearchQuery">Search</label><input id="customerSearchQuery" class="js-customer-search-field" value="' + escapeAttrValue(filters.query || '') + '" placeholder="Name, phone, email, SO, RootApptID"></div>',
+            '<div><label for="customerSearchBrand">Brand</label><select id="customerSearchBrand" class="js-customer-search-field">' + adminFilterOptionTags(options.brands || [], filters.brand || '', 'All Brands') + '</select></div>',
+            '<div><label for="customerSearchAdvisor">Client Advisor</label><select id="customerSearchAdvisor" class="js-customer-search-field">' + adminFilterOptionTags(options.clientAdvisors || [], filters.clientAdvisor || '', 'All Advisors') + '</select></div>',
+            '<div><label for="customerSearchJoc">JOC</label><select id="customerSearchJoc" class="js-customer-search-field">' + adminFilterOptionTags(options.jocs || [], filters.joc || '', 'All JOC') + '</select></div>',
+          '</div>',
+          '<div class="task-top">',
+            '<label class="admin-closed-toggle"><input id="customerSearchActiveOnly" type="checkbox"' + (filters.activeOnly !== false ? ' checked' : '') + '>Active customers only</label>',
+            '<div class="actions admin-filter-actions">',
+              '<button class="js-customer-search-clear" type="button">Reset</button>',
+              '<button class="primary js-customer-search-apply" type="button">Search</button>',
+            '</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchKanban(kanban) {
+      var columns = kanban.columns || [];
+      if (!columns.length) {
+        return '<div class="empty"><h3>No customer data</h3><p>Search results will appear here when matching active customers are available.</p></div>';
+      }
+      return [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Customer Pipeline</div>',
+          '<h2>Search Kanban</h2>',
+        '</div>',
+        '<div class="admin-kanban-board">',
+          columns.map(renderCustomerSearchColumn).join(''),
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchColumn(column) {
+      var cards = column.cards || [];
+      return [
+        '<section class="admin-kanban-column">',
+          '<div class="admin-kanban-header">',
+            '<div class="task-title">' + escapeHtml(column.label || '') + '</div>',
+            '<div class="admin-kanban-count">' + escapeHtml(column.count || 0) + ' customer(s)</div>',
+          '</div>',
+          cards.length ? cards.map(renderCustomerSearchCard).join('') : '<div class="empty">No customers</div>',
+          column.hiddenCount ? '<div class="meta">+' + escapeHtml(column.hiddenCount) + ' more. Narrow the search to show them.</div>' : '',
+        '</section>'
+      ].join('');
+    }
+
+    function renderCustomerSearchCard(card) {
+      var visit = card.nextVisit ? 'Next ' + card.nextVisit : (card.lastVisit ? 'Last ' + card.lastVisit : 'No visit date');
+      var status = [card.salesStage, card.conversionStatus, card.customOrderStatus].filter(Boolean).join(' | ');
+      var ops = [card.deadline3d ? '3D due ' + card.deadline3d : '', card.waxStatus ? 'Wax ' + card.waxStatus : '', card.inProductionStatus ? 'Prod ' + card.inProductionStatus : ''].filter(Boolean).join(' | ');
+      var badges = (card.badges || []).map(function (badge) {
+        return '<span class="badge">' + escapeHtml(badge) + '</span>';
+      }).join('');
+      return [
+        '<button class="admin-kanban-card js-customer-search-card" type="button" data-root="' + escapeAttrValue(card.root || '') + '">',
+          '<div class="task-top">',
+            '<div class="task-main">',
+              '<div class="admin-card-title">' + escapeHtml(card.customerName || 'No customer') + '</div>',
+              '<div class="meta">' + escapeHtml([card.clientAdvisor ? 'Advisor ' + card.clientAdvisor : '', card.joc ? 'JOC ' + card.joc : ''].filter(Boolean).join(' | ') || 'Unassigned') + '</div>',
+            '</div>',
+            '<div class="task-side">' + taskBrandChipHtml(card.brand) + '</div>',
+          '</div>',
+          '<div class="meta">' + escapeHtml(visit) + '</div>',
+          '<div class="meta">' + escapeHtml([card.so ? 'SO ' + card.so : '', status].filter(Boolean).join(' | ')) + '</div>',
+          ops ? '<div class="meta">' + escapeHtml(ops) + '</div>' : '',
+          badges ? '<div class="task-badges">' + badges + '</div>' : '',
+        '</button>'
+      ].join('');
+    }
+
+    function openCustomerSearchDetail(root) {
+      if (!root) return;
+      appState.customerSearch.selectedRoot = root;
+      appState.detailRequestId += 1;
+      var detailRequestId = appState.detailRequestId;
+      document.getElementById('detailPanel').innerHTML = '<div class="loading">LOADING CUSTOMER</div>';
+      serverCall('sw_getCustomerSearchDetail', [root], function (res) {
+        if (detailRequestId !== appState.detailRequestId || appState.customerSearch.selectedRoot !== root) return;
+        appState.customerSearch.detail = res || {};
+        renderCustomerSearchDetail(res || {});
+      }, 'Loading customer');
+    }
+
+    function renderCustomerSearchDetail(res) {
+      var card = res.card || {};
+      var links = [
+        card.clientFolder ? '<a href="' + escapeHref(card.clientFolder) + '" target="_blank">Client Folder</a>' : '',
+        card.reportUrl ? '<a href="' + escapeHref(card.reportUrl) + '" target="_blank">Status Report</a>' : '',
+        card.quotationUrl ? '<a href="' + escapeHref(card.quotationUrl) + '" target="_blank">Quotation</a>' : '',
+        card.tracker3dUrl ? '<a href="' + escapeHref(card.tracker3dUrl) + '" target="_blank">3D Tracker</a>' : '',
+        card.orderFolder ? '<a href="' + escapeHref(card.orderFolder) + '" target="_blank">Order Folder</a>' : '',
+        card.masterUrl ? '<a href="' + escapeHref(card.masterUrl) + '" target="_blank">Open Master Row</a>' : ''
+      ].filter(Boolean);
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">' + escapeHtml(card.stageLabel || 'Customer') + '</div>',
+          '<h2>' + escapeHtml(card.customerName || 'No customer') + '</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          renderCustomerSearchSummary(card),
+          renderCustomerSearchLinks(links),
+          renderCustomerSearchAppointments(res.appointments || []),
+          renderCustomerSearchTasks(res.tasks || []),
+          renderCustomerSearchLogs(res.logs || []),
+          renderCustomerStatusAction(card, res.formOptions || {}),
+          renderCustomerDeadlineAction(card),
+          renderCustomerRevisionAction(card),
+          renderCustomerWaxAction(card, res.formOptions || {}),
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchSummary(card) {
+      var badges = (card.badges || []).map(function (badge) { return '<span class="badge">' + escapeHtml(badge) + '</span>'; }).join('');
+      return [
+        '<div class="detail-section">',
+          '<label>Current State</label>',
+          '<div class="meta">Client Advisor: ' + escapeHtml(card.clientAdvisor || 'Unassigned') + '</div>',
+          '<div class="meta">JOC: ' + escapeHtml(card.joc || 'Unassigned') + '</div>',
+          '<div class="meta">SO#: ' + escapeHtml(card.so || 'None') + '</div>',
+          '<div class="meta">Sales Stage: ' + escapeHtml(card.salesStage || '') + '</div>',
+          '<div class="meta">Conversion: ' + escapeHtml(card.conversionStatus || '') + '</div>',
+          '<div class="meta">Custom Order: ' + escapeHtml(card.customOrderStatus || '') + '</div>',
+          '<div class="meta">3D Deadline: ' + escapeHtml(card.deadline3d || 'None') + '</div>',
+          '<div class="meta">Wax: ' + escapeHtml(card.waxStatus || 'None') + '</div>',
+          badges ? '<div class="task-badges">' + badges + '</div>' : '',
+        '</div>',
+        '<div class="detail-section">',
+          '<label>Next Steps</label>',
+          '<div class="template-box">' + escapeHtml(card.nextSteps || 'No next steps recorded.') + '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchLinks(links) {
+      return [
+        '<div class="detail-section">',
+          '<label>References</label>',
+          links.length ? '<div class="attachment-list">' + links.map(function (link) { return '<div class="attachment-row">' + link + '</div>'; }).join('') + '</div>' : '<div class="empty">No links available for this customer.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchAppointments(rows) {
+      if (!rows.length) return '';
+      return [
+        '<div class="detail-section">',
+          '<label>Related Appointments</label>',
+          '<div class="mini-table">',
+            rows.map(function (row) {
+              return '<div class="mini-row three"><div><strong>' + escapeHtml(row.visitDate || 'No date') + '</strong><div class="meta">' + escapeHtml([formatCalendarTime(row.visitTime), row.visitType, row.status].filter(Boolean).join(' | ')) + '</div></div><div class="meta">' + escapeHtml(row.appt || '') + '</div><div class="meta">' + escapeHtml(row.active ? 'Active' : 'Inactive') + '</div></div>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchTasks(tasks) {
+      return [
+        '<div class="detail-section">',
+          '<label>Open Workflow Tasks</label>',
+          tasks.length ? '<div class="mini-table">' + tasks.map(function (task) {
+            return '<div class="mini-row three"><div><strong>' + escapeHtml(task.taskTitle || task.taskType || '') + '</strong><div class="meta">' + escapeHtml([task.lifecycleStage, task.dueLabel].filter(Boolean).join(' | ')) + '</div></div><div class="meta">' + escapeHtml(task.currentOwner || '') + '</div><div class="meta">' + escapeHtml(task.status || '') + '</div></div>';
+          }).join('') + '</div>' : '<div class="empty">No open workflow tasks for this customer.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerSearchLogs(logs) {
+      return [
+        '<div class="detail-section">',
+          '<label>Recent Activity</label>',
+          logs.length ? '<div class="mini-table">' + logs.slice(0, 8).map(function (log) {
+            return '<div class="mini-row"><div><strong>' + escapeHtml(log.eventType || '') + '</strong><div class="meta">' + escapeHtml([log.eventAt, log.actorName || log.actorEmail].filter(Boolean).join(' | ')) + '</div></div><div class="meta">' + escapeHtml(log.taskType || '') + '</div></div>';
+          }).join('') + '</div>' : '<div class="empty">No recent activity logged for this customer.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderCustomerStatusAction(card, opts) {
+      return [
+        '<details class="detail-section">',
+          '<summary><span class="snooze-summary-text">Update Client Status</span></summary>',
+          '<div class="field-grid">',
+            selectFieldHtml('csSalesStage', 'Sales Stage', optionsWithCurrent(opts.salesStages || [], card.salesStage || ''), card.salesStage || '', true),
+            selectFieldHtml('csConvStatus', 'Conversion Status', optionsWithCurrent(opts.convStatuses || [], card.conversionStatus || ''), card.conversionStatus || '', true),
+            selectFieldHtml('csCustomOrder', 'Custom Order Status', optionsWithCurrent(opts.customOrderStatuses || [], card.customOrderStatus || ''), card.customOrderStatus || '', false),
+            selectFieldHtml('csCenterStone', 'Center Stone Status', optionsWithCurrent(opts.centerStoneStatuses || [], card.centerStoneStatus || ''), card.centerStoneStatus || '', false),
+            selectFieldHtml('csInProduction', 'In Production Status', optionsWithCurrent(opts.inProductionStatuses || [], card.inProductionStatus || ''), card.inProductionStatus || '', false),
+            '<div><label for="csOrderDate">Order Date</label><input id="csOrderDate" type="date"></div>',
+            '<div><label for="csDeadline3d">3D Deadline</label><input id="csDeadline3d" type="date" value="' + escapeAttrValue(dateInputValue(card.deadline3d || '')) + '"></div>',
+            '<div><label for="csProdDeadline">Production Deadline</label><input id="csProdDeadline" type="date" value="' + escapeAttrValue(dateInputValue(card.productionDeadline || '')) + '"></div>',
+            '<div class="wide"><label for="csNextSteps">Next Steps</label><textarea id="csNextSteps">' + escapeHtml(card.nextSteps || '') + '</textarea></div>',
+          '</div>',
+          '<div class="actions"><button class="primary js-customer-status-save" type="button">Save Status</button></div>',
+        '</details>'
+      ].join('');
+    }
+
+    function renderCustomerDeadlineAction(card) {
+      return [
+        '<details class="detail-section">',
+          '<summary><span class="snooze-summary-text">Update 3D Deadline</span></summary>',
+          '<div class="field-grid">',
+            '<div><label for="csOnlyDeadline3d">3D Deadline</label><input id="csOnlyDeadline3d" type="date" value="' + escapeAttrValue(dateInputValue(card.deadline3d || '')) + '"></div>',
+            '<div class="wide"><label for="csDeadlineNote">Note</label><textarea id="csDeadlineNote"></textarea></div>',
+          '</div>',
+          '<div class="actions"><button class="primary js-customer-deadline-save" type="button">Save 3D Deadline</button></div>',
+        '</details>'
+      ].join('');
+    }
+
+    function renderCustomerRevisionAction(card) {
+      return [
+        '<details class="detail-section">',
+          '<summary><span class="snooze-summary-text">Submit 3D Revision Request</span></summary>',
+          '<div class="field-grid">',
+            '<div><label for="csRevAccent">Accent Diamond</label><input id="csRevAccent"></div>',
+            '<div><label for="csRevRingStyle">Ring Style</label><input id="csRevRingStyle"></div>',
+            '<div><label for="csRevMetal">Metal</label><input id="csRevMetal"></div>',
+            '<div><label for="csRevSize">US Size</label><input id="csRevSize"></div>',
+            '<div><label for="csRevBandWidth">Band Width (mm)</label><input id="csRevBandWidth"></div>',
+            '<div><label for="csRevCenterType">Center Type</label><input id="csRevCenterType"></div>',
+            '<div><label for="csRevShape">Shape</label><input id="csRevShape"></div>',
+            '<div><label for="csRevDimension">Diamond Dimension</label><input id="csRevDimension"></div>',
+            '<div class="wide"><label for="csRevNotes">Design Notes *</label><textarea id="csRevNotes"></textarea></div>',
+          '</div>',
+          '<div class="meta">Requires an SO# and 3D tracker for this customer.</div>',
+          '<div class="actions"><button class="primary js-customer-revision-save" type="button">Submit Revision</button></div>',
+        '</details>'
+      ].join('');
+    }
+
+    function renderCustomerWaxAction(card, opts) {
+      return [
+        '<details class="detail-section">',
+          '<summary><span class="snooze-summary-text">Request Wax</span></summary>',
+          '<div class="field-grid">',
+            '<div><label for="csWaxSoMo">SO/MO Number</label><input id="csWaxSoMo" value="' + escapeAttrValue(card.so || '') + '"></div>',
+            '<div><label for="csWaxNeededBy">Needed By (Rep)</label><input id="csWaxNeededBy" type="date"></div>',
+            selectFieldHtml('csWaxPriority', 'Priority', ['', 'Low', 'Normal', 'High', 'Rush'], '', true),
+            '<div class="wide"><label for="csWaxNotes">Notes</label><textarea id="csWaxNotes"></textarea></div>',
+          '</div>',
+          '<div class="actions"><button class="primary js-customer-wax-save" type="button">Request Wax</button></div>',
+        '</details>'
+      ].join('');
+    }
+
+    function optionsWithCurrent(options, current) {
+      options = (options || []).slice();
+      current = String(current || '');
+      if (current && options.indexOf(current) < 0) options.unshift(current);
+      return options;
+    }
+
+    function customerSearchRoot() {
+      return ((appState.customerSearch || {}).detail || {}).root || appState.customerSearch.selectedRoot || '';
+    }
+
+    function saveCustomerSearchStatus() {
+      var root = customerSearchRoot();
+      if (!root) return;
+      var payload = {
+        salesStage: valueOf('csSalesStage'),
+        convStatus: valueOf('csConvStatus'),
+        customOrder: valueOf('csCustomOrder'),
+        centerStone: valueOf('csCenterStone'),
+        inProduction: valueOf('csInProduction'),
+        orderDate: valueOf('csOrderDate'),
+        deadline3d: valueOf('csDeadline3d'),
+        prodDeadline: valueOf('csProdDeadline'),
+        nextSteps: valueOf('csNextSteps')
+      };
+      serverCall('sw_customerSearchUpdateStatus', [root, payload], customerSearchActionSuccess('Client status updated'), 'Saving client status');
+    }
+
+    function saveCustomerSearch3DDeadline() {
+      var root = customerSearchRoot();
+      if (!root) return;
+      serverCall('sw_customerSearchUpdate3DDeadline', [root, {
+        deadline3d: valueOf('csOnlyDeadline3d'),
+        note: valueOf('csDeadlineNote')
+      }], customerSearchActionSuccess('3D deadline updated'), 'Saving 3D deadline');
+    }
+
+    function submitCustomerSearch3DRevision() {
+      var root = customerSearchRoot();
+      if (!root) return;
+      serverCall('sw_customerSearchSubmit3DRevision', [root, {
+        form: {
+          AccentDiamondType: valueOf('csRevAccent'),
+          RingStyle: valueOf('csRevRingStyle'),
+          Metal: valueOf('csRevMetal'),
+          USSize: valueOf('csRevSize'),
+          BandWidthMM: valueOf('csRevBandWidth'),
+          CenterDiamondType: valueOf('csRevCenterType'),
+          Shape: valueOf('csRevShape'),
+          DiamondDimension: valueOf('csRevDimension'),
+          DesignNotes: valueOf('csRevNotes')
+        }
+      }], customerSearchActionSuccess('3D revision submitted'), 'Submitting 3D revision');
+    }
+
+    function submitCustomerSearchWaxRequest() {
+      var root = customerSearchRoot();
+      if (!root) return;
+      serverCall('sw_customerSearchRequestWax', [root, {
+        soMo: valueOf('csWaxSoMo'),
+        neededByRep: valueOf('csWaxNeededBy'),
+        priority: valueOf('csWaxPriority'),
+        notes: valueOf('csWaxNotes')
+      }], customerSearchActionSuccess('Wax requested'), 'Requesting wax');
+    }
+
+    function customerSearchActionSuccess(message) {
+      return function (res) {
+        appState.customerSearch.detail = res || {};
+        appState.customerSearch.selectedRoot = (res && res.root) || appState.customerSearch.selectedRoot || '';
+        renderCustomerSearchDetail(res || {});
+        setStatus(message);
+        loadCustomerSearch(appState.customerSearch.filters || { activeOnly: true }, true);
+      };
+    }
+
     function formatAdminCurrency(value) {
       var n = Number(value || 0);
       if (!isFinite(n)) n = 0;
