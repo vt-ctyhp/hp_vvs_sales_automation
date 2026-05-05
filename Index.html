@@ -54,12 +54,15 @@
     }
 
     .masthead {
-      display: flex;
       align-items: flex-end;
-      justify-content: space-between;
+      display: flex;
       gap: 24px;
-      padding-bottom: 24px;
-      border-bottom: 1px solid var(--rule);
+      justify-content: space-between;
+      padding: 12px 0 44px;
+    }
+
+    .masthead h1 {
+      font-size: 52px;
     }
 
     .eyebrow {
@@ -96,6 +99,12 @@
       line-height: 1.45;
     }
 
+    .masthead-actions {
+      align-items: center;
+      display: flex;
+      gap: 24px;
+    }
+
     .user-chip {
       align-items: center;
       display: flex;
@@ -110,38 +119,51 @@
       color: var(--bg-foundation);
       display: inline-flex;
       flex: 0 0 auto;
-      font-size: 12px;
-      height: 30px;
+      font-size: 16px;
+      height: 48px;
       justify-content: center;
-      width: 30px;
+      width: 48px;
     }
 
     .user-name-line {
       color: var(--ink-primary);
       display: block;
+      font-size: 22px;
       font-weight: 500;
+      line-height: 1;
     }
 
     .user-role-line {
       color: var(--ink-muted);
       display: block;
-      font-size: 10px;
+      font-size: 14px;
       letter-spacing: 0.12em;
+      margin-top: 6px;
       text-transform: uppercase;
     }
 
     .toolbar {
-      display: flex;
       align-items: center;
+      border-bottom: 1px solid var(--rule);
+      display: flex;
       justify-content: space-between;
       gap: 16px;
-      padding: 24px 0;
+      padding: 0;
     }
 
     .tabs {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 0;
+    }
+
+    .toolbar-actions {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: flex-end;
+      padding: 16px 0 12px;
     }
 
     button,
@@ -189,6 +211,49 @@
 
     button.is-loading {
       pointer-events: none;
+    }
+
+    .tabs button {
+      background: transparent;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      color: var(--ink-muted);
+      font-size: 17px;
+      letter-spacing: 0.14em;
+      line-height: 1.15;
+      min-height: 88px;
+      padding: 20px 34px 26px;
+      text-align: center;
+    }
+
+    .tabs button:hover:not(:disabled) {
+      background: transparent;
+      color: var(--ink-primary);
+    }
+
+    .tabs button.active {
+      background: transparent;
+      border-bottom-color: var(--ink-primary);
+      color: var(--ink-primary);
+    }
+
+    .masthead-actions button,
+    .toolbar-actions button {
+      border-color: var(--border-strong, #B8AC94);
+      font-size: 15px;
+      letter-spacing: 0.12em;
+      min-height: 60px;
+      padding: 16px 28px;
+    }
+
+    .masthead-actions button {
+      background: transparent;
+      color: var(--ink-body);
+    }
+
+    .toolbar-actions button.primary {
+      min-width: 170px;
     }
 
     .status {
@@ -1460,6 +1525,25 @@
         text-align: left;
       }
 
+      .masthead-actions,
+      .toolbar-actions {
+        align-items: flex-start;
+        justify-content: flex-start;
+      }
+
+      .toolbar-actions {
+        padding-top: 0;
+      }
+
+      .tabs {
+        width: 100%;
+      }
+
+      .tabs button {
+        min-height: 64px;
+        padding: 16px 18px 20px;
+      }
+
       .user-chip {
         justify-content: flex-start;
       }
@@ -1520,25 +1604,27 @@
         <div class="eyebrow">Sales Appointment Workflow</div>
         <h1>Team Queue</h1>
       </div>
-      <div class="userline" id="userLine">Loading user</div>
+      <div class="masthead-actions">
+        <div class="userline" id="userLine">Loading user</div>
+        <button id="logoutButton" type="button">Sign Out</button>
+      </div>
     </header>
 
     <section class="toolbar">
       <div class="tabs">
         <button id="tab-mine" class="active" type="button" data-view="mine">My Queue</button>
         <button id="tab-calendar" type="button" data-view="calendar">Calendar</button>
-        <button id="tab-cleanup" type="button" data-view="cleanup" style="display:none">Cleanup</button>
-        <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">In-Stock Diamonds</button>
+        <button id="tab-inStockDiamonds" type="button" data-view="inStockDiamonds">Diamond Inventory</button>
         <button id="tab-diamondTracking" type="button" data-view="diamondTracking" style="display:none">Diamond Tracking</button>
         <button id="tab-bulkReturns" type="button" data-view="bulkReturns" style="display:none">Bulk Returns</button>
         <button id="tab-coverage" type="button" data-view="coverage" style="display:none">JOC Coverage</button>
-        <button id="tab-adminDashboard" type="button" data-view="adminDashboard" style="display:none">Admin Dashboard</button>
+        <button id="tab-adminDashboard" type="button" data-view="adminDashboard" style="display:none">Customer Pipeline</button>
         <button id="tab-admin" type="button" data-view="admin" style="display:none">Admin Review</button>
       </div>
-      <div>
+      <div class="toolbar-actions">
+        <button id="tab-cleanup" type="button" data-view="cleanup" style="display:none">Cleanup</button>
         <button id="manageUsersButton" type="button" style="display:none">Manage Users</button>
         <button id="syncDiamondsButton" type="button" style="display:none">Sync Diamonds</button>
-        <button id="logoutButton" type="button">Sign Out</button>
         <button id="refreshQueueButton" class="primary" type="button">Refresh Queue</button>
       </div>
     </section>
