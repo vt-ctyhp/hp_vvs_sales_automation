@@ -136,23 +136,12 @@ function sw_cleanupDuplicateTasksApply() {
 }
 
 /**
- * Deprecated compatibility wrapper for older installed triggers/manual calls.
- * Active code should call sw_generateSalesWorkflowTasks directly.
- */
-function sw_refreshTaskOwners() {
-  var summary = sw_generateSalesWorkflowTasks();
-  summary.ownerRefresh = true;
-  return summary;
-}
-
-/**
  * Mutating setup: replaces Sales Workflow generation and appointment automation triggers.
- * Also removes legacy owner-refresh triggers; hourly generation refreshes owners.
  */
 function sw_installSalesWorkflowTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
     var fn = trigger.getHandlerFunction();
-    if (fn === 'sw_generateSalesWorkflowTasks' || fn === 'sw_refreshTaskOwners' ||
+    if (fn === 'sw_generateSalesWorkflowTasks' ||
         fn === 'processUploadQueue' || fn === 'processSummariesWorker' ||
         fn === 'sw_processAppointmentAutomation') {
       ScriptApp.deleteTrigger(trigger);

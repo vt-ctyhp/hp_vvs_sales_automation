@@ -30,7 +30,6 @@ Setup and generation:
 
 - `sw_setupSalesWorkflow`
 - `sw_generateSalesWorkflowTasks`
-- `sw_refreshTaskOwners` (deprecated compatibility shim for old triggers)
 - `sw_installSalesWorkflowTriggers`
 
 ## UI Layer
