@@ -6,6 +6,7 @@
  */
 
 var SW_AUTH_SESSION_SECONDS = 6 * 60 * 60;
+var SW_AUTH_USER_CACHE_SECONDS = 5 * 60;
 
 function sw_login(email, password) {
   var ss = swSpreadsheet_();
@@ -27,6 +28,7 @@ function sw_login(email, password) {
     roles: user.roles,
     issuedAt: swIso_(new Date())
   }), SW_AUTH_SESSION_SECONDS);
+  swAuthCacheApiUser_(ss, user);
   return {
     ok: true,
     token: token,
@@ -72,12 +74,9 @@ function sw_adminSetWorkflowPassword(email, password, name, roles) {
 
 function sw_adminListWorkflowUsers(authToken) {
   var ss = swSpreadsheet_();
-  swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var user = swAuthUserForApi_(ss, authToken);
   if (!user.isAdmin) throw new Error('Admin access required.');
-  var rows = swAuthReadUserRows_(ss, false).map(function (row) {
-    return swAuthPublicUserRow_(row);
-  });
+  var rows = swAuthReadPublicUserRowsCached_(ss);
   return {
     ok: true,
     user: user,
@@ -171,9 +170,14 @@ function swCurrentUserFromAuthToken_(ss, token) {
   var session = swParseJson_(cached, null);
   if (!session || !session.email) throw new Error('Session expired. Please sign in again.');
 
-  var row = swAuthFindUserRow_(ss, session.email);
+  var apiUser = swAuthCachedApiUser_(ss, session.email);
+  if (apiUser) return apiUser;
+
+  var row = swAuthFindUserRowReadOnly_(ss, session.email);
   if (!row || !swTruthy_(row['Active?'] || '')) throw new Error('Login is no longer active.');
-  return swAuthUserFromRow_(row);
+  apiUser = swAuthUserFromRow_(row);
+  swAuthCacheApiUser_(ss, apiUser);
+  return apiUser;
 }
 
 function swAuthUserFromRow_(row) {
@@ -202,6 +206,66 @@ function swAuthPublicUserRow_(row) {
     lastLoginAt: row['Last Login At'] || '',
     notes: row['Notes'] || ''
   };
+}
+
+function swAuthCachedApiUser_(ss, email) {
+  try {
+    var cached = CacheService.getScriptCache().get(swAuthUserCacheKey_(ss, email));
+    var user = cached ? swParseJson_(cached, null) : null;
+    if (user && user.email && Array.isArray(user.roles)) return user;
+  } catch (_) {}
+  return null;
+}
+
+function swAuthCacheApiUser_(ss, user) {
+  if (!user || !user.email) return;
+  try {
+    CacheService.getScriptCache().put(swAuthUserCacheKey_(ss, user.email), swStringify_(user), SW_AUTH_USER_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAuthReadPublicUserRowsCached_(ss) {
+  var key = swAuthUserListCacheKey_(ss);
+  try {
+    var cached = CacheService.getScriptCache().get(key);
+    var rows = cached ? swParseJson_(cached, null) : null;
+    if (Array.isArray(rows)) return rows;
+  } catch (_) {}
+
+  return swAuthCachePublicUserRowsFromAuthRows_(ss, swAuthReadUserRows_(ss, true));
+}
+
+function swAuthCachePublicUserRowsFromAuthRows_(ss, rows) {
+  var out = (rows || []).map(function (row) {
+    return swAuthPublicUserRow_(row);
+  });
+  swAuthPutPublicUserRowsCache_(ss, out);
+  return out;
+}
+
+function swAuthPutPublicUserRowsCache_(ss, rows) {
+  try {
+    var key = swAuthUserListCacheKey_(ss);
+    var payload = swStringify_(rows || []);
+    if (payload.length < 90000) CacheService.getScriptCache().put(key, payload, SW_AUTH_USER_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAuthClearUserCaches_(ss, email) {
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove(swAuthUserListCacheKey_(ss));
+    email = swNormEmail_(email);
+    if (email) cache.remove(swAuthUserCacheKey_(ss, email));
+  } catch (_) {}
+}
+
+function swAuthUserCacheKey_(ss, email) {
+  return 'sw:apiUser:v1:' + ss.getId() + ':' + swNormEmail_(email);
+}
+
+function swAuthUserListCacheKey_(ss) {
+  return 'sw:userList:v1:' + ss.getId();
 }
 
 function swAuthSetWorkflowPassword_(ss, options) {
@@ -237,6 +301,7 @@ function swAuthSetWorkflowPassword_(ss, options) {
       return next[h] == null ? '' : next[h];
     }));
   }
+  swAuthClearUserCaches_(ss, email);
   return {
     ok: true,
     email: email,
@@ -341,6 +406,7 @@ function swAuthFindUserRow_(ss, email) {
   if (!email) return null;
   var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var rows = swAuthReadUserRows_(ss, false);
+  swAuthCachePublicUserRowsFromAuthRows_(ss, rows);
   for (var i = 0; i < rows.length; i++) {
     if (swNormEmail_(rows[i]['Email']) === email) return rows[i];
   }
@@ -351,6 +417,7 @@ function swAuthFindUserRowReadOnly_(ss, email) {
   email = swNormEmail_(email);
   if (!email) return null;
   var rows = swAuthReadUserRows_(ss, true);
+  swAuthCachePublicUserRowsFromAuthRows_(ss, rows);
   for (var i = 0; i < rows.length; i++) {
     if (swNormEmail_(rows[i]['Email']) === email) return rows[i];
   }

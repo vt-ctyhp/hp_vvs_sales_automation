@@ -329,6 +329,51 @@ function swAdminDashboardOpenTasksFromState_(state) {
   });
 }
 
+function swAdminDashboardReadSelectedDisplayColumns_(sh, indexes) {
+  var rowCount = sh.getLastRow() - 1;
+  if (rowCount <= 0) return [];
+  var columns = [];
+  var seen = {};
+  (indexes || []).forEach(function (idx) {
+    idx = Number(idx);
+    if (!isFinite(idx) || idx < 0 || seen[idx]) return;
+    seen[idx] = true;
+    columns.push(idx);
+  });
+  columns.sort(function (a, b) { return a - b; });
+
+  var out = [];
+  for (var i = 0; i < rowCount; i++) out.push([]);
+  var start = null;
+  var group = [];
+  function flush() {
+    if (start == null || !group.length) return;
+    var width = group[group.length - 1] - start + 1;
+    var values = sh.getRange(2, start + 1, rowCount, width).getDisplayValues();
+    for (var r = 0; r < values.length; r++) {
+      for (var c = 0; c < group.length; c++) {
+        out[r][group[c]] = values[r][group[c] - start];
+      }
+    }
+  }
+  columns.forEach(function (idx) {
+    if (start == null) {
+      start = idx;
+      group = [idx];
+      return;
+    }
+    if (idx === group[group.length - 1] + 1) {
+      group.push(idx);
+      return;
+    }
+    flush();
+    start = idx;
+    group = [idx];
+  });
+  flush();
+  return out;
+}
+
 function swAdminDashboardBuildIndexes_(appointments) {
   var groups = swAdminDashboardRowsByRoot_(appointments);
   var currentByRoot = {};
@@ -940,8 +985,8 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
     warnings.push('Last-touch data unavailable: 07_Root_Index is missing or empty.');
     return out;
   }
-  var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
-  var H = swHeaderMapFromArray_(display[0].map(function (h) { return swTrim_(h); }));
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
   var C = {
     root: swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'ROOT', 'Root_ID']),
     updatedAt: swPickIndex_(H, ['Updated At', 'UpdatedAt', 'Last Updated'])
@@ -950,7 +995,8 @@ function swAdminDashboardReadRootIndex_(ss, warnings) {
     warnings.push('Last-touch data unavailable: 07_Root_Index is missing RootApptID or Updated At.');
     return out;
   }
-  for (var i = 1; i < values.length; i++) {
+  var display = swAdminDashboardReadSelectedDisplayColumns_(sh, [C.root, C.updatedAt]);
+  for (var i = 0; i < display.length; i++) {
     var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
     var when = swAdminDashboardDateTimeValue_(swCell_(display[i], C.updatedAt), swCell_(display[i], C.updatedAt));
     if (!root || !when) continue;
@@ -971,8 +1017,8 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
   (appointments || []).forEach(function (rec) {
     if (rec.appt && rec.root) apptToRoot[rec.appt] = rec.root;
   });
-  var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
-  var H = swHeaderMapFromArray_(display[0].map(function (h) { return swTrim_(h); }));
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
+  var H = swHeaderMapFromArray_(headers);
   var C = {
     root: swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'ROOT']),
     appt: swPickIndex_(H, ['APPT_ID', 'Appt ID', 'APPTID', 'Appointment ID']),
@@ -984,7 +1030,8 @@ function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
     warnings.push('Status-log timing unavailable: 03_Client_Status_Log is missing an appointment/root id or Updated At.');
     return out;
   }
-  for (var i = 1; i < display.length; i++) {
+  var display = swAdminDashboardReadSelectedDisplayColumns_(sh, [C.root, C.appt, C.custom, C.inProduction, C.updatedAt]);
+  for (var i = 0; i < display.length; i++) {
     var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
     var appt = swAdminDashboardCleanId_(swCell_(display[i], C.appt));
     root = root || apptToRoot[appt] || '';

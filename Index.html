@@ -2223,8 +2223,16 @@
       google.script.run
         .withSuccessHandler(function (res) {
           if (appState.selectedTaskId !== taskId) return;
-          if (res && res.registered) {
-            setStatus('Registered ' + res.registered + ' Drive file(s).');
+          var automation = (res && res.automation) || {};
+          var processed = Number(automation.processed || 0);
+          var errors = Number(automation.errors || 0);
+          if (res && res.automationError) setStatus(res.automationError, true);
+          if ((res && res.registered) || processed || errors) {
+            var parts = [];
+            if (res && res.registered) parts.push('registered ' + res.registered + ' Drive file(s)');
+            if (processed) parts.push('processed ' + processed + ' automation item(s)');
+            if (errors) parts.push(errors + ' automation error(s)');
+            setStatus(parts.join('; ') + '.');
             openTask(taskId);
           }
         })
@@ -2233,6 +2241,29 @@
           setStatus((err && err.message) ? err.message : String(err), true);
         })
         .sw_syncAppointmentDriveUploads(appState.token, taskId);
+    }
+
+    function maybeStartAppointmentAutomationWatch(res) {
+      var task = (res && res.task) || {};
+      if (task.taskType !== 'APPOINTMENT_DAY_CHECKLIST') return;
+      if (!hasActiveAppointmentAutomation((res && res.appointmentArtifacts) || [])) return;
+      if (appState.appointmentDriveSyncTaskId === appState.selectedTaskId) return;
+      startAppointmentDriveUploadSync();
+    }
+
+    function hasActiveAppointmentAutomation(artifacts) {
+      artifacts = artifacts || [];
+      var activeStages = {
+        UPLOADED: true,
+        TRANSCRIPTION_QUEUED: true,
+        TRANSCRIBING: true,
+        TRANSCRIPT_READY: true,
+        SUMMARY_QUEUED: true,
+        SUMMARY_READY: true
+      };
+      return artifacts.some(function (artifact) {
+        return activeStages[String(artifact.workflowStage || '').toUpperCase()];
+      });
     }
 
     function beginMainRequest(view) {
@@ -4554,6 +4585,7 @@
         '</div>'
       ].join('');
       updateCompleteButtonState();
+      maybeStartAppointmentAutomationWatch(res);
     }
 
     function renderAttachments(attachments, label) {

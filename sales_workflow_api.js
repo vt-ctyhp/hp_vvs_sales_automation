@@ -1035,10 +1035,21 @@ function sw_syncAppointmentDriveUploads(authToken, taskId) {
     if (typeof swSyncAppointmentDriveUploads_ !== 'function') throw new Error('Appointment Drive upload sync is not available.');
 
     var created = swSyncAppointmentDriveUploads_(ss, root, task.taskId || taskId, user);
+    var automation = null;
+    var automationError = '';
+    try {
+      if (typeof sw_processAppointmentAutomation === 'function') {
+        automation = sw_processAppointmentAutomation();
+      }
+    } catch (err) {
+      automationError = swTrim_(err && err.message || err);
+    }
     return {
       ok: true,
       rootApptId: root,
       registered: created.length,
+      automation: automation,
+      automationError: automationError,
       artifacts: typeof swPublicAppointmentArtifacts_ === 'function' ? swPublicAppointmentArtifacts_(ss, root) : []
     };
   });
