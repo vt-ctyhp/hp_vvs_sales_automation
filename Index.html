@@ -1327,6 +1327,70 @@
       font-size: 22px;
     }
 
+    .proposal-stepper {
+      align-items: center;
+      background: var(--surface-inset);
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(160px, auto) 1fr minmax(160px, auto) 1fr minmax(160px, auto);
+      padding: 12px 14px;
+    }
+
+    .proposal-step-button {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: var(--ink-muted);
+      display: inline-flex;
+      font-size: 12px;
+      font-weight: 400;
+      gap: 8px;
+      letter-spacing: 0;
+      line-height: 1.2;
+      min-height: 0;
+      padding: 0;
+      text-align: left;
+      text-transform: none;
+    }
+
+    .proposal-step-button:hover:not(:disabled) {
+      background: transparent;
+      color: var(--ink-primary);
+    }
+
+    .proposal-step-button.active {
+      background: transparent;
+      color: var(--ink-primary);
+    }
+
+    .proposal-step-number {
+      align-items: center;
+      background: var(--rule);
+      border-radius: 50%;
+      color: var(--ink-primary);
+      display: inline-flex;
+      flex: 0 0 auto;
+      font-size: 10px;
+      height: 20px;
+      justify-content: center;
+      width: 20px;
+    }
+
+    .proposal-step-button.active .proposal-step-number,
+    .proposal-step-button.done .proposal-step-number {
+      background: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+
+    .proposal-step-line {
+      background: var(--rule);
+      height: 1px;
+    }
+
+    .proposal-step[hidden] {
+      display: none;
+    }
+
     .proposal-field-grid {
       display: grid;
       gap: 16px;
@@ -1339,6 +1403,27 @@
 
     .proposal-field-grid .wide {
       grid-column: 1 / -1;
+    }
+
+    .proposal-chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .proposal-chip {
+      border: 1px solid var(--rule);
+      color: var(--ink-body);
+      display: inline-flex;
+      gap: 4px;
+      padding: 7px 10px;
+    }
+
+    .proposal-chip span {
+      color: var(--ink-muted);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
     }
 
     .proposal-match-band {
@@ -1468,6 +1553,40 @@
       border-top-color: var(--ink-primary);
     }
 
+    .proposal-review-table {
+      border-top: 1px solid var(--rule);
+    }
+
+    .proposal-review-row {
+      align-items: center;
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 36px minmax(180px, 1fr) repeat(5, minmax(80px, 0.5fr));
+      padding: 14px 0;
+    }
+
+    .proposal-review-row .meta {
+      overflow-wrap: anywhere;
+    }
+
+    .proposal-footer {
+      align-items: center;
+      border-top: 1px solid var(--rule);
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-top: 6px;
+      padding: 16px 0 0;
+    }
+
+    .proposal-footer-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
     .login-status {
       min-height: 18px;
       margin-top: 12px;
@@ -1566,12 +1685,34 @@
         grid-template-columns: 1fr;
       }
 
+      .proposal-stepper {
+        grid-template-columns: 1fr;
+      }
+
+      .proposal-step-line {
+        display: none;
+      }
+
       .proposal-inventory-row {
         grid-template-columns: 22px minmax(0, 1fr);
       }
 
       .proposal-inventory-row > *:nth-child(n+3) {
         grid-column: 2;
+      }
+
+      .proposal-review-row {
+        grid-template-columns: 32px minmax(0, 1fr);
+      }
+
+      .proposal-review-row > *:nth-child(n+3) {
+        grid-column: 2;
+      }
+
+      .proposal-footer,
+      .proposal-footer-actions {
+        align-items: flex-start;
+        flex-direction: column;
       }
     }
   </style>
@@ -1678,6 +1819,7 @@
       proposalInventoryRows: [],
       proposalInventoryMatches: [],
       proposalInventorySource: null,
+      proposalStep: 1,
       bulkReturnRows: [],
       bulkReturnSource: null,
       diamondSyncPreview: null,
@@ -1849,6 +1991,12 @@
       if (taskWorkspace) {
         taskWorkspace.addEventListener('click', function (event) {
           if (closestMatch_(event.target, '.js-close-task-workspace')) return closeTaskWorkspace(true);
+          var stepButton = closestMatch_(event.target, '.js-proposal-step');
+          if (stepButton) return setProposalStep(Number(stepButton.getAttribute('data-step') || 1));
+          var nextButton = closestMatch_(event.target, '.js-proposal-next');
+          if (nextButton) return setProposalStep((appState.proposalStep || 1) + 1);
+          var prevButton = closestMatch_(event.target, '.js-proposal-prev');
+          if (prevButton) return setProposalStep((appState.proposalStep || 1) - 1);
           var findMatchesButton = closestMatch_(event.target, '.js-find-proposal-inventory');
           if (findMatchesButton) return findProposalInventoryMatches(findMatchesButton);
           if (closestMatch_(event.target, '.js-add-matched-stones')) return addSelectedInventoryMatchesToProposal();
@@ -1866,9 +2014,11 @@
         taskWorkspace.addEventListener('change', function (event) {
           if (closestMatch_(event.target, '.proposal-inventory-check')) updateProposalInventorySelection();
           if (closestMatch_(event.target, '#proposalMatchSort')) renderProposalInventoryResults(appState.proposalInventoryMatches || []);
+          updateProposalWorkspaceState();
           updateCompleteButtonState();
         });
         taskWorkspace.addEventListener('input', function () {
+          updateProposalWorkspaceState();
           updateCompleteButtonState();
         });
       }
@@ -2134,6 +2284,7 @@
         appState.selectedTaskId = '';
         appState.detail = null;
         appState.proposalInventoryMatches = [];
+        appState.proposalStep = 1;
         document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
       }
     }
@@ -4201,12 +4352,12 @@
       var extra = payload.extra || {};
       var diamond = extra.diamond || {};
       var requirements = normalizeCustomerDiamondRequirements(extra.customerDiamondRequirements || appt.customerDiamondRequirements || {});
-      var complete = res.canComplete ? '<button class="primary js-complete-task" type="button">' + escapeHtml(task.primaryAction || 'Complete Task') + '</button>' : '';
       var claim = res.canClaim ? '<button class="js-claim-task" type="button">Claim Task</button>' : '';
       var brand = taskBrandChipHtml(task.brand || appt.brand || '');
       var overdue = /^Overdue/.test(task.dueLabel || '') ? '<span class="badge">' + escapeHtml(task.dueLabel || '') + '</span>' : '<span class="badge">' + escapeHtml(task.dueLabel || 'Open') + '</span>';
       var workspace = document.getElementById('taskWorkspace');
       if (!workspace) return;
+      appState.proposalStep = 1;
       workspace.innerHTML = [
         '<div class="proposal-page">',
           '<div class="proposal-task-head">',
@@ -4226,32 +4377,343 @@
             '<div class="proposal-actions">',
               '<button class="js-close-task-workspace" type="button">Back To Queue</button>',
               claim,
-              complete,
             '</div>',
           '</div>',
-          '<div class="proposal-work-grid">',
-            '<section class="proposal-main">',
-              renderProposalRequirementsCard(requirements),
-              renderProposalVarietyCard(requirements),
-              renderProposalMatchBand(task, appt, extra),
-              renderProposalInventoryResultsShell(),
-              renderProposalStoneEntryCard(appt),
-              renderProposalInternalNotesCard(requirements),
-              res.canComplete ? renderSnoozeControls(task) : '',
-            '</section>',
-            '<aside class="proposal-aside">',
-              renderProposalContextPanel(task, appt, extra),
-              renderProposalStatusPanel(diamond),
-              renderProposalLinksPanel(res, extra, appt),
-              renderProposalChecklistPanel(res.checklist || []),
-              res.canAdmin ? renderAdminForm(task, res) : '',
-            '</aside>',
-          '</div>',
+          renderProposalStepper(),
+          '<section class="proposal-step" data-proposal-step="1">',
+            '<div class="proposal-work-grid">',
+              '<section class="proposal-main">',
+                renderProposalRequirementsCard(requirements),
+                renderProposalVarietyCard(requirements),
+                renderProposalInternalNotesCard(requirements),
+              '</section>',
+              '<aside class="proposal-aside">',
+                renderProposalContextPanel(task, appt, extra),
+                renderProposalLinksPanel(res, extra, appt),
+                res.canComplete ? renderSnoozeControls(task) : '',
+              '</aside>',
+            '</div>',
+          '</section>',
+          '<section class="proposal-step" data-proposal-step="2" hidden>',
+            renderProposalRequirementSummaryCard('Customer requirements', true),
+            '<div class="proposal-work-grid">',
+              '<section class="proposal-main">',
+                renderProposalMatchBand(task, appt, extra),
+                renderProposalInventoryResultsShell(),
+                renderProposalStoneEntryCard(appt),
+              '</section>',
+              '<aside class="proposal-aside">',
+                renderProposalStoneStatusPanel(),
+                renderProposalContextPanel(task, appt, extra),
+                renderProposalTipPanel(requirements),
+              '</aside>',
+            '</div>',
+          '</section>',
+          '<section class="proposal-step" data-proposal-step="3" hidden>',
+            '<div class="proposal-work-grid">',
+              '<section class="proposal-main">',
+                renderProposalReviewCustomerCard(task, appt),
+                renderProposalRequirementSummaryCard('Customer requirements', true),
+                renderProposalReviewStonesCard(),
+              '</section>',
+              '<aside class="proposal-aside">',
+                renderProposalChecklistPanel(res.checklist || []),
+                renderProposalSafeSubmitPanel(extra),
+                renderProposalContextPanel(task, appt, extra),
+                res.canAdmin ? renderAdminForm(task, res) : '',
+              '</aside>',
+            '</div>',
+          '</section>',
+          renderProposalFooter(res.canComplete, task),
         '</div>'
       ].join('');
       setTaskWorkspaceVisible(true);
       window.scrollTo(0, 0);
+      updateProposalWorkspaceState();
       updateCompleteButtonState();
+    }
+
+    function renderProposalStepper() {
+      var steps = [
+        { n: 1, label: 'Customer requirements' },
+        { n: 2, label: 'Find or add stones' },
+        { n: 3, label: 'Review and submit' }
+      ];
+      return [
+        '<div class="proposal-stepper" role="list" aria-label="Proposal steps">',
+          proposalStepButtonHtml(steps[0]),
+          '<span class="proposal-step-line"></span>',
+          proposalStepButtonHtml(steps[1]),
+          '<span class="proposal-step-line"></span>',
+          proposalStepButtonHtml(steps[2]),
+        '</div>'
+      ].join('');
+    }
+
+    function proposalStepButtonHtml(step) {
+      return '<button class="proposal-step-button js-proposal-step" type="button" data-step="' + step.n + '" role="listitem"><span class="proposal-step-number">' + step.n + '</span><span>' + escapeHtml(step.label) + '</span></button>';
+    }
+
+    function renderProposalFooter(canComplete, task) {
+      return [
+        '<div class="proposal-footer">',
+          '<div class="meta" id="proposalFooterStatus"></div>',
+          '<div class="proposal-footer-actions">',
+            '<button class="js-proposal-prev" type="button">Back</button>',
+            '<button class="primary js-proposal-next" type="button">Continue</button>',
+            canComplete ? '<button class="primary js-complete-task" type="button" style="display:none">' + escapeHtml((task && task.primaryAction) || 'Submit Proposal') + '</button>' : '',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function setProposalStep(step) {
+      step = Math.max(1, Math.min(3, Number(step) || 1));
+      var current = appState.proposalStep || 1;
+      if (step > current) {
+        for (var s = current; s < step; s++) {
+          if (!canAdvanceProposalStep(s)) return;
+        }
+      }
+      appState.proposalStep = step;
+      updateProposalWorkspaceState();
+      updateCompleteButtonState();
+      var workspace = document.getElementById('taskWorkspace');
+      if (workspace) workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function canAdvanceProposalStep(step) {
+      if (step === 1) {
+        var missing = missingCustomerDiamondRequirements(collectCustomerDiamondRequirements());
+        if (missing.length) {
+          updateCustomerDiamondRequirementStatus(missing);
+          setStatus('Complete required customer requirements before continuing: ' + missing.join(', ') + '.', true);
+          return false;
+        }
+      }
+      if (step === 2 && !collectProposalStones().length) {
+        setStatus('Add at least one proposed diamond before review.', true);
+        return false;
+      }
+      setStatus('');
+      return true;
+    }
+
+    function updateProposalWorkspaceState() {
+      if (!document.getElementById('taskWorkspace')) return;
+      var step = Math.max(1, Math.min(3, appState.proposalStep || 1));
+      appState.proposalStep = step;
+      [].slice.call(document.querySelectorAll('.proposal-step')).forEach(function (el) {
+        el.hidden = String(el.getAttribute('data-proposal-step')) !== String(step);
+      });
+      [].slice.call(document.querySelectorAll('.proposal-step-button')).forEach(function (button) {
+        var n = Number(button.getAttribute('data-step') || 0);
+        button.classList.toggle('active', n === step);
+        button.classList.toggle('done', n < step);
+      });
+      var prev = document.querySelector('.js-proposal-prev');
+      var next = document.querySelector('.js-proposal-next');
+      var submit = document.querySelector('.js-complete-task');
+      if (prev) {
+        prev.style.display = step === 1 ? 'none' : '';
+        prev.textContent = step === 2 ? 'Back To Requirements' : 'Back To Stones';
+      }
+      if (next) {
+        next.style.display = step === 3 ? 'none' : '';
+        next.textContent = step === 1 ? 'Continue To Stones' : 'Continue To Review';
+        next.disabled = step === 1 ? !!missingCustomerDiamondRequirements(collectCustomerDiamondRequirements()).length :
+          step === 2 ? !collectProposalStones().length : false;
+      }
+      if (submit) submit.style.display = step === 3 ? '' : 'none';
+      updateProposalDynamicSummaries();
+    }
+
+    function updateProposalDynamicSummaries() {
+      var requirements = collectCustomerDiamondRequirements();
+      var stones = collectProposalStones();
+      var footer = document.getElementById('proposalFooterStatus');
+      if (footer) {
+        footer.textContent = appState.proposalStep === 1
+          ? 'Step 1 of 3: capture the customer brief and variety strategy.'
+          : appState.proposalStep === 2
+            ? stones.length + ' stone(s) added.'
+            : stones.length + ' stone(s) ready to submit.';
+      }
+      updateProposalSummaryBlocks(requirements);
+      updateProposalStoneStatus(stones);
+      updateProposalReviewBlocks(requirements, stones);
+    }
+
+    function updateProposalSummaryBlocks(requirements) {
+      [].slice.call(document.querySelectorAll('.js-proposal-summary-chips')).forEach(function (el) {
+        el.innerHTML = proposalRequirementChipsHtml(requirements);
+      });
+      [].slice.call(document.querySelectorAll('.js-proposal-summary-brief')).forEach(function (el) {
+        el.textContent = requirements.summary || 'No buying brief captured yet.';
+      });
+      [].slice.call(document.querySelectorAll('.js-proposal-summary-variety')).forEach(function (el) {
+        el.textContent = proposalVarietyLabels(requirements.varietyFocus || []).join(' | ') || 'No variety strategy selected yet.';
+      });
+    }
+
+    function updateProposalStoneStatus(stones) {
+      var count = stones.length;
+      var countEl = document.getElementById('proposalStoneCount');
+      var hintEl = document.getElementById('proposalStoneHint');
+      if (countEl) countEl.textContent = count;
+      if (hintEl) hintEl.textContent = count >= 3 ? 'Target met for comparison.' : (3 - count) + ' more to reach the usual 3-stone comparison target.';
+    }
+
+    function updateProposalReviewBlocks(requirements, stones) {
+      var stonesEl = document.getElementById('proposalReviewStones');
+      if (stonesEl) stonesEl.innerHTML = renderProposalReviewStones(stones);
+      var reviewFoot = document.getElementById('proposalReviewStoneFoot');
+      if (reviewFoot) reviewFoot.textContent = stones.length + ' stone(s) added. Pricing is intentionally omitted until quote data is available.';
+      var checklistNote = document.getElementById('proposalChecklistNote');
+      if (checklistNote) {
+        var missing = missingCustomerDiamondRequirements(requirements);
+        checklistNote.textContent = missing.length ? 'Missing requirements: ' + missing.join(', ') + '.' : 'Requirements are complete.';
+      }
+    }
+
+    function renderProposalRequirementSummaryCard(title, editable) {
+      return [
+        '<div class="proposal-card inset">',
+          '<div class="proposal-card-head">',
+            '<div><div class="eyebrow">' + escapeHtml(title || 'Customer Requirements') + '</div></div>',
+            editable ? '<button class="js-proposal-step" type="button" data-step="1">Edit Step 1</button>' : '',
+          '</div>',
+          '<div class="proposal-chip-list js-proposal-summary-chips"></div>',
+          '<div class="field-grid" style="margin-top:16px">',
+            '<div class="wide"><label>Buying Brief</label><div class="template-box js-proposal-summary-brief"></div></div>',
+            '<div class="wide"><label>Variety To Show</label><div class="meta js-proposal-summary-variety"></div></div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function proposalRequirementChipsHtml(requirements) {
+      requirements = normalizeCustomerDiamondRequirements(requirements);
+      return [
+        proposalChipHtml('Type', requirements.stoneType),
+        proposalChipHtml('Shape', requirements.shape),
+        proposalChipHtml('Carat', swUiRangeText(requirements.caratMin, requirements.caratMax, 'ct')),
+        proposalChipHtml('Color', swUiRangeText(requirements.colorMin, requirements.colorMax, 'color')),
+        proposalChipHtml('Clarity', swUiRangeText(requirements.clarityMin, requirements.clarityMax, 'clarity')),
+        proposalChipHtml('Ratio', requirements.ratioPreference),
+        proposalChipHtml('Budget', requirements.budgetNote),
+        proposalChipHtml('Decider', requirements.primaryDecisionFactor)
+      ].filter(Boolean).join('');
+    }
+
+    function proposalChipHtml(label, value) {
+      if (!value) return '';
+      return '<span class="proposal-chip"><span>' + escapeHtml(label) + '</span>' + escapeHtml(value) + '</span>';
+    }
+
+    function proposalVarietyLabels(values) {
+      var labels = {
+        different_ratios: 'Different ratios',
+        different_carat_sizes: 'Different carat sizes',
+        different_clarities: 'Different clarities',
+        different_colors: 'Different colors',
+        different_price_points: 'Different price points',
+        in_stock_options: 'In-stock options',
+        other: 'Other'
+      };
+      return (values || []).map(function (value) { return labels[value] || value; }).filter(Boolean);
+    }
+
+    function renderProposalStoneStatusPanel() {
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Stones Added</div>',
+          '<div><span id="proposalStoneCount">0</span> / 3</div>',
+          '<div class="meta" id="proposalStoneHint" style="margin-top:8px"></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalTipPanel(requirements) {
+      var decider = (requirements && requirements.primaryDecisionFactor) || '';
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Tip</div>',
+          '<div class="meta">' + escapeHtml(decider ? 'Primary decider is ' + decider + '. Use stone variety to support that comparison.' : 'Most proposals include 3 to 5 stones so the customer can compare meaningful tradeoffs.') + '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalReviewCustomerCard(task, appt) {
+      var details = [
+        { k: 'Customer', v: task.customerName || appt.customerName || '' },
+        { k: 'Appointment', v: [task.visitDate || appt.visitDate || '', formatCalendarTime(task.visitTime || appt.visitTime || '')].filter(Boolean).join(' ') },
+        { k: 'Brand', v: task.brand || appt.brand || '' },
+        { k: 'Sales Stage', v: appt.salesStage || '' },
+        { k: 'Client Advisor', v: task.currentOwner || appt.assignedRep || '' },
+        { k: 'Source', v: appt.source || '' }
+      ];
+      return [
+        '<div class="proposal-card">',
+          '<div class="proposal-card-head">',
+            '<h3>Customer and appointment</h3>',
+            '<button class="js-proposal-step" type="button" data-step="1">Edit</button>',
+          '</div>',
+          '<div class="proposal-field-grid three">',
+            details.map(function (item) {
+              return '<div><label>' + escapeHtml(item.k) + '</label><div>' + escapeHtml(item.v || '-') + '</div></div>';
+            }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalReviewStonesCard() {
+      return [
+        '<div class="proposal-card">',
+          '<div class="proposal-card-head">',
+            '<h3>Proposed stones</h3>',
+            '<button class="js-proposal-step" type="button" data-step="2">Edit Step 2</button>',
+          '</div>',
+          '<div id="proposalReviewStones"></div>',
+          '<div class="meta" id="proposalReviewStoneFoot" style="margin-top:12px"></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderProposalReviewStones(stones) {
+      stones = stones || [];
+      if (!stones.length) return '<div class="empty">No stones added yet.</div>';
+      return '<div class="proposal-review-table">' + stones.map(function (stone, i) {
+        var meta = [
+          stone.stoneType,
+          stone.vendor ? 'Vendor ' + stone.vendor : '',
+          stone.lab ? 'Lab ' + stone.lab : '',
+          stone.lwRatio ? 'L/W ' + stone.lwRatio : '',
+          stone.measurements ? 'Measurements ' + stone.measurements : ''
+        ].filter(Boolean).join(' | ');
+        return [
+          '<div class="proposal-review-row">',
+            '<div class="meta">' + escapeHtml(i + 1) + '</div>',
+            '<div><strong>' + escapeHtml(stone.certNo ? 'Cert ' + stone.certNo : 'Manual Stone') + '</strong><div class="meta">' + escapeHtml(meta) + '</div></div>',
+            proposalInventoryCell('Carat', stone.carat || ''),
+            proposalInventoryCell('Color', stone.color || ''),
+            proposalInventoryCell('Clarity', stone.clarity || ''),
+            proposalInventoryCell('Cut', stone.cut || ''),
+            proposalInventoryCell('Fluor', stone.fluorIntensity || ''),
+          '</div>'
+        ].join('');
+      }).join('') + '</div>';
+    }
+
+    function renderProposalSafeSubmitPanel(extra) {
+      return [
+        '<div class="proposal-side-panel">',
+          '<div class="eyebrow">Pre-flight Checklist</div>',
+          '<div class="meta" id="proposalChecklistNote"></div>',
+          '<div class="meta" style="margin-top:8px">Inventory matching uses current in-stock 200_ rows. Pricing is not included in this workflow yet.</div>',
+        '</div>'
+      ].join('');
     }
 
     function renderProposalRequirementsCard(requirements) {
@@ -4272,7 +4734,7 @@
             requirementSelectHtml('colorMax', 'Color To', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMax),
             requirementSelectHtml('clarityMin', 'Clarity From', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMin),
             requirementSelectHtml('clarityMax', 'Clarity To', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMax),
-            requirementSelectHtml('primaryDecisionFactor', 'Primary Deciding Factor *', ['Ratio / shape appearance', 'Carat size', 'Color', 'Clarity', 'Price / value', 'Availability / return date', 'Lab / certification', 'Unsure / compare multiple'], requirements.primaryDecisionFactor),
+            requirementSelectHtml('primaryDecisionFactor', 'Primary Deciding Factor *', ['Ratio / shape appearance', 'Carat size', 'Color', 'Clarity', 'Availability / return date', 'Lab / certification', 'Unsure / compare multiple'], requirements.primaryDecisionFactor),
             requirementInputHtml('ratioPreference', 'Ratio Preference', 'text', requirements.ratioPreference),
             requirementInputHtml('budgetNote', 'Budget / Value Note', 'text', requirements.budgetNote),
             '<div class="wide requirement-status error" id="proposalRequirementStatus"></div>',
@@ -4293,7 +4755,6 @@
             requirementCheckboxHtml('different_carat_sizes', 'Different carat sizes', requirements.varietyFocus),
             requirementCheckboxHtml('different_clarities', 'Different clarities', requirements.varietyFocus),
             requirementCheckboxHtml('different_colors', 'Different colors', requirements.varietyFocus),
-            requirementCheckboxHtml('different_price_points', 'Different price points', requirements.varietyFocus),
             requirementCheckboxHtml('in_stock_options', 'In-stock options', requirements.varietyFocus),
             requirementCheckboxHtml('other', 'Other', requirements.varietyFocus),
           '</div>',
@@ -4582,6 +5043,7 @@
         container.insertAdjacentHTML('beforeend', proposalRowHtml(index, proposalStoneFromInventory(row), true));
       });
       updateProposalRowNumbers();
+      updateProposalWorkspaceState();
       updateCompleteButtonState();
       setStatus('Added ' + selected.length + ' in-stock diamond(s) to the proposal.');
     }
@@ -4837,7 +5299,7 @@
             requirementSelectHtml('shape', 'Shape', ['Round', 'Oval', 'Pear', 'Cushion', 'Emerald', 'Radiant', 'Princess', 'Marquise', 'Asscher', 'Heart', 'Other'], requirements.shape),
             requirementInputHtml('caratMin', 'Carat Min', 'number', requirements.caratMin, '0.01'),
             requirementInputHtml('caratMax', 'Carat Max', 'number', requirements.caratMax, '0.01'),
-            requirementSelectHtml('primaryDecisionFactor', 'Primary Deciding Factor *', ['Ratio / shape appearance', 'Carat size', 'Color', 'Clarity', 'Price / value', 'Availability / return date', 'Lab / certification', 'Unsure / compare multiple'], requirements.primaryDecisionFactor),
+            requirementSelectHtml('primaryDecisionFactor', 'Primary Deciding Factor *', ['Ratio / shape appearance', 'Carat size', 'Color', 'Clarity', 'Availability / return date', 'Lab / certification', 'Unsure / compare multiple'], requirements.primaryDecisionFactor),
             requirementSelectHtml('colorMin', 'Color From', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMin),
             requirementSelectHtml('colorMax', 'Color To', ['D', 'E', 'F', 'G', 'H', 'I', 'Fancy'], requirements.colorMax),
             requirementSelectHtml('clarityMin', 'Clarity From', ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2'], requirements.clarityMin),
@@ -4851,7 +5313,6 @@
                 requirementCheckboxHtml('different_carat_sizes', 'Different carat sizes', requirements.varietyFocus),
                 requirementCheckboxHtml('different_clarities', 'Different clarities', requirements.varietyFocus),
                 requirementCheckboxHtml('different_colors', 'Different colors', requirements.varietyFocus),
-                requirementCheckboxHtml('different_price_points', 'Different price points', requirements.varietyFocus),
                 requirementCheckboxHtml('in_stock_options', 'In-stock options', requirements.varietyFocus),
                 requirementCheckboxHtml('other', 'Other', requirements.varietyFocus),
               '</div>',
@@ -4962,6 +5423,7 @@
       var index = container.querySelectorAll('.proposal-row').length;
       container.insertAdjacentHTML('beforeend', proposalRowHtml(index));
       updateProposalRowNumbers();
+      updateProposalWorkspaceState();
       updateCompleteButtonState();
     }
 
@@ -4969,6 +5431,7 @@
       var row = button ? button.closest('.proposal-row') : null;
       if (row) row.parentNode.removeChild(row);
       updateProposalRowNumbers();
+      updateProposalWorkspaceState();
       updateCompleteButtonState();
     }
 
@@ -5460,8 +5923,7 @@
       serverCall('sw_completeTask', [appState.selectedTaskId, completionPayload()], function () {
         setStatus('Task completed');
         loadTasks(appState.view);
-        appState.selectedTaskId = '';
-        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
+        closeTaskWorkspace(true);
       });
     }
 
@@ -5474,8 +5936,7 @@
       serverCall('sw_snoozeTask', [appState.selectedTaskId, payload], function () {
         setStatus('Task snoozed');
         loadTasks(appState.view);
-        appState.selectedTaskId = '';
-        document.getElementById('detailPanel').innerHTML = '<div class="panel-header"><div class="eyebrow">Task Detail</div><h2>Select a task</h2></div><div class="empty">Open a task to see instructions, message templates, attachments, and completion controls.</div>';
+        closeTaskWorkspace(true);
       });
     }
 
