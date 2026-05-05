@@ -1053,6 +1053,7 @@ function sw_getTaskDetail(authToken, taskId) {
     mark('taskRowLookup');
     if (!task) throw new Error('Task not found: ' + taskId);
     if (!swCanViewTask_(task, user)) throw new Error('You do not have access to this task.');
+    var canAct = swCanActOnTask_(task, user);
 
     var payload = swParseJson_(task.payloadJson, {});
     mark('payloadParse');
@@ -1071,6 +1072,10 @@ function sw_getTaskDetail(authToken, taskId) {
       ? swPublicAppointmentArtifacts_(ss, task.root || task.appt || '')
       : [];
     mark('appointmentArtifacts', { artifacts: appointmentArtifacts.length });
+    var appointmentUploadFolders = canAct && swTaskDetailShouldLoadAppointmentArtifacts_(task)
+      ? swCachedAppointmentUploadFoldersForTask_(ss, task)
+      : {};
+    mark('appointmentUploadFolders', { folders: Object.keys(appointmentUploadFolders).length });
     var assignmentOptions = user.isAdmin ? swReadAssignmentOptions_(ss) : {};
     mark('assignmentOptions', {
       salesReps: assignmentOptions.salesReps ? assignmentOptions.salesReps.length : 0,
@@ -1090,10 +1095,11 @@ function sw_getTaskDetail(authToken, taskId) {
       attachments: attachments,
       formOptions: formOptions,
       appointmentArtifacts: appointmentArtifacts,
+      appointmentUploadFolders: appointmentUploadFolders,
       assignmentOptions: assignmentOptions,
       missingFields: missingFields,
       checklist: checklist,
-      canComplete: swCanActOnTask_(task, user),
+      canComplete: canAct,
       canClaim: swCanClaimTask_(task, user),
       canAdmin: user.isAdmin
     };
@@ -1104,10 +1110,23 @@ function swTaskDetailShouldLoadAppointmentArtifacts_(task) {
   return task && task.taskType === SW_TASKS.CHECKLIST;
 }
 
+function swCachedAppointmentUploadFoldersForTask_(ss, task) {
+  var out = {};
+  if (typeof swDriveUploadArtifactTypes_ !== 'function' ||
+      typeof swCachedAppointmentUploadFolderInfo_ !== 'function') return out;
+  var root = swTrim_(task && (task.root || task.appt) || '');
+  if (!root) return out;
+  swDriveUploadArtifactTypes_().forEach(function (type) {
+    var info = swCachedAppointmentUploadFolderInfo_(ss, root, type);
+    if (info && info.url) out[type] = info;
+  });
+  return out;
+}
+
 function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
   return swTimed_('sw_getAppointmentUploadFolder', function () {
     var ss = swSpreadsheet_();
-    swRequireWorkflowReadSheets_(ss);
+    swRequireWorkflowReadSheets_(ss, { templates: false });
     var user = swAuthUserForApi_(ss, authToken);
     var task = swReadTaskRowById_(ss, taskId, true);
     if (!task) throw new Error('Task not found: ' + taskId);
@@ -1124,6 +1143,9 @@ function sw_getAppointmentUploadFolder(authToken, taskId, artifactType) {
     var type = typeof swNormalizeDriveUploadArtifactType_ === 'function'
       ? swNormalizeDriveUploadArtifactType_(artifactType)
       : (swTrim_(artifactType) || 'APPOINTMENT_RECORDING');
+    if (typeof swAppointmentDriveDropFolderInfoForRoot_ === 'function') {
+      return swAppointmentDriveDropFolderInfoForRoot_(ss, root, type);
+    }
     var folders = swEnsureAppointmentFolderForRoot_(ss, root);
     var folder = swArtifactDriveDropFolder_(folders, type);
     return {

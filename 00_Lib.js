@@ -90,12 +90,25 @@ function getApFolderIdForRoot_(ss, rootApptId){
   if (iRoot < 0) throw new Error('RootApptID column not found on Master');
 
   const last = sh.getLastRow(); if (last < 2) throw new Error('Master is empty');
-  const vals = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
-  const row  = vals.find(r => String(r[iRoot]||'').trim() === String(rootApptId).trim());
-  if (!row) throw new Error('RootApptID not found on Master: ' + rootApptId);
+  const want = String(rootApptId).trim();
+  const roots = sh.getRange(2, iRoot+1, last-1, 1).getValues();
+  let rowNumber = 0;
+  for (let i = 0; i < roots.length; i++) {
+    if (String(roots[i][0] || '').trim() === want) {
+      rowNumber = i + 2;
+      break;
+    }
+  }
+  if (!rowNumber) throw new Error('RootApptID not found on Master: ' + rootApptId);
 
-  if (iId >= 0 && row[iId]) return String(row[iId]).trim(); // direct ID
-  if (iUrl >= 0 && row[iUrl]) return idFromAnyGoogleUrl_(String(row[iUrl]).trim());
+  if (iId >= 0) {
+    const id = String(sh.getRange(rowNumber, iId+1).getValue() || '').trim();
+    if (id) return id; // direct ID
+  }
+  if (iUrl >= 0) {
+    const url = String(sh.getRange(rowNumber, iUrl+1).getValue() || '').trim();
+    if (url) return idFromAnyGoogleUrl_(url);
+  }
   throw new Error('No RootAppt folder reference found for ' + rootApptId);
 }
 
@@ -177,5 +190,4 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
 

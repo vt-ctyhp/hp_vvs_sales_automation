@@ -2651,7 +2651,8 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'client-load-timing-v2-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'client-load-timing-v3-2026-05-05';
+    var SW_APPOINTMENT_DRIVE_FOLDER_CLIENT_CACHE_MS = 10 * 60 * 1000;
 
     var swClientLoadTiming = {
       startedAt: (window.performance && typeof window.performance.now === 'function') ? window.performance.now() : 0,
@@ -2703,6 +2704,7 @@
       appointmentDriveSyncTimer: null,
       appointmentDriveSyncUntil: 0,
       appointmentDriveSyncTaskId: '',
+      appointmentDriveFolderUrls: {},
       loginBusy: false,
       busy: false
     };
@@ -3201,6 +3203,17 @@
     function openAppointmentUploadFolder(sourceButton) {
       if (!appState.selectedTaskId) return;
       var artifactType = valueOf('appointmentDriveArtifactType') || 'APPOINTMENT_RECORDING';
+      var cacheKey = appointmentDriveFolderCacheKey(appState.selectedTaskId, artifactType);
+      var cached = appState.appointmentDriveFolderUrls[cacheKey];
+      if (cached && cached.url) {
+        if (!cached.cachedAt || Date.now() - cached.cachedAt <= SW_APPOINTMENT_DRIVE_FOLDER_CLIENT_CACHE_MS) {
+          window.open(cached.url, 'appointmentDriveUpload', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+          setStatus('Drive folder opened. This card will sync and rename new files automatically.');
+          startAppointmentDriveUploadSync();
+          return;
+        }
+        delete appState.appointmentDriveFolderUrls[cacheKey];
+      }
       var popup = window.open('', 'appointmentDriveUpload', 'width=1100,height=760,resizable=yes,scrollbars=yes');
       if (popup) {
         popup.document.write('<!doctype html><title>Opening Drive</title><body style="background:#F7F1EB;color:#2A2725;font-family:Inter,system-ui,sans-serif;padding:32px"><div style="color:#8A8178;font-size:11px;letter-spacing:.14em;text-transform:uppercase">Opening Drive Folder</div></body>');
@@ -3222,6 +3235,12 @@
           } else {
             window.open(res.url, '_blank');
           }
+          appState.appointmentDriveFolderUrls[cacheKey] = {
+            url: res.url,
+            folderId: res.folderId || '',
+            artifactType: res.artifactType || artifactType,
+            cachedAt: Date.now()
+          };
           setStatus('Drive folder opened. This card will sync and rename new files automatically.');
           startAppointmentDriveUploadSync();
         })
@@ -3232,6 +3251,24 @@
           setStatus((err && err.message) ? err.message : String(err), true);
         })
         .sw_getAppointmentUploadFolder(appState.token, appState.selectedTaskId, artifactType);
+    }
+
+    function appointmentDriveFolderCacheKey(taskId, artifactType) {
+      return String(taskId || '') + '::' + String(artifactType || 'APPOINTMENT_RECORDING');
+    }
+
+    function cacheAppointmentDriveFolderUrlsFromDetail(taskId, res) {
+      var folders = (res && res.appointmentUploadFolders) || {};
+      Object.keys(folders).forEach(function (type) {
+        var info = folders[type] || {};
+        if (!info.url) return;
+        appState.appointmentDriveFolderUrls[appointmentDriveFolderCacheKey(taskId, type)] = {
+          url: info.url,
+          folderId: info.folderId || '',
+          artifactType: info.artifactType || type,
+          cachedAt: Date.now()
+        };
+      });
     }
 
     function startAppointmentDriveUploadSync() {
@@ -6113,6 +6150,7 @@
         if (detailRequestId !== appState.detailRequestId ||
             mainRequestId !== appState.mainRequestId ||
             appState.selectedTaskId !== taskId) return;
+        cacheAppointmentDriveFolderUrlsFromDetail(taskId, res);
         appState.detail = res;
         if ((res.task || {}).taskType === 'PROPOSE_DIAMONDS') {
           renderProposalWorkspace(res);

@@ -73,7 +73,11 @@ var SW_ARTIFACT_UPLOAD_FIELDS = [
   { field: 'intakeMaterial', driveUrlField: 'intakeMaterialDriveUrl', type: SW_ARTIFACT_TYPES.CLIENT_INTAKE }
 ];
 var SW_APPOINTMENT_ARTIFACT_ROOT_CACHE_SECONDS = 2 * 60;
+var SW_APPOINTMENT_FOLDER_ID_CACHE_SECONDS = 60 * 60;
+var SW_APPOINTMENT_UPLOAD_FOLDER_CACHE_SECONDS = 60 * 60;
 var SW_APPOINTMENT_ARTIFACT_ROOT_MEMORY_CACHE_ = {};
+var SW_APPOINTMENT_ROOT_FOLDER_MEMORY_CACHE_ = {};
+var SW_APPOINTMENT_UPLOAD_FOLDER_MEMORY_CACHE_ = {};
 
 function swEnsureAppointmentArtifactsSheet_(ss) {
   var sh = ss.getSheetByName(SW_APPOINTMENT_ARTIFACT_SHEET);
@@ -560,16 +564,149 @@ function swDriveFileIdFromUrl_(urlOrId) {
   return m ? m[0] : '';
 }
 
-function swEnsureAppointmentFolderForRoot_(ss, rootApptId) {
+function swResolveAppointmentRootFolderId_(ss, rootApptId) {
+  var root = swTrim_(rootApptId);
+  if (!root) return '';
+  var cached = swCachedAppointmentRootFolderId_(ss, root);
+  if (cached) return cached;
+
   var folderId = '';
   try {
-    if (typeof getApFolderIdForRoot_ === 'function') folderId = getApFolderIdForRoot_(ss, rootApptId);
+    if (typeof getApFolderIdForRoot_ === 'function') folderId = getApFolderIdForRoot_(ss, root);
   } catch (_) {}
   if (!folderId) {
     try {
-      if (typeof _resolveApFolderId_ === 'function') folderId = _resolveApFolderId_(ss, rootApptId);
+      if (typeof _resolveApFolderId_ === 'function') folderId = _resolveApFolderId_(ss, root);
     } catch (_) {}
   }
+  folderId = swTrim_(folderId);
+  if (folderId) swCacheAppointmentRootFolderId_(ss, root, folderId);
+  return folderId;
+}
+
+function swCachedAppointmentRootFolderId_(ss, root) {
+  var key = swAppointmentRootFolderCacheKey_(ss, root);
+  try {
+    var memory = SW_APPOINTMENT_ROOT_FOLDER_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.folderId || '';
+  } catch (_) {}
+
+  try {
+    var cached = CacheService.getScriptCache().get(key);
+    if (!cached) return '';
+    SW_APPOINTMENT_ROOT_FOLDER_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_FOLDER_ID_CACHE_SECONDS * 1000,
+      folderId: cached
+    };
+    return cached;
+  } catch (_) {}
+  return '';
+}
+
+function swCacheAppointmentRootFolderId_(ss, root, folderId) {
+  folderId = swTrim_(folderId);
+  if (!folderId) return;
+  var key = swAppointmentRootFolderCacheKey_(ss, root);
+  try {
+    SW_APPOINTMENT_ROOT_FOLDER_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_FOLDER_ID_CACHE_SECONDS * 1000,
+      folderId: folderId
+    };
+  } catch (_) {}
+  try {
+    CacheService.getScriptCache().put(key, folderId, SW_APPOINTMENT_FOLDER_ID_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAppointmentRootFolderCacheKey_(ss, root) {
+  return 'sw:appointmentRootFolderId:v1:' + ss.getId() + ':' + encodeURIComponent(swTrim_(root));
+}
+
+function swAppointmentDriveDropFolderInfoForRoot_(ss, rootApptId, artifactType) {
+  var root = swTrim_(rootApptId);
+  if (!root) throw new Error('Missing RootApptID for appointment upload folder.');
+  var type = swNormalizeDriveUploadArtifactType_(artifactType);
+  var cached = swCachedAppointmentUploadFolderInfo_(ss, root, type);
+  if (cached && cached.folderId && cached.url) return cached;
+
+  var folder = swResolveAppointmentDriveDropFolder_(ss, root, type);
+  var folderId = folder.getId();
+  var info = {
+    ok: true,
+    rootApptId: root,
+    artifactType: type,
+    folderId: folderId,
+    url: swDriveFolderUrlForId_(folderId)
+  };
+  swCacheAppointmentUploadFolderInfo_(ss, root, type, info);
+  return info;
+}
+
+function swResolveAppointmentDriveDropFolder_(ss, rootApptId, artifactType) {
+  var rootFolderId = swResolveAppointmentRootFolderId_(ss, rootApptId);
+  if (!rootFolderId) throw new Error('No client appointment folder found for ' + rootApptId + '.');
+  var rootFolder = DriveApp.getFolderById(rootFolderId);
+  if (artifactType === SW_ARTIFACT_TYPES.APPOINTMENT_RECORDING) {
+    return swGetOrCreateSubfolder_(swGetOrCreateSubfolder_(rootFolder, '01_Audio'), 'Initial Consult Recordings');
+  }
+  if (artifactType === SW_ARTIFACT_TYPES.DIAMOND_VIEWING_RECORDING) {
+    return swGetOrCreateSubfolder_(swGetOrCreateSubfolder_(rootFolder, '01_Audio'), 'Diamond Viewing Recordings');
+  }
+  if (artifactType === SW_ARTIFACT_TYPES.CLIENT_ADVISOR_RECAP) {
+    return swGetOrCreateSubfolder_(swGetOrCreateSubfolder_(rootFolder, '02_Materials'), 'Client Advisor Recaps');
+  }
+  return swArtifactNeedsTranscription_(artifactType)
+    ? swGetOrCreateSubfolder_(rootFolder, '01_Audio')
+    : swGetOrCreateSubfolder_(rootFolder, '02_Materials');
+}
+
+function swCachedAppointmentUploadFolderInfo_(ss, root, artifactType) {
+  var key = swAppointmentUploadFolderCacheKey_(ss, root, artifactType);
+  try {
+    var memory = SW_APPOINTMENT_UPLOAD_FOLDER_MEMORY_CACHE_[key];
+    if (memory && memory.expiresAt > new Date().getTime()) return memory.info || null;
+  } catch (_) {}
+
+  try {
+    var cached = CacheService.getScriptCache().get(key);
+    if (!cached) return null;
+    var info = swParseJson_(cached, null);
+    if (!info || !info.folderId || !info.url) return null;
+    SW_APPOINTMENT_UPLOAD_FOLDER_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_UPLOAD_FOLDER_CACHE_SECONDS * 1000,
+      info: info
+    };
+    return info;
+  } catch (_) {}
+  return null;
+}
+
+function swCacheAppointmentUploadFolderInfo_(ss, root, artifactType, info) {
+  if (!info || !info.folderId || !info.url) return;
+  var key = swAppointmentUploadFolderCacheKey_(ss, root, artifactType);
+  try {
+    SW_APPOINTMENT_UPLOAD_FOLDER_MEMORY_CACHE_[key] = {
+      expiresAt: new Date().getTime() + SW_APPOINTMENT_UPLOAD_FOLDER_CACHE_SECONDS * 1000,
+      info: info
+    };
+  } catch (_) {}
+  try {
+    CacheService.getScriptCache().put(key, swStringify_(info), SW_APPOINTMENT_UPLOAD_FOLDER_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAppointmentUploadFolderCacheKey_(ss, root, artifactType) {
+  return 'sw:appointmentUploadFolder:v1:' + ss.getId() + ':' +
+    encodeURIComponent(swTrim_(root)) + ':' + encodeURIComponent(swTrim_(artifactType));
+}
+
+function swDriveFolderUrlForId_(folderId) {
+  folderId = swTrim_(folderId);
+  return folderId ? 'https://drive.google.com/drive/folders/' + encodeURIComponent(folderId) : '';
+}
+
+function swEnsureAppointmentFolderForRoot_(ss, rootApptId) {
+  var folderId = swResolveAppointmentRootFolderId_(ss, rootApptId);
   if (!folderId) throw new Error('No client appointment folder found for ' + rootApptId + '.');
   var ap = DriveApp.getFolderById(folderId);
   return {
