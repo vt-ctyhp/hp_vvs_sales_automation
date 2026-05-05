@@ -212,7 +212,7 @@ function swAuthSetWorkflowPassword_(ss, options) {
   var found = swAuthFindUserRow_(ss, email);
   var salt = swAuthNewSalt_();
   var hash = swAuthHash_(password, salt);
-  var roles = swAuthRolesForWrite_(options.roles || (found && found['Roles']) || 'SALES_REP');
+  var roles = swAuthRolesForWrite_(options.roles || (found && found['Roles']) || SW_OWNER_ROLES.SALES_REP);
   var next = {
     'Email': email,
     'Name': swTrim_(options.name) || (found && found['Name']) || email,
@@ -243,9 +243,26 @@ function swAuthSetWorkflowPassword_(ss, options) {
   };
 }
 
+function swNormalizeWorkflowUserRoleLabels_(ss) {
+  var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
+  var rows = swAuthReadUserRows_(ss, false);
+  var roleCol = SW_AUTH_USER_HEADERS.indexOf('Roles') + 1;
+  if (roleCol <= 0) return 0;
+  var updated = 0;
+  rows.forEach(function (row) {
+    if (!row.__rowNumber) return;
+    var current = swTrim_(row['Roles']);
+    var next = swAuthRolesForWrite_(current);
+    if (current === next) return;
+    sh.getRange(row.__rowNumber, roleCol).setValue(next);
+    updated++;
+  });
+  return updated;
+}
+
 function swAuthRoleOptions_() {
   return [
-    { value: 'SALES_REP', label: 'Sales Rep', description: 'Can see tasks assigned to their email/name.' },
+    { value: SW_OWNER_ROLES.SALES_REP, label: 'Client Advisor', description: 'Can see tasks assigned to their email/name.' },
     { value: 'JOC', label: 'JOC', description: 'Can see assigned JOC work and claim JOC coverage tasks.' },
     { value: SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN, label: 'Diamond Order Admin', description: 'Can complete diamond order, delivery, and bulk return tasks.' },
     { value: SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT, label: 'Diamond Order Assistant', description: 'Can complete tracking and return tasks.' },
@@ -263,7 +280,7 @@ function swAuthRolesForWrite_(roles) {
     var canonical = allowed[swAuthRoleKey_(swAuthCanonicalRole_(role))];
     if (canonical && out.indexOf(canonical) < 0) out.push(canonical);
   });
-  if (!out.length) out.push('SALES_REP');
+  if (!out.length) out.push(SW_OWNER_ROLES.SALES_REP);
   return out.join(',');
 }
 
@@ -288,9 +305,12 @@ function swAuthCanonicalRole_(role) {
   if (!role) return '';
   var key = swAuthRoleKey_(role);
   var aliases = {
-    sales: 'SALES_REP',
-    salesrep: 'SALES_REP',
-    rep: 'SALES_REP',
+    advisor: SW_OWNER_ROLES.SALES_REP,
+    clientadvisor: SW_OWNER_ROLES.SALES_REP,
+    clientadvisors: SW_OWNER_ROLES.SALES_REP,
+    sales: SW_OWNER_ROLES.SALES_REP,
+    salesrep: SW_OWNER_ROLES.SALES_REP,
+    rep: SW_OWNER_ROLES.SALES_REP,
     joc: 'JOC',
     admin: 'Admin',
     administrator: 'Admin',
@@ -310,7 +330,7 @@ function swAuthCanonicalRole_(role) {
 }
 
 function swAuthRoleKey_(role) {
-  return swNorm_(role).replace(/[^a-z0-9]+/g, '');
+  return swWorkflowRoleKey_(role);
 }
 
 function swAuthFindUserRow_(ss, email) {

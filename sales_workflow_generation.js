@@ -26,8 +26,8 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
   }
 
   if (visitAt) {
-    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.REVIEW, 'SALES_REP', swDateAddHours_(visitAt, -24), '', now, {}), summary);
-    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.CHECKLIST, 'SALES_REP', swDayOfDue_(visitAt), '', now, {}), summary);
+    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.REVIEW, SW_OWNER_ROLES.SALES_REP, swDateAddHours_(visitAt, -24), '', now, {}), summary);
+    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.CHECKLIST, SW_OWNER_ROLES.SALES_REP, swDayOfDue_(visitAt), '', now, {}), summary);
   }
 
   swGenerateDiamondWorkflowTasks_(ss, state, ctx, rec, now, summary, visitAt);
@@ -43,7 +43,7 @@ function swGenerateTasksForAppointment_(ss, state, ctx, rec, now, summary) {
 
   if (swTaskCompleted_(state, processId)) {
     var processPayload = swTaskPayload_(state, processId);
-    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.APPROVE, 'SALES_REP', dueNow, processId, now, {
+    swUpsertTask_(ss, state, swBuildTask_(ss, state, ctx, rec, SW_TASKS.APPROVE, SW_OWNER_ROLES.SALES_REP, dueNow, processId, now, {
       recapDraft: swDeepValue_(processPayload, ['completion', 'recapText']) || ''
     }), summary);
   }
@@ -236,7 +236,7 @@ function swResolveOwner_(ss, ctx, rec, ownerRole, dueAt, existing) {
     };
   }
 
-  if (ownerRole === SW_OWNER_ROLES.SALES_REP || ownerRole === 'SALES_REP') {
+  if (swWorkflowRoleMatches_(ownerRole, SW_OWNER_ROLES.SALES_REP)) {
     var repName = rec.assignedRep || '';
     var repEmail = swLookupEmailByName_(ss, repName, ctx) || '';
     return {

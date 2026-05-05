@@ -24,6 +24,7 @@ function sw_setupSalesWorkflow() {
   swSeedConfig_(configSheet);
   swSeedTemplates_(templateSheet);
   swSeedAuthUsers_(usersSheet);
+  swNormalizeWorkflowUserRoleLabels_(ss);
   swEnsureDiamondRequirementMasterHeaders_(ss);
 
   return {
@@ -319,7 +320,7 @@ function sw_getDiamondTrackingDashboard(authToken) {
       root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
       customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
       appointment: swDiamondFind200Column_(hm, ['Customer Appt Time & Date', 'Customer Appointment Date', 'Appointment Date']),
-      assignedRep: swDiamondFind200Column_(hm, ['Assigned Rep', 'Sales Rep']),
+      assignedRep: swDiamondFind200Column_(hm, ['Client Advisor', 'Assigned Rep', 'Sales Rep']),
       vendor: swDiamondFind200Column_(hm, ['Vendor']),
       shape: swDiamondFind200Column_(hm, ['Shape']),
       carat: swDiamondFind200Column_(hm, ['Carat']),
@@ -461,7 +462,7 @@ function sw_getInStockDiamonds(authToken) {
       root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
       customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
       appointment: swDiamondFind200Column_(hm, ['Customer Appt Time & Date', 'Customer Appointment Date', 'Appointment Date']),
-      assignedRep: swDiamondFind200Column_(hm, ['Assigned Rep', 'Sales Rep']),
+      assignedRep: swDiamondFind200Column_(hm, ['Client Advisor', 'Assigned Rep', 'Sales Rep']),
       company: swDiamondFind200Column_(hm, ['Company', 'Brand']),
       vendor: swDiamondFind200Column_(hm, ['Vendor']),
       stoneType: swDiamondFind200Column_(hm, ['Stone Type', 'StoneType']),
@@ -608,7 +609,7 @@ function sw_getBulkReturnCandidates(authToken) {
     var C = {
       root: swDiamondFind200Column_(hm, ['RootApptID', 'APPT_ID', 'Root Appt ID']),
       customerName: swDiamondFind200Column_(hm, ['Customer Name', 'Client Name', 'Customer']),
-      assignedRep: swDiamondFind200Column_(hm, ['Assigned Rep', 'Sales Rep']),
+      assignedRep: swDiamondFind200Column_(hm, ['Client Advisor', 'Assigned Rep', 'Sales Rep']),
       company: swDiamondFind200Column_(hm, ['Company', 'Brand']),
       vendor: swDiamondFind200Column_(hm, ['Vendor']),
       stoneType: swDiamondFind200Column_(hm, ['Stone Type', 'StoneType']),
@@ -1169,7 +1170,7 @@ function sw_adminReassignTask(authToken, taskId, ownerName, ownerEmail, reason) 
 }
 
 /**
- * Mutating admin action: assigns appointment-level Sales Rep and JOC owner
+ * Mutating admin action: assigns appointment-level Client Advisor and JOC owner
  * on the Master appointment row, then refreshes workflow task owners.
  */
 function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
@@ -1243,21 +1244,26 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
 
 function swEnsureMasterOwnerHeaders_(master) {
   if (!master) throw new Error('Missing sheet: ' + SW_SHEETS.MASTER);
-  var required = ['Assigned Rep', 'Assigned Rep Email', 'Assisted Rep', 'Assisted Rep Email'];
+  var required = [
+    { header: 'Assigned Rep', aliases: ['Client Advisor', 'Assigned Rep', 'Rep', 'Owner'] },
+    { header: 'Assigned Rep Email', aliases: ['Client Advisor Email', 'Assigned Rep Email', 'Rep Email', 'Owner Email'] },
+    { header: 'Assisted Rep', aliases: ['Assisted Rep', 'Assistant Rep'] },
+    { header: 'Assisted Rep Email', aliases: ['Assisted Rep Email', 'Assistant Rep Email'] }
+  ];
   var headers = master.getRange(1, 1, 1, Math.max(1, master.getLastColumn())).getDisplayValues()[0].map(function (h) {
     return swTrim_(h);
   });
   var H = swHeaderMapFromArray_(headers);
-  required.forEach(function (name) {
-    if (swPickIndex_(H, [name]) >= 0) return;
-    master.getRange(1, master.getLastColumn() + 1).setValue(name);
-    headers.push(name);
+  required.forEach(function (item) {
+    if (swPickIndex_(H, item.aliases) >= 0) return;
+    master.getRange(1, master.getLastColumn() + 1).setValue(item.header);
+    headers.push(item.header);
     H = swHeaderMapFromArray_(headers);
   });
   return {
     root: swPickIndex_(H, ['RootApptID', 'APPT_ID']) + 1,
-    assignedRep: swPickIndex_(H, ['Assigned Rep', 'Rep', 'Owner']) + 1,
-    assignedRepEmail: swPickIndex_(H, ['Assigned Rep Email', 'Rep Email', 'Owner Email']) + 1,
+    assignedRep: swPickIndex_(H, ['Client Advisor', 'Assigned Rep', 'Rep', 'Owner']) + 1,
+    assignedRepEmail: swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email', 'Rep Email', 'Owner Email']) + 1,
     assistedRep: swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']) + 1,
     assistedRepEmail: swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']) + 1
   };
@@ -1269,7 +1275,7 @@ function swReadAssignmentOptions_(ss) {
   if (sh && sh.getLastRow() >= 2 && sh.getLastColumn() >= 1) {
     var values = sh.getDataRange().getDisplayValues();
     var H = swHeaderMapFromArray_(values[0].map(function (h) { return swTrim_(h); }));
-    swPushAssignmentOptionsFromColumns_(out.salesReps, values, swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email']));
+    swPushAssignmentOptionsFromColumns_(out.salesReps, values, swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email']));
     swPushAssignmentOptionsFromColumns_(out.jocReps, values, swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']), swPickIndex_(H, ['Assisted Rep Email', 'Assistant Rep Email']));
   }
 
@@ -1565,6 +1571,92 @@ function sw_measureSalesWorkflowSpeed() {
 }
 
 /**
+ * Read-only diagnostic: explains why tasks for a named/email owner do or do not
+ * appear in that user's My Queue.
+ */
+function sw_diagnoseTaskVisibilityForOwner(authToken, ownerNameOrEmail) {
+  if (ownerNameOrEmail == null && !/^sw_/i.test(String(authToken || ''))) {
+    ownerNameOrEmail = authToken;
+    authToken = '';
+  }
+
+  var ss = swSpreadsheet_();
+  swRequireWorkflowReadSheets_(ss, { templates: false });
+  var requester = swAuthUserForApi_(ss, authToken);
+  var target = swDiagnosticTargetUser_(ss, ownerNameOrEmail, requester);
+  if (!requester.isAdmin &&
+      swNormEmail_(requester.email) !== swNormEmail_(target.email) &&
+      swNorm_(requester.name) !== swNorm_(target.name)) {
+    throw new Error('Admin access required to diagnose another user.');
+  }
+
+  var now = new Date().getTime();
+  var state = swReadTaskListState_(ss, true);
+  var statusCounts = {};
+  var hiddenReasons = {};
+  var examples = [];
+  var matched = 0;
+  var dueNow = 0;
+  var visible = 0;
+
+  (state.tasks || []).forEach(function (task) {
+    if (!swDiagnosticTaskOwnerMatches_(task, target)) return;
+    matched++;
+    var status = task.status || '(blank)';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+    var isDue = swTaskDueForQueue_(task, now);
+    var isOwned = swTaskOwnedByUser_(task, target);
+    var inMine = isDue && isOwned;
+    if (isDue) dueNow++;
+    if (inMine) visible++;
+    if (!inMine) {
+      var reason = !swTaskPendingLike_(task, now)
+        ? 'status_not_pending'
+        : !isDue
+          ? 'not_due_yet_or_snoozed'
+          : !isOwned
+            ? 'owner_identity_or_role_mismatch'
+            : 'filtered';
+      hiddenReasons[reason] = (hiddenReasons[reason] || 0) + 1;
+    }
+    if (examples.length < 25) {
+      examples.push({
+        row: task.rowNumber || '',
+        taskId: task.taskId || '',
+        taskType: task.taskType || '',
+        taskTitle: task.taskTitle || '',
+        customerName: task.customerName || '',
+        ownerRole: task.ownerRole || '',
+        intendedOwner: task.intendedOwner || '',
+        intendedOwnerEmail: task.intendedOwnerEmail || '',
+        currentOwner: task.currentOwner || '',
+        currentOwnerEmail: task.currentOwnerEmail || '',
+        dueAt: task.dueAt || '',
+        status: task.status || '',
+        visibleInMine: inMine
+      });
+    }
+  });
+
+  var out = {
+    ok: true,
+    generatedAt: swIso_(new Date()),
+    readOnly: true,
+    targetUser: swDiagnosticPublicUser_(target),
+    summary: {
+      matchedOwnerTasks: matched,
+      dueNow: dueNow,
+      visibleInMine: visible,
+      statusCounts: statusCounts,
+      hiddenReasons: hiddenReasons
+    },
+    examples: examples
+  };
+  Logger.log('SW_TASK_VISIBILITY_DIAGNOSTIC ' + JSON.stringify(out, null, 2));
+  return out;
+}
+
+/**
  * Mutating diagnostic: runs setup and generation twice to confirm duplicate-safe generation.
  */
 function sw_testSalesWorkflowDryRun() {
@@ -1612,4 +1704,59 @@ function swBenchmarkSalesWorkflowFirstTaskId_(responses) {
     if (tasks.length && tasks[0].taskId) return tasks[0].taskId;
   }
   return '';
+}
+
+function swDiagnosticTargetUser_(ss, ownerNameOrEmail, fallbackUser) {
+  var query = swTrim_(ownerNameOrEmail);
+  var ctx = swBuildIdentityContext_(ss, true);
+  var email = query.indexOf('@') >= 0 ? swNormEmail_(query) : '';
+  var name = email ? swLookupNameByEmail_(ss, email, ctx) : query;
+  if (!email && name) email = swLookupEmailByName_(ss, name, ctx);
+
+  var authRow = email ? swAuthFindUserRowReadOnly_(ss, email) : null;
+  if (!authRow && name) {
+    var authRows = swAuthReadUserRows_(ss, true);
+    for (var i = 0; i < authRows.length; i++) {
+      if (swNorm_(authRows[i]['Name']) === swNorm_(name)) {
+        authRow = authRows[i];
+        break;
+      }
+    }
+  }
+  if (authRow) return swAuthUserFromRow_(authRow);
+
+  if (!query && fallbackUser) return fallbackUser;
+  return {
+    email: email,
+    name: name || email || query,
+    roles: [SW_OWNER_ROLES.SALES_REP],
+    isAdmin: false,
+    isJoc: false,
+    isRep: true,
+    isDiamondOrderAdmin: false,
+    isDiamondOrderAssistant: false
+  };
+}
+
+function swDiagnosticTaskOwnerMatches_(task, user) {
+  if (!task || !user) return false;
+  var email = swNormEmail_(user.email);
+  var name = swNorm_(user.name);
+  if (email && (swNormEmail_(task.currentOwnerEmail) === email || swNormEmail_(task.intendedOwnerEmail) === email)) return true;
+  if (name && (swNorm_(task.currentOwner) === name || swNorm_(task.intendedOwner) === name)) return true;
+  return false;
+}
+
+function swDiagnosticPublicUser_(user) {
+  user = user || {};
+  return {
+    email: swNormEmail_(user.email),
+    name: swTrim_(user.name),
+    roles: user.roles || [],
+    isAdmin: !!user.isAdmin,
+    isJoc: !!user.isJoc,
+    isRep: !!user.isRep,
+    isDiamondOrderAdmin: !!user.isDiamondOrderAdmin,
+    isDiamondOrderAssistant: !!user.isDiamondOrderAssistant
+  };
 }

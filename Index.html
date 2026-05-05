@@ -1792,7 +1792,7 @@
           '</div>',
           '<div class="detail-section">',
             '<label>Owners</label>',
-            '<div class="meta">Assigned Rep: ' + escapeHtml(appt.assignedRep || 'Unassigned') + '</div>',
+            '<div class="meta">Client Advisor: ' + escapeHtml(appt.assignedRep || 'Unassigned') + '</div>',
             '<div class="meta">JOC: ' + escapeHtml(appt.assistedRep || 'Unassigned') + '</div>',
           '</div>',
           '<div class="detail-section">',
@@ -2036,7 +2036,7 @@
           '<div class="detail-section">',
             '<label>Context</label>',
             '<div class="meta">' + escapeHtml(row.customerName ? 'Currently tied to ' + row.customerName : 'No customer context listed') + '</div>',
-            '<div class="meta">Assigned rep: ' + escapeHtml(row.assignedRep || '') + '</div>',
+            '<div class="meta">Client Advisor: ' + escapeHtml(row.assignedRep || '') + '</div>',
             '<div class="meta">Row ' + escapeHtml(row.rowIndex || '') + '</div>',
           '</div>',
         '</div>'
@@ -2788,7 +2788,7 @@
 
       if (task.taskType === 'ORDER_DIAMONDS') {
         return quoteButtons + requirements + '<div class="detail-section"><label>Order Decisions</label>' +
-          '<div class="template-box">Select an order result for every proposed diamond. Completing this task writes the Order Status and Purchased / Ordered Date directly to 200_, then creates acknowledgement tasks for JOC and the assigned rep.</div>' +
+          '<div class="template-box">Select an order result for every proposed diamond. Completing this task writes the Order Status and Purchased / Ordered Date directly to 200_, then creates acknowledgement tasks for JOC and the client advisor.</div>' +
           renderOrderDecisionRows(rows) +
           '<div class="field-grid" style="margin-top:14px"><div><label for="orderedDate">Purchased / Ordered Date</label><input id="orderedDate" type="date" value="' + escapeAttrValue(currentDateKey()) + '"></div></div></div>';
       }
@@ -3078,11 +3078,11 @@
       var hasAppointment = !!(appt.row || appt.root || task.root || task.appt);
       var assignmentControls = hasAppointment ? [
             '<div class="field-grid">',
-              '<div><label for="adminAssignedRep">Sales Rep</label><select id="adminAssignedRep">' + optionTags(adminAssignmentNames(options.salesReps || [], appt.assignedRep || task.intendedOwner || ''), appt.assignedRep || task.intendedOwner || '') + '</select></div>',
+              '<div><label for="adminAssignedRep">Client Advisor</label><select id="adminAssignedRep">' + optionTags(adminAssignmentNames(options.salesReps || [], appt.assignedRep || task.intendedOwner || ''), appt.assignedRep || task.intendedOwner || '') + '</select></div>',
               '<div><label for="adminAssistedRep">JOC</label><select id="adminAssistedRep">' + optionTags(adminAssignmentNames(options.jocReps || [], appt.assistedRep || ''), appt.assistedRep || '') + '</select></div>',
               '<div class="wide"><label for="adminReason">Reason / Note</label><input id="adminReason" placeholder="Optional for assignment; used for block/unblock"></div>',
             '</div>',
-            '<div class="meta">Saving writes Sales Rep and JOC to the Master appointment rows for this RootApptID and refreshes task ownership.</div>'
+            '<div class="meta">Saving writes Client Advisor and JOC to the Master appointment rows for this RootApptID and refreshes task ownership.</div>'
           ].join('') : [
             '<div class="field-grid">',
               '<div><label for="adminOwnerName">Task Owner</label><input id="adminOwnerName" value="' + escapeAttrValue(task.currentOwner || '') + '" placeholder="Owner name"></div>',
@@ -3164,7 +3164,7 @@
     function renderWorkflowUserRow(user) {
       return '<div class="mini-row three">' +
         '<div><strong>' + escapeHtml(user.name || user.email) + '</strong><div class="meta">' + escapeHtml(user.email || '') + '</div></div>' +
-        '<div class="meta">' + escapeHtml(user.roles || '') + '</div>' +
+        '<div class="meta">' + escapeHtml(displayWorkflowRoles(user.roles || '')) + '</div>' +
         '<div class="meta">' + escapeHtml(user.active || '') + (user.passwordSet ? ' · Password set' : ' · No password') + '</div>' +
       '</div>';
     }
@@ -3172,6 +3172,14 @@
     function fillGeneratedUserPassword() {
       var el = document.getElementById('userAdminPassword');
       if (el) el.value = clientGeneratedPassword();
+    }
+
+    function displayWorkflowRoles(value) {
+      return String(value || '').split(/[,\n;]/).map(function (role) {
+        role = role.trim();
+        if (role === 'SALES_REP') return 'Client Advisor';
+        return role;
+      }).filter(Boolean).join(', ');
     }
 
     function saveWorkflowUser() {

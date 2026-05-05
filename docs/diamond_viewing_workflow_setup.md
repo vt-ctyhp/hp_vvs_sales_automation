@@ -21,7 +21,7 @@ Run `sw_setupSalesWorkflow()` to seed the system/config rows and append the Shee
 - `SYSTEM | SHARED_DIAMOND_ORDER_ADMIN_QUEUE`
 - `SYSTEM | SHARED_DIAMOND_ORDER_ASSISTANT_QUEUE`
 
-The seeded diamond config rows can remain blank. Assigned rep and JOC ownership come from the appointment row `Assigned Rep` / `Assisted Rep` names and then look up the current email by name; the outdated `Assigned Rep Email` and `Assisted Rep Email` columns on `00_Master Appointments` are ignored.
+The seeded diamond config rows can remain blank. Client Advisor and JOC ownership come from the appointment row `Client Advisor` or legacy `Assigned Rep` / `Assisted Rep` names and then look up the current email by name; the outdated `Client Advisor Email` or legacy `Assigned Rep Email` and `Assisted Rep Email` columns on `00_Master Appointments` are ignored.
 
 ## Login Users
 For the first admin user, run this no-argument function from the Apps Script editor function dropdown:
@@ -45,7 +45,7 @@ sw_adminSetWorkflowPassword(
 
 Use only the roles that person needs. A diamond order admin usually needs `DIAMOND_ORDER_ADMIN`; a diamond order assistant usually needs `DIAMOND_ORDER_ASSISTANT`.
 
-Role-only users do not inherit sales rep queues just because their login email appears in the `Dropdown` tab. Add `SALES_REP` only when that login should also receive assigned-rep tasks.
+Role-only users do not inherit Client Advisor queues just because their login email appears in the `Dropdown` tab. Add `Client Advisor` only when that login should also receive Client Advisor tasks. Legacy `SALES_REP` values are still accepted as an alias and normalized during setup.
 
 The `Temporary Password?` column is informational only. The dashboard does not force a password change on first login; users can continue using the password assigned to them until an admin resets it.
 
@@ -56,16 +56,16 @@ Admins can also manage users from:
 Both surfaces write to `_SalesWorkflowUsers`, support role checkboxes, and either auto-generate a password or use the password typed by the admin.
 
 ## Generated Diamond Tasks
-- `PROPOSE_DIAMONDS`: assigned rep captures the structured customer requirements, primary deciding factor, and variety strategy, then enters proposed stones directly in the dashboard. Completion writes the customer brief to Sheet 100 and runs the same proposal flow: validates stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps appointment context tied to the customer.
+- `PROPOSE_DIAMONDS`: Client Advisor captures the structured customer requirements, primary deciding factor, and variety strategy, then enters proposed stones directly in the dashboard. Completion writes the customer brief to Sheet 100 and runs the same proposal flow: validates stones, inserts them into 200_, updates Sheet 100 diamond counts/status, and keeps appointment context tied to the customer.
 - `PREPARE_DV_QUOTATION`: JOC fills quotation, performs price research against the Sheet 100 customer requirements, and can refresh quotation data from 200_ and latest 3D tracker.
-- `ORDER_DIAMONDS`: diamond order admin reviews proposed stones against the Sheet 100 customer requirements, then selects `On the Way` or `Not Approved` for every proposed stone. Completion writes order status/date to 200_, then the generator creates acknowledgement tasks for the assigned rep and JOC.
-- `ACK_DIAMONDS_ORDERED_ASSIGNED_REP`: assigned rep acknowledges which diamonds were ordered and checks customer requirements/customer impact.
+- `ORDER_DIAMONDS`: diamond order admin reviews proposed stones against the Sheet 100 customer requirements, then selects `On the Way` or `Not Approved` for every proposed stone. Completion writes order status/date to 200_, then the generator creates acknowledgement tasks for the Client Advisor and JOC.
+- `ACK_DIAMONDS_ORDERED_ASSIGNED_REP`: Client Advisor acknowledges which diamonds were ordered and checks customer requirements/customer impact.
 - `ACK_DIAMONDS_ORDERED_JOC`: JOC acknowledges ordered diamonds and updates quotation notes if assumptions changed against the customer requirements.
 - `TRACK_DIAMONDS`: diamond order assistant writes tracking ETA/status to 200_. This appears only when 200_ has at least one matching `On the Way` stone.
 - `CONFIRM_DIAMOND_DELIVERY`: diamond order admin confirms receipt. This appears only when 200_ has at least one matching `On the Way` stone.
 - `RECORD_DIAMOND_DECISIONS`: JOC marks Purchase/Return, confirms dimensions against 3D tracker, and copies the manufacturing message. This appears after a matching stone is delivered or in stock.
 - `RETURN_DIAMONDS`: diamond order assistant/admin reviews diamonds due to return. Completion marks the listed 200_ rows as `Return in Progress` and writes return notes.
-- ETA risk tasks go to assigned rep and JOC only when tracking is late or concerning.
+- ETA risk tasks go to Client Advisor and JOC only when tracking is late or concerning.
 
 ## Dashboard Views
 - `My Queue`: role-filtered task cards for the signed-in user.

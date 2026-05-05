@@ -206,6 +206,23 @@ function swNormEmail_(value) {
   return swTrim_(value).toLowerCase();
 }
 
+function swWorkflowRoleKey_(role) {
+  var key = swNorm_(role).replace(/[^a-z0-9]+/g, '');
+  var aliases = {
+    advisor: 'clientadvisor',
+    clientadvisor: 'clientadvisor',
+    clientadvisors: 'clientadvisor',
+    sales: 'clientadvisor',
+    salesrep: 'clientadvisor',
+    rep: 'clientadvisor'
+  };
+  return aliases[key] || key;
+}
+
+function swWorkflowRoleMatches_(value, expected) {
+  return swWorkflowRoleKey_(value) === swWorkflowRoleKey_(expected);
+}
+
 function swNormPhone_(value) {
   var d = swTrim_(value).replace(/\D+/g, '');
   if (d.length > 10 && d.charAt(0) === '1') d = d.slice(1);
@@ -371,7 +388,7 @@ function swLookupEmailByName_(ss, name, ctx) {
   var headers = values[0].map(function (h) { return swTrim_(h); });
   var H = swHeaderMapFromArray_(headers);
   var pairs = [
-    [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
+    [swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email'])],
     [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
   ];
   for (var i = 1; i < values.length; i++) {
@@ -396,7 +413,7 @@ function swLookupNameByEmail_(ss, email, ctx) {
     var headers = values[0].map(function (h) { return swTrim_(h); });
     var H = swHeaderMapFromArray_(headers);
     var pairs = [
-      [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
+      [swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email'])],
       [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
     ];
     for (var i = 1; i < values.length; i++) {

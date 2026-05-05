@@ -255,9 +255,17 @@
       document.getElementById('users').innerHTML = '<div class="mini-table">' + users.map(function (user) {
         return '<div class="mini-row">' +
           '<div><strong>' + escapeHtml(user.name || user.email) + '</strong><span class="meta">' + escapeHtml(user.email || '') + '</span></div>' +
-          '<div class="meta">' + escapeHtml(user.roles || '') + '<br>' + escapeHtml(user.active || '') + (user.passwordSet ? ' · Password set' : ' · No password') + '</div>' +
+          '<div class="meta">' + escapeHtml(displayWorkflowRoles(user.roles || '')) + '<br>' + escapeHtml(user.active || '') + (user.passwordSet ? ' · Password set' : ' · No password') + '</div>' +
         '</div>';
       }).join('') + '</div>';
+    }
+
+    function displayWorkflowRoles(value) {
+      return String(value || '').split(/[,\n;]/).map(function (role) {
+        role = role.trim();
+        if (role === 'SALES_REP') return 'Client Advisor';
+        return role;
+      }).filter(Boolean).join(', ');
     }
 
     function saveUser() {

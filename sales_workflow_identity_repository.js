@@ -80,6 +80,11 @@ function swSystemUser_() {
 function swTaskOwnedByUser_(task, user) {
   if (swTaskRoleOwnedByUser_(task, user)) return true;
   if (!swTaskNamedOwnerApplies_(task, user)) return false;
+  return swTaskExplicitlyOwnedByUser_(task, user);
+}
+
+function swTaskExplicitlyOwnedByUser_(task, user) {
+  if (!task || !user) return false;
   var email = swNormEmail_(user.email);
   if (email && swNormEmail_(task.currentOwnerEmail) === email) return true;
   if (swNorm_(user.name) && swNorm_(task.currentOwner) === swNorm_(user.name)) return true;
@@ -105,8 +110,10 @@ function swTaskNamedOwnerApplies_(task, user) {
     return false;
   }
   if (role === swNorm_(SW_OWNER_ROLES.JOC)) return !!user.isJoc || !!user.isAdmin;
-  if (role === swNorm_(SW_OWNER_ROLES.SALES_REP)) return !!user.isRep || !!user.isAdmin;
-  return !!user.isRep || !!user.isJoc || !!user.isAdmin;
+  if (swWorkflowRoleMatches_(task.ownerRole, SW_OWNER_ROLES.SALES_REP)) {
+    return !!user.isRep || !!user.isAdmin || swTaskExplicitlyOwnedByUser_(task, user);
+  }
+  return !!user.isRep || !!user.isJoc || !!user.isAdmin || swTaskExplicitlyOwnedByUser_(task, user);
 }
 
 function swCanViewTask_(task, user) {
@@ -195,7 +202,7 @@ function swReadPeopleIndex_(ss, config) {
       var headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return swTrim_(h); });
       var H = swHeaderMapFromArray_(headers);
       pairs = [
-        [swPickIndex_(H, ['Assigned Rep']), swPickIndex_(H, ['Assigned Rep Email'])],
+        [swPickIndex_(H, ['Client Advisor', 'Assigned Rep']), swPickIndex_(H, ['Client Advisor Email', 'Assigned Rep Email'])],
         [swPickIndex_(H, ['Assisted Rep']), swPickIndex_(H, ['Assisted Rep Email'])]
       ];
       assistedNameCol = swPickIndex_(H, ['Assisted Rep', 'Assistant Rep']);
@@ -269,8 +276,10 @@ function swReadPeopleIndex_(ss, config) {
 
 function swPeopleIndexFastHeadersMatch_(headers) {
   headers = headers || [];
-  var assignedName = swHeaderKey_(headers[0]) === swHeaderKey_('Assigned Rep');
-  var assignedEmail = swHeaderKey_(headers[1]) === swHeaderKey_('Assigned Rep Email');
+  var assignedNameKey = swHeaderKey_(headers[0]);
+  var assignedEmailKey = swHeaderKey_(headers[1]);
+  var assignedName = assignedNameKey === swHeaderKey_('Client Advisor') || assignedNameKey === swHeaderKey_('Assigned Rep');
+  var assignedEmail = assignedEmailKey === swHeaderKey_('Client Advisor Email') || assignedEmailKey === swHeaderKey_('Assigned Rep Email');
   var assistedNameKey = swHeaderKey_(headers[2]);
   var assistedEmailKey = swHeaderKey_(headers[3]);
   var assistedName = assistedNameKey === swHeaderKey_('Assisted Rep') || assistedNameKey === swHeaderKey_('Assistant Rep');
