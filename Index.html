@@ -586,6 +586,36 @@
       grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) minmax(80px, 110px);
     }
 
+    .mini-row.artifact-row {
+      grid-template-columns: minmax(150px, 1fr) minmax(92px, 120px);
+    }
+
+    .artifact-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .artifact-links a {
+      font-size: 12px;
+    }
+
+    .upload-grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .review-context {
+      display: grid;
+      gap: 12px;
+    }
+
+    .review-context .template-box {
+      min-height: 0;
+    }
+
     .wax-update-row {
       grid-template-columns: minmax(160px, 1fr) minmax(220px, 2fr);
     }
@@ -704,7 +734,7 @@
     .admin-filter-grid {
       display: grid;
       gap: 14px;
-      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     }
 
     .admin-closed-toggle {
@@ -751,6 +781,231 @@
       color: var(--ink-body);
       margin-bottom: 18px;
       padding: 14px;
+    }
+
+    .admin-dashboard-wide .layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-dashboard-wide #detailPanel {
+      display: none;
+    }
+
+    .admin-dashboard-shell {
+      display: grid;
+      gap: 18px;
+    }
+
+    .admin-dashboard-toolbar {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+    }
+
+    .admin-mode-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .admin-health-section {
+      border: 1px solid var(--rule);
+      padding: 22px;
+    }
+
+    .admin-health-section.unframed {
+      border: 0;
+      padding: 0;
+    }
+
+    .admin-health-heading {
+      align-items: end;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .admin-risk-grid,
+    .admin-pulse-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .admin-risk-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .admin-health-card {
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      min-width: 0;
+      padding: 16px;
+    }
+
+    .admin-health-card.danger {
+      border-top: 2px solid #A71358;
+    }
+
+    .admin-health-card.warn {
+      border-top: 2px solid #B56A00;
+    }
+
+    .admin-health-card.info {
+      border-top: 2px solid #1261A6;
+    }
+
+    .admin-health-value {
+      color: var(--ink-primary);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 34px;
+      line-height: 1;
+      overflow-wrap: anywhere;
+    }
+
+    .admin-health-footnote {
+      color: var(--ink-primary);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .admin-stage-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .admin-stage-card {
+      background: var(--surface-card);
+      border-top: 3px solid var(--rule);
+      padding: 12px;
+    }
+
+    .admin-stage-card.lead { border-top-color: #A71358; }
+    .admin-stage-card.hotLead { border-top-color: #B56A00; }
+    .admin-stage-card.followUp { border-top-color: #7E6DD8; }
+    .admin-stage-card.appointment { border-top-color: #1261A6; }
+    .admin-stage-card.deposit { border-top-color: #168A62; }
+    .admin-stage-card.inProduction { border-top-color: #5B6C72; }
+
+    .admin-dashboard-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+    }
+
+    .admin-trend-chart {
+      align-items: end;
+      border-bottom: 1px solid var(--rule);
+      border-left: 1px solid var(--rule);
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(12, minmax(18px, 1fr));
+      height: 220px;
+      padding: 12px 8px 0;
+    }
+
+    .admin-trend-week {
+      align-items: end;
+      display: grid;
+      gap: 6px;
+      height: 100%;
+      min-width: 0;
+    }
+
+    .admin-trend-bars {
+      align-items: end;
+      display: flex;
+      gap: 3px;
+      height: 160px;
+      justify-content: center;
+    }
+
+    .admin-trend-bar {
+      background: #7E6DD8;
+      min-height: 2px;
+      width: 12px;
+    }
+
+    .admin-trend-dot {
+      background: #168A62;
+      min-height: 2px;
+      width: 4px;
+    }
+
+    .admin-trend-label {
+      color: var(--ink-muted);
+      font-size: 10px;
+      overflow: hidden;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .admin-source-list,
+    .admin-deal-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .admin-source-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .admin-source-top,
+    .admin-deal-row {
+      align-items: baseline;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+    }
+
+    .admin-source-track {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .admin-source-fill {
+      background: var(--ink-primary);
+      height: 100%;
+    }
+
+    .admin-scorecard-wrap {
+      overflow-x: auto;
+    }
+
+    .admin-scorecard {
+      border-collapse: collapse;
+      min-width: 760px;
+      width: 100%;
+    }
+
+    .admin-scorecard th,
+    .admin-scorecard td {
+      border-bottom: 1px solid var(--rule);
+      font-size: 12px;
+      padding: 10px 8px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .admin-scorecard th:first-child,
+    .admin-scorecard td:first-child {
+      text-align: left;
+    }
+
+    .admin-scorecard th {
+      color: var(--ink-muted);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
 
     .admin-kanban-board {
@@ -903,7 +1158,7 @@
         min-height: 96px;
       }
 
-      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-kpi-grid {
+      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-kpi-grid, .admin-risk-grid, .admin-pulse-grid, .admin-dashboard-grid, .admin-stage-grid {
         grid-template-columns: 1fr;
       }
 
@@ -1029,6 +1284,7 @@
       bulkReturnSource: null,
       adminDashboard: null,
       adminDashboardFilters: null,
+      adminDashboardMode: 'health',
       mainRequestId: 0,
       detailRequestId: 0,
       lastActionButton: null,
@@ -1088,6 +1344,14 @@
             clearInStockDiamondFilters();
             return;
           }
+          var adminModeButton = closestMatch_(event.target, '.js-admin-dashboard-mode');
+          if (adminModeButton) {
+            appState.adminDashboardMode = adminModeButton.getAttribute('data-mode') || 'health';
+            renderAdminDashboard(appState.adminDashboard || {});
+            if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(appState.adminDashboard || {});
+            else renderAdminDashboardHealthSummary(appState.adminDashboard || {});
+            return;
+          }
           if (closestMatch_(event.target, '.js-admin-dashboard-apply')) {
             loadAdminDashboard(collectAdminDashboardFilters());
             return;
@@ -1141,6 +1405,8 @@
         detailPanel.addEventListener('click', function (event) {
           if (closestMatch_(event.target, '.js-copy-template')) return copyTemplate();
           if (closestMatch_(event.target, '.js-copy-manufacturing')) return copyManufacturingMessage();
+          var appointmentUploadButton = closestMatch_(event.target, '.js-upload-appointment-artifacts');
+          if (appointmentUploadButton) return uploadAppointmentArtifacts(appointmentUploadButton);
           if (closestMatch_(event.target, '.js-snooze-task')) return snoozeTask();
           var refreshButton = closestMatch_(event.target, '.js-refresh-diamond-quote');
           if (refreshButton) return refreshDiamondQuote(refreshButton.getAttribute('data-mode') || 'all');
@@ -1249,6 +1515,41 @@
           else setStatus(message, true);
         });
       runner[fnName].apply(runner, callArgs);
+    }
+
+    function uploadAppointmentArtifacts(sourceButton) {
+      var form = document.getElementById('appointmentUploadForm');
+      if (!form || !appState.selectedTaskId) return;
+      var hasFile = [].slice.call(form.querySelectorAll('input[type="file"]')).some(function (input) {
+        return input.files && input.files.length;
+      });
+      if (!hasFile) {
+        setStatus('Choose at least one appointment file to upload.', true);
+        return;
+      }
+      var token = document.getElementById('appointmentUploadToken');
+      var taskId = document.getElementById('appointmentUploadTaskId');
+      var root = document.getElementById('appointmentUploadRoot');
+      if (token) token.value = appState.token || '';
+      if (taskId) taskId.value = appState.selectedTaskId || '';
+      if (root && !root.value && appState.detail && appState.detail.task) {
+        root.value = appState.detail.task.root || appState.detail.task.appt || '';
+      }
+      var loadingButton = lockLoadingButton(sourceButton);
+      setBusy(true, 'Uploading appointment files');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          setStatus('Uploaded ' + ((res && res.uploaded) || 0) + ' file(s).');
+          openTask(appState.selectedTaskId);
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          setStatus((err && err.message) ? err.message : String(err), true);
+        })
+        .sw_uploadAppointmentArtifacts(form);
     }
 
     function beginMainRequest(view) {
@@ -1396,6 +1697,13 @@
         var el = document.getElementById('tab-' + v);
         if (el) el.className = v === view ? 'active' : '';
       });
+      updateAdminDashboardLayoutMode();
+    }
+
+    function updateAdminDashboardLayoutMode() {
+      var shell = document.getElementById('appShell');
+      if (!shell) return;
+      shell.classList.toggle('admin-dashboard-wide', appState.view === 'adminDashboard' && appState.adminDashboardMode !== 'kanban');
     }
 
     function renderViewHeader(view) {
@@ -1422,7 +1730,7 @@
         eyebrow = 'Bulk Returns';
       }
       if (view === 'adminDashboard') {
-        title = 'Weekly metrics and customer pipeline';
+        title = 'Business health and customer pipeline';
         eyebrow = 'Admin Dashboard';
       }
       if (view === 'admin') {
@@ -1446,12 +1754,14 @@
         appState.adminDashboard = res || {};
         appState.adminDashboardFilters = (res && res.filters) || filters || {};
         renderAdminDashboard(res || {});
-        renderAdminDashboardSummary(res || {});
+        if (appState.adminDashboardMode === 'kanban') renderAdminDashboardSummary(res || {});
+        else renderAdminDashboardHealthSummary(res || {});
       }, 'Loading admin dashboard');
     }
 
     function collectAdminDashboardFilters() {
       return {
+        windowPreset: valueOf('adminDashWindow'),
         startDate: valueOf('adminDashStartDate'),
         endDate: valueOf('adminDashEndDate'),
         brand: valueOf('adminDashBrand'),
@@ -1471,11 +1781,16 @@
       var warnings = (res.warnings || []).length
         ? '<div class="admin-warning">' + (res.warnings || []).map(escapeHtml).join('<br>') + '</div>'
         : '';
+      updateAdminDashboardLayoutMode();
       document.getElementById('taskList').innerHTML = [
-        renderAdminDashboardFilters(res),
-        warnings,
-        renderAdminDashboardMetrics(res.metrics || {}),
-        renderAdminDashboardKanban(res.kanban || { columns: [] })
+        '<div class="admin-dashboard-shell">',
+          renderAdminDashboardFilters(res),
+          renderAdminDashboardModeToggle(),
+          warnings,
+          appState.adminDashboardMode === 'kanban'
+            ? renderAdminDashboardKanban(res.kanban || { columns: [] })
+            : renderAdminDashboardHealth(res.health || {}),
+        '</div>'
       ].join('');
     }
 
@@ -1485,6 +1800,7 @@
       return [
         '<div class="admin-filter-panel">',
           '<div class="admin-filter-grid">',
+            '<div><label for="adminDashWindow">Window</label><select id="adminDashWindow">' + adminFilterObjectOptionTags(options.windows || [], filters.windowPreset || 'last7') + '</select></div>',
             '<div><label for="adminDashStartDate">Start Date</label><input id="adminDashStartDate" type="date" value="' + escapeAttrValue(filters.startDate || '') + '"></div>',
             '<div><label for="adminDashEndDate">End Date</label><input id="adminDashEndDate" type="date" value="' + escapeAttrValue(filters.endDate || '') + '"></div>',
             '<div><label for="adminDashBrand">Brand</label><select id="adminDashBrand">' + adminFilterOptionTags(options.brands || [], filters.brand || '', 'All Brands') + '</select></div>',
@@ -1502,6 +1818,16 @@
       ].join('');
     }
 
+    function adminFilterObjectOptionTags(options, selected) {
+      var tags = [];
+      (options || []).forEach(function (option) {
+        var value = String((option && option.value) || '');
+        var label = String((option && option.label) || value);
+        tags.push('<option value="' + escapeAttrValue(value) + '"' + (value === selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>');
+      });
+      return tags.join('');
+    }
+
     function adminFilterOptionTags(options, selected, emptyLabel) {
       var seen = {};
       var tags = ['<option value="">' + escapeHtml(emptyLabel || 'All') + '</option>'];
@@ -1513,6 +1839,236 @@
         tags.push('<option value="' + escapeAttrValue(value) + '"' + (norm(value) === norm(selected) ? ' selected' : '') + '>' + escapeHtml(value) + '</option>');
       });
       return tags.join('');
+    }
+
+    function renderAdminDashboardModeToggle() {
+      return [
+        '<div class="admin-dashboard-toolbar">',
+          '<div>',
+            '<div class="eyebrow">Admin Dashboard</div>',
+            '<h2>' + (appState.adminDashboardMode === 'kanban' ? 'Customer pipeline kanban' : 'Business health and customer pipeline') + '</h2>',
+          '</div>',
+          '<div class="admin-mode-toggle" role="group" aria-label="Admin dashboard view">',
+            '<button class="js-admin-dashboard-mode' + (appState.adminDashboardMode !== 'kanban' ? ' active' : '') + '" type="button" data-mode="health">Health Dashboard</button>',
+            '<button class="js-admin-dashboard-mode' + (appState.adminDashboardMode === 'kanban' ? ' active' : '') + '" type="button" data-mode="kanban">Kanban</button>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderAdminDashboardHealth(health) {
+      health = health || {};
+      return [
+        renderAdminRiskSnapshot(health.snapshot || []),
+        renderAdminPulse(health.pulse || []),
+        renderAdminPipeline(health.pipeline || {}),
+        '<div class="admin-dashboard-grid">',
+          renderAdminTrend(health.trend || {}),
+          renderAdminLeadSources(health.leadSources || {}),
+        '</div>',
+        renderAdminAdvisorScorecard((health.advisorScorecard || {}).rows || []),
+        '<div class="admin-dashboard-grid">',
+          renderAdminTopDeals(health.topDeals || []),
+          renderAdminReceivables(health.receivables || {}),
+        '</div>'
+      ].join('');
+    }
+
+    function renderAdminRiskSnapshot(cards) {
+      return [
+        '<section class="admin-health-section unframed">',
+          '<div class="admin-health-heading">',
+            '<div><div class="eyebrow">At-risk snapshot</div><h2>Needs attention now</h2></div>',
+          '</div>',
+          '<div class="admin-risk-grid">',
+            (cards || []).map(function (card) {
+              return [
+                '<div class="admin-health-card ' + escapeAttr(card.tone || '') + '">',
+                  '<div class="eyebrow">' + escapeHtml(card.title || '') + '</div>',
+                  '<div class="admin-health-value">' + escapeHtml(card.value == null ? 0 : card.value) + '</div>',
+                  '<div class="meta">' + escapeHtml(card.caption || '') + '</div>',
+                  '<div class="admin-health-footnote">' + escapeHtml(card.footnote || '') + '</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminPulse(cards) {
+      return [
+        '<section class="admin-health-section unframed">',
+          '<div class="admin-health-heading">',
+            '<div><div class="eyebrow">Weekly pulse</div><h2>Current window</h2></div>',
+          '</div>',
+          '<div class="admin-pulse-grid">',
+            (cards || []).map(function (card) {
+              return [
+                '<div class="admin-health-card">',
+                  '<div class="eyebrow">' + escapeHtml(card.label || '') + '</div>',
+                  '<div class="admin-health-value">' + escapeHtml(card.value == null ? 0 : card.value) + '</div>',
+                  '<div class="meta">' + escapeHtml(card.caption || '') + '</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminPipeline(pipeline) {
+      pipeline = pipeline || {};
+      var stages = pipeline.stages || [];
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading">',
+            '<div>',
+              '<div class="eyebrow">Pipeline by stage</div>',
+              '<h2>Active customers · weighted value</h2>',
+              '<div class="meta">' + escapeHtml((pipeline.activeCustomers || 0) + ' active customer(s) · ' + formatAdminCurrency(pipeline.weightedValue || 0) + ' total weighted pipeline · ' + formatAdminCurrency(pipeline.outstandingReceivables || 0) + ' outstanding receivables') + '</div>',
+            '</div>',
+          '</div>',
+          '<div class="admin-stage-grid">',
+            stages.map(function (stage) {
+              return [
+                '<div class="admin-stage-card ' + escapeAttr(stage.key || '') + '">',
+                  '<div class="eyebrow">' + escapeHtml(stage.label || '') + '</div>',
+                  '<div class="stat-value">' + escapeHtml(stage.count || 0) + '</div>',
+                  '<div class="meta">' + escapeHtml(formatAdminCurrency(stage.weightedValue || 0)) + ' weighted</div>',
+                  '<div class="meta">' + escapeHtml(formatAdminCurrency(stage.receivables || 0)) + ' receivable</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+          '<div class="template-box" style="margin-top:14px;min-height:0">' + escapeHtml(pipeline.insight || '') + '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminTrend(trend) {
+      trend = trend || {};
+      var weeks = trend.weeks || [];
+      var maxBookings = Math.max(1, Number(trend.maxBookings || 0));
+      var maxDeposits = Math.max(1, Number(trend.maxDeposits || 0));
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Trend · last 12 weeks</div><h2>Bookings and first-time deposits</h2></div></div>',
+          '<div class="admin-trend-chart">',
+            weeks.map(function (week) {
+              var bookingHeight = Math.max(2, Math.round((Number(week.bookings || 0) / maxBookings) * 150));
+              var depositHeight = Math.max(2, Math.round((Number(week.firstDeposits || 0) / maxDeposits) * 150));
+              return [
+                '<div class="admin-trend-week" title="' + escapeAttrValue((week.startDate || '') + ' to ' + (week.endDate || '') + ': ' + (week.bookings || 0) + ' booking(s), ' + (week.firstDeposits || 0) + ' first deposit(s)') + '">',
+                  '<div class="admin-trend-bars">',
+                    '<div class="admin-trend-bar" style="height:' + bookingHeight + 'px"></div>',
+                    '<div class="admin-trend-dot" style="height:' + depositHeight + 'px"></div>',
+                  '</div>',
+                  '<div class="admin-trend-label">' + escapeHtml(week.label || '') + '</div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+          '<div class="meta" style="margin-top:10px"><span style="color:#7E6DD8">■</span> Bookings &nbsp; <span style="color:#168A62">■</span> First-time deposits</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminLeadSources(sourceData) {
+      sourceData = sourceData || {};
+      if (!sourceData.available) {
+        return [
+          '<section class="admin-health-section">',
+            '<div class="admin-health-heading"><div><div class="eyebrow">Lead sources · 90 days</div><h2>Where customers come from</h2></div></div>',
+            '<div class="empty">' + escapeHtml(sourceData.note || 'Lead source data is unavailable.') + '</div>',
+          '</section>'
+        ].join('');
+      }
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Lead sources · 90 days</div><h2>Where customers come from</h2></div></div>',
+          '<div class="admin-source-list">',
+            (sourceData.rows || []).map(function (row) {
+              return [
+                '<div class="admin-source-row">',
+                  '<div class="admin-source-top"><span>' + escapeHtml(row.source || '') + '</span><span class="meta">' + escapeHtml((row.count || 0) + ' · ' + (row.pct || 0) + '%') + '</span></div>',
+                  '<div class="admin-source-track"><div class="admin-source-fill" style="width:' + Math.max(1, Math.min(100, Number(row.pct || 0))) + '%"></div></div>',
+                '</div>'
+              ].join('');
+            }).join(''),
+          '</div>',
+          '<div class="meta" style="margin-top:12px">' + escapeHtml(sourceData.note || '') + '</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminAdvisorScorecard(rows) {
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Advisor scorecard</div><h2>Performance and hygiene by rep</h2></div></div>',
+          rows.length ? [
+            '<div class="admin-scorecard-wrap"><table class="admin-scorecard">',
+              '<thead><tr><th>Rep</th><th>Customers</th><th>Active Pipeline</th><th>Win Rate</th><th>Collected</th><th>No-touch &gt;48h</th><th>3D Overdue</th><th>Escalations</th></tr></thead>',
+              '<tbody>',
+                rows.map(function (row) {
+                  return [
+                    '<tr>',
+                      '<td>' + escapeHtml(row.advisor || 'Unassigned') + '</td>',
+                      '<td>' + escapeHtml(row.customers || 0) + '</td>',
+                      '<td>' + escapeHtml(formatAdminCurrency(row.weightedPipeline || 0)) + '</td>',
+                      '<td>' + escapeHtml(row.winRate == null ? '-' : row.winRate + '%') + '</td>',
+                      '<td>' + escapeHtml(formatAdminCurrency(row.collected || 0)) + '</td>',
+                      '<td>' + escapeHtml(row.noTouch || 0) + '</td>',
+                      '<td>' + escapeHtml(row.threeDOverdue || 0) + '</td>',
+                      '<td>' + escapeHtml(row.escalations || 0) + '</td>',
+                    '</tr>'
+                  ].join('');
+                }).join(''),
+              '</tbody>',
+            '</table></div>'
+          ].join('') : '<div class="empty">No advisor data matches these filters.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminTopDeals(rows) {
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Top deals to protect</div><h2>Highest weighted pipeline</h2></div></div>',
+          rows.length ? '<div class="admin-deal-list">' + rows.map(function (row) {
+            var title = row.masterUrl ? '<a href="' + escapeHref(row.masterUrl) + '" target="_blank">' + escapeHtml(row.customerName || '') + '</a>' : escapeHtml(row.customerName || '');
+            return [
+              '<div class="admin-deal-row">',
+                '<div><div class="task-title">' + title + '</div><div class="meta">' + escapeHtml([row.advisor, row.stageLabel, row.quietDays == null ? '' : row.quietDays + 'd quiet'].filter(Boolean).join(' · ')) + '</div></div>',
+                '<div class="task-side">' + escapeHtml(formatAdminCurrency(row.weightedValue || 0)) + '</div>',
+              '</div>'
+            ].join('');
+          }).join('') + '</div>' : '<div class="empty">No weighted pipeline deals match these filters.</div>',
+        '</section>'
+      ].join('');
+    }
+
+    function renderAdminReceivables(data) {
+      data = data || {};
+      var rows = data.rows || [];
+      return [
+        '<section class="admin-health-section">',
+          '<div class="admin-health-heading"><div><div class="eyebrow">Receivables watch</div><h2>Outstanding deposit balances</h2></div></div>',
+          '<div class="admin-health-card" style="margin-bottom:12px">',
+            '<div class="eyebrow">Open balance · ' + escapeHtml(data.customers || 0) + ' customer(s)</div>',
+            '<div class="admin-health-value">' + escapeHtml(formatAdminCurrency(data.openBalance || 0)) + '</div>',
+          '</div>',
+          rows.length ? '<div class="admin-deal-list">' + rows.map(function (row) {
+            var title = row.masterUrl ? '<a href="' + escapeHref(row.masterUrl) + '" target="_blank">' + escapeHtml(row.customerName || '') + '</a>' : escapeHtml(row.customerName || '');
+            return [
+              '<div class="admin-deal-row">',
+                '<div><div class="task-title">' + title + '</div><div class="meta">' + escapeHtml([row.advisor, row.stageLabel, row.lastPaymentDate ? 'last touch ' + row.lastPaymentDate : ''].filter(Boolean).join(' · ')) + '</div></div>',
+                '<div class="task-side">' + escapeHtml(formatAdminCurrency(row.balanceDue || 0)) + '</div>',
+              '</div>'
+            ].join('');
+          }).join('') + '</div>' : '<div class="empty">No open balances match these filters.</div>',
+        '</section>'
+      ].join('');
     }
 
     function renderAdminDashboardMetrics(metrics) {
@@ -1592,6 +2148,29 @@
       ].join('');
     }
 
+    function renderAdminDashboardHealthSummary(res) {
+      var health = (res || {}).health || {};
+      var pipeline = health.pipeline || {};
+      var filters = (res || {}).filters || {};
+      document.getElementById('detailPanel').innerHTML = [
+        '<div class="panel-header">',
+          '<div class="eyebrow">Admin Dashboard</div>',
+          '<h2>Health Snapshot</h2>',
+        '</div>',
+        '<div class="detail-body">',
+          '<div class="detail-section">',
+            '<label>Window</label>',
+            '<div class="meta">' + escapeHtml(filters.windowLabel || [filters.startDate, filters.endDate].filter(Boolean).join(' to ')) + '</div>',
+            '<div class="meta">' + escapeHtml([filters.brand, filters.clientAdvisor, filters.joc].filter(Boolean).join(' | ') || 'All owners and brands') + '</div>',
+          '</div>',
+          '<div class="detail-section">',
+            '<label>Pipeline</label>',
+            '<div class="template-box">' + escapeHtml((pipeline.activeCustomers || 0) + ' active customer(s), ' + formatAdminCurrency(pipeline.weightedValue || 0) + ' weighted pipeline, ' + formatAdminCurrency(pipeline.outstandingReceivables || 0) + ' outstanding receivables.') + '</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
     function renderAdminDashboardSummary(res) {
       var metrics = res.metrics || {};
       var filters = res.filters || {};
@@ -1603,7 +2182,7 @@
         '<div class="detail-body">',
           '<div class="detail-section">',
             '<label>Window</label>',
-            '<div class="meta">' + escapeHtml([filters.startDate, filters.endDate].filter(Boolean).join(' to ')) + '</div>',
+            '<div class="meta">' + escapeHtml(filters.windowLabel || [filters.startDate, filters.endDate].filter(Boolean).join(' to ')) + '</div>',
             '<div class="meta">' + escapeHtml([filters.brand, filters.clientAdvisor, filters.joc].filter(Boolean).join(' | ') || 'All owners and brands') + '</div>',
           '</div>',
           '<div class="detail-section">',
@@ -2531,6 +3110,8 @@
         : '';
       var attachments = renderAttachments(res.attachments || (res.attachment && res.attachment.url ? [res.attachment] : []), clientMessage ? 'Message Links' : 'Attachments');
       var messageBlocks = clientMessage ? attachments + template : template + attachments;
+      var appointmentControls = renderAppointmentCompletionControls(task, res);
+      var aiReview = renderAiReviewPanel(task, res);
       var checklist = renderChecklist(res.checklist || []);
       var diamondControls = renderDiamondControls(task, res);
       var postConsultControls = renderPostConsultControls(task, res);
@@ -2553,6 +3134,8 @@
             task.coverageReason ? '<div class="error">' + escapeHtml(task.coverageReason) + '</div>' : '',
           '</div>',
           '<div class="detail-section"><label>Instructions</label><div>' + escapeHtml(task.instructions || 'No instructions provided.') + '</div></div>',
+          appointmentControls,
+          aiReview,
           messageBlocks,
           diamondControls,
           postConsultControls,
@@ -2577,6 +3160,97 @@
               var preview = isImageUrl(attachment.url) ? '<img class="attachment-image" src="' + escapeHref(attachment.url) + '" alt="">' : '';
               return '<div class="attachment-row"><a href="' + escapeHref(attachment.url) + '" target="_blank">' + escapeHtml(attachment.label || attachment.url) + '</a>' + preview + '</div>';
             }).join(''),
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderAppointmentCompletionControls(task, res) {
+      if (task.taskType !== 'APPOINTMENT_DAY_CHECKLIST') return '';
+      var payload = res.payload || {};
+      var completion = payload.completion || {};
+      var outcome = completion.appointmentOutcome || '';
+      var artifacts = res.appointmentArtifacts || [];
+      var primaryUploaded = hasPrimaryAppointmentRecording(artifacts);
+      return [
+        '<div class="detail-section">',
+          '<label>Appointment Completion</label>',
+          '<div class="field-grid">',
+            '<div><label for="appointmentOutcome">Outcome *</label><select id="appointmentOutcome">',
+              '<option value="">Select outcome</option>',
+              '<option value="Completed"' + (outcome === 'Completed' ? ' selected' : '') + '>Completed</option>',
+              '<option value="No Show"' + (outcome === 'No Show' ? ' selected' : '') + '>No Show</option>',
+            '</select></div>',
+          '</div>',
+          '<form id="appointmentUploadForm" class="upload-grid">',
+            '<input type="hidden" id="appointmentUploadToken" name="swAuthToken" value="">',
+            '<input type="hidden" id="appointmentUploadTaskId" name="taskId" value="' + escapeAttrValue(task.taskId || '') + '">',
+            '<input type="hidden" id="appointmentUploadRoot" name="rootApptId" value="' + escapeAttrValue(task.root || task.appt || '') + '">',
+            appointmentFileInputHtml('appointmentRecording', 'Appointment recording *', 'audio/*,video/*'),
+            appointmentFileInputHtml('advisorRecap', 'Client Advisor recap', '.pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.heic'),
+            appointmentFileInputHtml('diamondViewingRecording', 'Diamond viewing recording', 'audio/*,video/*'),
+            appointmentFileInputHtml('intakeMaterial', 'Client intake form / photo', '.pdf,.jpg,.jpeg,.png,.heic,.doc,.docx'),
+          '</form>',
+          '<div class="actions"><button class="js-upload-appointment-artifacts" type="button">Upload Files</button></div>',
+          '<div class="meta">' + (primaryUploaded ? 'Appointment recording uploaded. Automation status is tracked below.' : 'Completed appointments require an appointment recording before this task can close.') + '</div>',
+          renderArtifactStatus(artifacts),
+        '</div>'
+      ].join('');
+    }
+
+    function appointmentFileInputHtml(name, label, accept) {
+      return '<div><label for="' + escapeAttrValue(name) + '">' + escapeHtml(label) + '</label><input id="' + escapeAttrValue(name) + '" name="' + escapeAttrValue(name) + '" type="file" accept="' + escapeAttrValue(accept || '') + '"></div>';
+    }
+
+    function renderArtifactStatus(artifacts) {
+      artifacts = artifacts || [];
+      if (!artifacts.length) return '<div class="empty" style="margin-top:14px">No appointment files uploaded yet.</div>';
+      return [
+        '<div class="mini-table" style="margin-top:14px">',
+          artifacts.map(function (artifact) {
+            var links = [
+              artifact.driveUrl ? '<a href="' + escapeHref(artifact.driveUrl) + '" target="_blank">File</a>' : '',
+              artifact.transcriptDocUrl ? '<a href="' + escapeHref(artifact.transcriptDocUrl) + '" target="_blank">Transcript</a>' : '',
+              artifact.summaryDocUrl ? '<a href="' + escapeHref(artifact.summaryDocUrl) + '" target="_blank">Summary</a>' : ''
+            ].filter(Boolean).join('');
+            return [
+              '<div class="mini-row artifact-row">',
+                '<div>',
+                  '<strong>' + escapeHtml(artifact.typeLabel || artifact.artifactType || 'Artifact') + '</strong>',
+                  '<div class="meta">' + escapeHtml(artifact.canonicalFilename || artifact.originalFilename || '') + '</div>',
+                  artifact.lastError ? '<div class="error">' + escapeHtml(artifact.lastError) + '</div>' : '',
+                  links ? '<div class="artifact-links">' + links + '</div>' : '',
+                '</div>',
+                '<div class="meta">' + escapeHtml(artifact.stageLabel || artifact.workflowStage || '') + '</div>',
+              '</div>'
+            ].join('');
+          }).join(''),
+        '</div>'
+      ].join('');
+    }
+
+    function renderAiReviewPanel(task, res) {
+      if (task.taskType !== 'APPROVE_RECAP_MESSAGE' && task.taskType !== 'SEND_FINAL_RECAP') return '';
+      var extra = ((res.payload || {}).extra || {});
+      var rows = [
+        extra.internalSummary ? ['Internal Summary', extra.internalSummary] : null,
+        extra.customerInsights ? ['Customer Insights', extra.customerInsights] : null,
+        extra.recommendedNextSteps ? ['Recommended Next Steps', extra.recommendedNextSteps] : null,
+        extra.confidenceFlags ? ['Confidence / Warning Flags', extra.confidenceFlags] : null
+      ].filter(Boolean);
+      var links = [
+        extra.summaryDocUrl ? '<a href="' + escapeHref(extra.summaryDocUrl) + '" target="_blank">AI Summary Doc</a>' : '',
+        task.taskType === 'APPROVE_RECAP_MESSAGE' && extra.transcriptDocUrl ? '<a href="' + escapeHref(extra.transcriptDocUrl) + '" target="_blank">Transcript Doc</a>' : ''
+      ].filter(Boolean).join('');
+      if (!rows.length && !links) return '';
+      return [
+        '<div class="detail-section">',
+          '<label>' + (task.taskType === 'SEND_FINAL_RECAP' ? 'JOC Handoff Context' : 'AI Appointment Review') + '</label>',
+          '<div class="review-context">',
+            rows.map(function (row) {
+              return '<div><div class="meta">' + escapeHtml(row[0]) + '</div><div class="template-box">' + escapeHtml(row[1]) + '</div></div>';
+            }).join(''),
+            links ? '<div class="artifact-links">' + links + '</div>' : '',
           '</div>',
         '</div>'
       ].join('');
@@ -3064,8 +3738,9 @@
         return '<div class="detail-section"><label>Recap Draft</label><textarea id="completionText"></textarea></div>';
       }
       if (task.taskType === 'APPROVE_RECAP_MESSAGE') {
-        var draft = ((res.payload || {}).extra || {}).recapDraft || res.renderedTemplate || '';
-        return '<div class="detail-section"><label>Approved Recap Text</label><textarea id="completionText">' + escapeHtml(draft) + '</textarea></div>';
+        var extra = ((res.payload || {}).extra || {});
+        var draft = extra.clientFollowUpDraft || extra.recapDraft || res.renderedTemplate || '';
+        return '<div class="detail-section"><label>Client-Facing Follow-Up Draft</label><textarea id="completionText">' + escapeHtml(draft) + '</textarea><div class="meta">Edit as needed. Approval sends this message to JOC for final follow-up.</div></div>';
       }
       return '';
     }
@@ -3223,6 +3898,11 @@
       var text = document.getElementById('completionText');
       if (text && task.taskType === 'PROCESS_APPOINTMENT_DATA') payload.recapText = text.value;
       if (text && task.taskType === 'APPROVE_RECAP_MESSAGE') payload.approvedText = text.value;
+      if (task.taskType === 'APPOINTMENT_DAY_CHECKLIST') {
+        payload.appointmentOutcome = valueOf('appointmentOutcome');
+        payload.uploadedArtifactCount = (detail.appointmentArtifacts || []).length;
+        payload.primaryRecordingUploaded = hasPrimaryAppointmentRecording(detail.appointmentArtifacts || []);
+      }
       if (task.taskType === 'PROPOSE_DIAMONDS') {
         payload.proposalStones = collectProposalStones();
         payload.customerDiamondRequirements = collectCustomerDiamondRequirements();
@@ -3353,11 +4033,18 @@
       var detail = appState.detail || {};
       var task = detail.task || {};
       var disabled = false;
+      var isNoShowChecklist = task.taskType === 'APPOINTMENT_DAY_CHECKLIST' && valueOf('appointmentOutcome') === 'No Show';
       (detail.checklist || []).forEach(function (item) {
+        if (isNoShowChecklist) return;
         if (item.required === false) return;
         var el = document.getElementById('check-' + item.id);
         if (!el || !el.checked) disabled = true;
       });
+      if (task.taskType === 'APPOINTMENT_DAY_CHECKLIST') {
+        var outcome = valueOf('appointmentOutcome');
+        if (!outcome) disabled = true;
+        if (outcome === 'Completed' && !hasPrimaryAppointmentRecording(detail.appointmentArtifacts || [])) disabled = true;
+      }
       if (task.taskType === 'ORDER_DIAMONDS') {
         var selects = [].slice.call(document.querySelectorAll('.diamond-order-decision'));
         if (selects.length && selects.some(function (select) { return !select.value; })) disabled = true;
@@ -3384,7 +4071,14 @@
       if (task.taskType === 'RECORD_3D_DEADLINE' && !valueOf('deadline3dTask')) disabled = true;
       if (task.taskType === 'REQUEST_WAX_PRINT' && (!valueOf('waxSoMo') || !valueOf('waxNeededBy') || !valueOf('waxPriority'))) disabled = true;
       button.disabled = disabled;
-      button.title = disabled ? 'Complete required checklist items, customer requirements, and diamond decisions first.' : '';
+      button.title = disabled ? 'Complete required fields, uploads, customer requirements, and decisions first.' : '';
+    }
+
+    function hasPrimaryAppointmentRecording(artifacts) {
+      artifacts = artifacts || [];
+      return artifacts.some(function (artifact) {
+        return artifact.artifactType === 'APPOINTMENT_RECORDING' && norm(artifact.workflowStage) !== 'error' && artifact.driveUrl;
+      });
     }
 
     function valueOf(id) {

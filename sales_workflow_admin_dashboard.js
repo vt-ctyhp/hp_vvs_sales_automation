@@ -15,6 +15,25 @@ var SW_ADMIN_DASHBOARD_COLUMNS = [
   { key: 'lost', label: 'Lost Lead' }
 ];
 
+var SW_ADMIN_DASHBOARD_WINDOWS = [
+  { value: 'today', label: 'Today' },
+  { value: 'last7', label: 'Last 7 days' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'thisMonth', label: 'This month' },
+  { value: 'custom', label: 'Custom' }
+];
+
+var SW_ADMIN_DASHBOARD_STAGE_WEIGHTS = {
+  lead: 0.10,
+  hotLead: 0.25,
+  followUp: 0.20,
+  appointment: 0.35,
+  deposit: 0.85,
+  inProduction: 0.95,
+  won: 0,
+  lost: 0
+};
+
 /**
  * Read-only admin dashboard payload.
  */
@@ -38,13 +57,16 @@ function sw_getAdminDashboard(authToken, filters) {
     var state = swReadTaskListState_(ss, true);
     var tasks = swListVisibleTasksFromState_(state, user, 'admin');
     var currentByRoot = swAdminDashboardCurrentRowsByRoot_(appointments);
+    var metrics = swAdminDashboardMetrics_(appointments, tasks, currentByRoot, payments, filters);
+    var healthContext = swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings);
 
     return {
       ok: true,
       generatedAt: swIso_(new Date()),
       filters: swAdminDashboardPublicFilters_(filters),
       filterOptions: swAdminDashboardFilterOptions_(ss, appointments, filters),
-      metrics: swAdminDashboardMetrics_(appointments, tasks, currentByRoot, payments, filters),
+      metrics: metrics,
+      health: swAdminDashboardHealth_(healthContext, metrics),
       kanban: swAdminDashboardKanban_(ss, appointments, payments, filters),
       tasks: tasks,
       warnings: warnings
@@ -54,9 +76,17 @@ function sw_getAdminDashboard(authToken, filters) {
 
 function swAdminDashboardNormalizeFilters_(filters) {
   filters = filters || {};
-  var week = swAdminDashboardDefaultWeek_();
-  var start = swAdminDashboardParseDate_(filters.startDate) || week.start;
-  var end = swAdminDashboardParseDate_(filters.endDate) || week.end;
+  var preset = swTrim_(filters.windowPreset || filters.window || '');
+  if (!preset) preset = (filters.startDate || filters.endDate) ? 'custom' : 'last7';
+  preset = swAdminDashboardNormalizeWindowPreset_(preset);
+
+  var window = swAdminDashboardWindowForPreset_(preset);
+  var start = preset === 'custom'
+    ? (swAdminDashboardParseDate_(filters.startDate) || window.start)
+    : window.start;
+  var end = preset === 'custom'
+    ? (swAdminDashboardParseDate_(filters.endDate) || window.end)
+    : window.end;
   start = swAdminDashboardStartOfDay_(start);
   end = swAdminDashboardEndOfDay_(end);
   if (end.getTime() < start.getTime()) {
@@ -69,6 +99,8 @@ function swAdminDashboardNormalizeFilters_(filters) {
     end: end,
     startDate: swAdminDashboardDateKey_(start),
     endDate: swAdminDashboardDateKey_(end),
+    windowPreset: preset,
+    windowLabel: swAdminDashboardWindowLabel_(preset, start, end),
     brand: swTrim_(filters.brand),
     clientAdvisor: swTrim_(filters.clientAdvisor),
     joc: swTrim_(filters.joc),
@@ -80,6 +112,8 @@ function swAdminDashboardPublicFilters_(filters) {
   return {
     startDate: filters.startDate,
     endDate: filters.endDate,
+    windowPreset: filters.windowPreset || 'last7',
+    windowLabel: filters.windowLabel || '',
     brand: filters.brand || '',
     clientAdvisor: filters.clientAdvisor || '',
     joc: filters.joc || '',
@@ -87,14 +121,39 @@ function swAdminDashboardPublicFilters_(filters) {
   };
 }
 
-function swAdminDashboardDefaultWeek_() {
+function swAdminDashboardNormalizeWindowPreset_(preset) {
+  var key = swNorm_(preset).replace(/[^a-z0-9]/g, '');
+  if (key === 'today') return 'today';
+  if (key === 'last30' || key === '30days' || key === 'last30days') return 'last30';
+  if (key === 'thismonth' || key === 'month') return 'thisMonth';
+  if (key === 'custom') return 'custom';
+  return 'last7';
+}
+
+function swAdminDashboardWindowForPreset_(preset) {
   var now = new Date();
-  var start = swAdminDashboardStartOfDay_(now);
-  var day = start.getDay();
-  var diff = day === 0 ? -6 : 1 - day;
-  start = new Date(start.getFullYear(), start.getMonth(), start.getDate() + diff);
-  var end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
+  var today = swAdminDashboardStartOfDay_(now);
+  var start = new Date(today);
+  if (preset === 'today') {
+    start = today;
+  } else if (preset === 'last30') {
+    start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29);
+  } else if (preset === 'thisMonth') {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+  } else {
+    start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6);
+  }
+  var end = swAdminDashboardEndOfDay_(today);
   return { start: start, end: end };
+}
+
+function swAdminDashboardWindowLabel_(preset, start, end) {
+  for (var i = 0; i < SW_ADMIN_DASHBOARD_WINDOWS.length; i++) {
+    if (SW_ADMIN_DASHBOARD_WINDOWS[i].value === preset && preset !== 'custom') {
+      return SW_ADMIN_DASHBOARD_WINDOWS[i].label;
+    }
+  }
+  return [swAdminDashboardDateKey_(start), swAdminDashboardDateKey_(end)].filter(Boolean).join(' to ');
 }
 
 function swAdminDashboardParseDate_(value) {
@@ -263,6 +322,7 @@ function swAdminDashboardFilterOptions_(ss, appointments, filters) {
   if (filters.clientAdvisor) advisors[filters.clientAdvisor] = true;
   if (filters.joc) jocs[filters.joc] = true;
   return {
+    windows: SW_ADMIN_DASHBOARD_WINDOWS,
     brands: swAdminDashboardSortedKeys_(brands),
     clientAdvisors: swAdminDashboardSortedKeys_(advisors),
     jocs: swAdminDashboardSortedKeys_(jocs)
@@ -281,6 +341,9 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
     netAmount: 0,
     firstDepositCount: 0,
     firstDepositNet: 0,
+    receipts: [],
+    firstDeposits: [],
+    firstByKey: {},
     byRoot: {},
     bySo: {}
   };
@@ -346,7 +409,9 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
     var key = root || so;
     if (!key) continue;
 
-    receipts.push({ root: root, so: so, key: key, when: when, net: net, balance: balance, orderTotal: orderTotal });
+    var receipt = { root: root, so: so, key: key, when: when, net: net, balance: balance, orderTotal: orderTotal };
+    receipts.push(receipt);
+    out.receipts.push(receipt);
 
     if (swAdminDashboardInRange_(when, filters)) {
       out.count++;
@@ -363,9 +428,11 @@ function swAdminDashboardReadPayments_(scope, filters, warnings) {
   });
   Object.keys(firstByKey).forEach(function (key) {
     var item = firstByKey[key];
+    out.firstByKey[key] = item;
     if (swAdminDashboardInRange_(item.when, filters)) {
       out.firstDepositCount++;
       out.firstDepositNet += item.net;
+      out.firstDeposits.push(item);
     }
   });
 
@@ -427,6 +494,651 @@ function swAdminDashboardNumberOrBlank_(value) {
   if (value === '' || value == null) return '';
   var n = swAdminDashboardNumber_(value);
   return isFinite(n) ? n : '';
+}
+
+function swAdminDashboardHealthContext_(ss, appointments, currentByRoot, payments, tasks, filters, warnings) {
+  var groups = swAdminDashboardRowsByRoot_(appointments);
+  var rootIndex = swAdminDashboardReadRootIndex_(ss, warnings);
+  var statusLog = swAdminDashboardReadStatusLog_(ss, appointments, warnings);
+  var stageWeights = swAdminDashboardStageWeights_(ss);
+  var master = ss.getSheetByName(SW_SHEETS.MASTER);
+  var masterGid = master ? master.getSheetId() : '';
+  var rows = [];
+  var tz = swTimezone_();
+
+  Object.keys(currentByRoot || {}).forEach(function (root) {
+    var rec = currentByRoot[root];
+    if (!rec || !swAdminDashboardRecordMatchesOwnerFilters_(rec, filters)) return;
+
+    var rootRows = groups[root] || [];
+    var stage = swAdminDashboardPipelineStage_(rec, rootRows);
+    if (!filters.includeClosed && (stage.key === 'won' || stage.key === 'lost')) return;
+
+    var pay = (payments.byRoot && payments.byRoot[root]) ||
+      (rec.so && payments.bySo && payments.bySo[swAdminDashboardCleanId_(rec.so)]) ||
+      {};
+    var firstPayment = (payments.firstByKey && (payments.firstByKey[root] || payments.firstByKey[swAdminDashboardCleanId_(rec.so)])) || null;
+    var firstVisit = swAdminDashboardFirstVisit_(rootRows, tz);
+    var latestVisit = swAdminDashboardLatestVisit_(rootRows, tz);
+    var bookedAt = swAdminDashboardDateTimeValue_(rec.bookedAtRaw, rec.bookedAt);
+    var updatedAt = swAdminDashboardDateTimeValue_(rec.updatedAtRaw, rec.updatedAt);
+    var lastPaymentDate = pay.lastPaymentMs ? new Date(pay.lastPaymentMs) : swAdminDashboardDateTimeValue_(rec.lastPaymentDateRaw, rec.lastPaymentDate);
+    var lastTouch = rootIndex.byRoot[root] || updatedAt || lastPaymentDate || null;
+    var orderDate = swAdminDashboardDateTimeValue_(rec.orderDateRaw, rec.orderDate);
+    var d3Deadline = swAdminDashboardDateTimeValue_(rec.deadline3d, rec.deadline3d);
+    var productionDeadline = swAdminDashboardDateTimeValue_(rec.productionDeadline, rec.productionDeadline);
+    var d3 = statusLog.threeDByRoot[root] || {};
+    var prod = statusLog.productionByRoot[root] || {};
+    var d3Pending = !!d3.pending || /3d requested|3d revision/.test(swNorm_(rec.customOrder));
+    var d3RequestDate = d3.requestDate || null;
+    var d3AgeDays = d3RequestDate ? swAdminDashboardCalendarDays_(d3RequestDate, new Date()) : null;
+    var threeDDeadlineOverdue = d3Pending && d3Deadline && swAdminDashboardStartOfDay_(d3Deadline).getTime() < swAdminDashboardStartOfDay_(new Date()).getTime();
+    var threeDBlocked = d3Pending && ((d3AgeDays != null && d3AgeDays > 3) || threeDDeadlineOverdue);
+    var orderAgeDays = orderDate ? swAdminDashboardCalendarDays_(orderDate, new Date()) : null;
+    var productionDrag = stage.key === 'inProduction' && (
+      (productionDeadline && swAdminDashboardStartOfDay_(productionDeadline).getTime() < swAdminDashboardStartOfDay_(new Date()).getTime()) ||
+      (orderAgeDays != null && orderAgeDays > 30)
+    );
+
+    var orderTotal = swAdminDashboardBestNumber_([pay.orderTotal, rec.orderTotal]);
+    var paidNet = swAdminDashboardBestNumber_([pay.paidNet, rec.paidToDate]);
+    var balanceDue = swAdminDashboardBestNumber_([pay.balanceDue, rec.remainingBalance]);
+    var budgetMid = swAdminDashboardBudgetMidpoint_(rec);
+    var valueForWeight = orderTotal > 0 ? orderTotal : budgetMid;
+    var stageWeight = stageWeights[stage.key] != null ? stageWeights[stage.key] : 0;
+    var isOpen = stage.key !== 'won' && stage.key !== 'lost';
+    var weightedValue = isOpen ? valueForWeight * stageWeight : 0;
+    var quietHours = lastTouch ? Math.floor((new Date().getTime() - lastTouch.getTime()) / 3600000) : null;
+    var d3Moves = swAdminDashboardNumber_(rec.deadline3dMoves);
+    var productionMoves = swAdminDashboardNumber_(rec.productionDeadlineMoves);
+
+    rows.push({
+      root: root,
+      appt: rec.appt || '',
+      row: rec.row || '',
+      customerName: rec.name || 'No customer',
+      brand: rec.brand || '',
+      clientAdvisor: rec.assignedRep || 'Unassigned',
+      joc: rec.assistedRep || 'Unassigned',
+      source: rec.source || '',
+      stageKey: stage.key,
+      stageLabel: stage.label,
+      isOpen: isOpen,
+      isAppointmentActive: swIsAppointmentActive_(rec),
+      firstVisit: firstVisit,
+      latestVisit: latestVisit,
+      bookedAt: bookedAt,
+      firstDepositDate: firstPayment ? firstPayment.when : null,
+      firstDepositNet: firstPayment ? Number(firstPayment.net || 0) : 0,
+      paidNet: paidNet,
+      balanceDue: balanceDue,
+      orderTotal: orderTotal,
+      budgetMid: budgetMid,
+      valueForWeight: valueForWeight,
+      stageWeight: stageWeight,
+      weightedValue: weightedValue,
+      lastTouch: lastTouch,
+      quietHours: quietHours,
+      d3Pending: d3Pending,
+      d3RequestDate: d3RequestDate,
+      d3AgeDays: d3AgeDays,
+      threeDDeadlineOverdue: threeDDeadlineOverdue,
+      threeDBlocked: threeDBlocked,
+      productionDeadline: productionDeadline,
+      productionDrag: productionDrag,
+      productionStageUpdatedAt: prod.updatedAt || null,
+      orderDate: orderDate,
+      orderAgeDays: orderAgeDays,
+      escalations: d3Moves + productionMoves,
+      nextSteps: rec.nextSteps || '',
+      so: rec.so || '',
+      masterUrl: masterGid && rec.row ? ('https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit#gid=' + masterGid + '&range=A' + rec.row) : ''
+    });
+  });
+
+  return {
+    ss: ss,
+    appointments: appointments || [],
+    rows: rows,
+    payments: payments || {},
+    tasks: tasks || [],
+    filters: filters,
+    rootIndex: rootIndex,
+    statusLog: statusLog,
+    stageWeights: stageWeights
+  };
+}
+
+function swAdminDashboardHealth_(ctx, metrics) {
+  var rows = ctx.rows || [];
+  var openRows = rows.filter(function (row) { return row.isOpen; });
+  var noTouchRows = openRows.filter(function (row) {
+    return row.quietHours != null && row.quietHours > 48;
+  });
+  var threeDRows = openRows.filter(function (row) { return row.threeDBlocked; });
+  var productionRows = openRows.filter(function (row) { return row.productionDrag; });
+  var receivableRows = openRows.filter(function (row) { return row.balanceDue > 0; });
+
+  return {
+    asOfDate: swAdminDashboardDateKey_(new Date()),
+    windowLabel: ctx.filters.windowLabel || '',
+    snapshot: swAdminDashboardHealthSnapshot_(noTouchRows, threeDRows, productionRows),
+    pulse: swAdminDashboardHealthPulse_(ctx, metrics),
+    pipeline: swAdminDashboardHealthPipeline_(ctx, openRows),
+    trend: swAdminDashboardHealthTrend_(ctx),
+    leadSources: swAdminDashboardHealthLeadSources_(ctx),
+    advisorScorecard: swAdminDashboardHealthAdvisorScorecard_(ctx),
+    topDeals: swAdminDashboardHealthTopDeals_(openRows),
+    receivables: swAdminDashboardHealthReceivables_(receivableRows)
+  };
+}
+
+function swAdminDashboardHealthSnapshot_(noTouchRows, threeDRows, productionRows) {
+  return [
+    {
+      key: 'noTouch48',
+      title: 'Hot leads going cold',
+      value: noTouchRows.length,
+      caption: 'active customers without a touch in 48h',
+      footnote: swAdminDashboardCurrency_(swAdminDashboardSum_(noTouchRows, 'weightedValue')) + ' weighted pipeline at risk',
+      tone: 'danger'
+    },
+    {
+      key: 'threeDBlocked',
+      title: '3D approval blocked',
+      value: threeDRows.length,
+      caption: '3D requests older than 3 days or overdue',
+      footnote: swAdminDashboardCountWaiting_(threeDRows) + ' waiting >3 days',
+      tone: 'warn'
+    },
+    {
+      key: 'productionDrag',
+      title: 'Production drag',
+      value: productionRows.length,
+      caption: 'orders with overdue production or 30d+ age',
+      footnote: swAdminDashboardCurrency_(swAdminDashboardSum_(productionRows, 'balanceDue')) + ' outstanding',
+      tone: 'info'
+    }
+  ];
+}
+
+function swAdminDashboardHealthPulse_(ctx, metrics) {
+  var medianDays = swAdminDashboardMedianLeadToDeposit_(ctx.rows || [], ctx.filters);
+  var winRate = swAdminDashboardWinRate90_(ctx.rows || []);
+  return [
+    {
+      key: 'bookings',
+      label: 'Bookings created',
+      value: metrics.bookingsCreated || 0,
+      caption: 'new appointments booked in window',
+      trend: ''
+    },
+    {
+      key: 'deposits',
+      label: 'Deposits collected',
+      value: swAdminDashboardCurrency_(metrics.firstDepositNet || 0),
+      caption: (metrics.firstDepositCount || 0) + ' first-time deposit(s)',
+      trend: ''
+    },
+    {
+      key: 'winRate',
+      label: 'Win rate (90d)',
+      value: winRate.available ? (Math.round(winRate.value) + '%') : 'NA',
+      caption: winRate.available ? (winRate.won + ' won / ' + winRate.closed + ' closed') : 'no won/lost records in 90d',
+      trend: ''
+    },
+    {
+      key: 'leadToDeposit',
+      label: 'Median lead to deposit',
+      value: medianDays == null ? 'NA' : (medianDays + 'd'),
+      caption: medianDays == null ? 'no first deposits in window' : 'from first visit to first deposit',
+      trend: ''
+    }
+  ];
+}
+
+function swAdminDashboardHealthPipeline_(ctx, openRows) {
+  var byKey = {};
+  SW_ADMIN_DASHBOARD_COLUMNS.forEach(function (col) {
+    byKey[col.key] = {
+      key: col.key,
+      label: col.label,
+      count: 0,
+      weightedValue: 0,
+      receivables: 0
+    };
+  });
+  openRows.forEach(function (row) {
+    var item = byKey[row.stageKey] || byKey.lead;
+    item.count++;
+    item.weightedValue += row.weightedValue || 0;
+    item.receivables += row.balanceDue || 0;
+  });
+  var stages = SW_ADMIN_DASHBOARD_COLUMNS.filter(function (col) {
+    return col.key !== 'won' && col.key !== 'lost';
+  }).map(function (col) {
+    return byKey[col.key];
+  });
+  var largest = stages.reduce(function (best, item) {
+    if (!best || item.count > best.count) return item;
+    return best;
+  }, null);
+  return {
+    activeCustomers: openRows.length,
+    weightedValue: swAdminDashboardSum_(openRows, 'weightedValue'),
+    outstandingReceivables: swAdminDashboardSum_(openRows, 'balanceDue'),
+    stages: stages,
+    insight: largest && largest.count
+      ? (largest.label + ' is the largest active stage by count.')
+      : 'No active pipeline customers match these filters.'
+  };
+}
+
+function swAdminDashboardHealthTrend_(ctx) {
+  var end = swAdminDashboardEndOfWeek_(ctx.filters.end);
+  var weeks = [];
+  var maxBookings = 0;
+  var maxDeposits = 0;
+  for (var i = 11; i >= 0; i--) {
+    var weekStart = swAdminDashboardAddDays_(swAdminDashboardStartOfWeek_(end), -7 * i);
+    var weekEnd = swAdminDashboardEndOfDay_(swAdminDashboardAddDays_(weekStart, 6));
+    var bookings = swAdminDashboardBookingsInRange_(ctx.appointments, ctx.filters, weekStart, weekEnd);
+    var deposits = swAdminDashboardFirstDepositsInRange_(ctx.payments, weekStart, weekEnd);
+    maxBookings = Math.max(maxBookings, bookings);
+    maxDeposits = Math.max(maxDeposits, deposits);
+    weeks.push({
+      label: Utilities.formatDate(weekStart, swTimezone_(), 'MMM d'),
+      startDate: swAdminDashboardDateKey_(weekStart),
+      endDate: swAdminDashboardDateKey_(weekEnd),
+      bookings: bookings,
+      firstDeposits: deposits
+    });
+  }
+  return {
+    weeks: weeks,
+    maxBookings: maxBookings,
+    maxDeposits: maxDeposits
+  };
+}
+
+function swAdminDashboardHealthLeadSources_(ctx) {
+  var cutoff = swAdminDashboardAddDays_(swAdminDashboardStartOfDay_(new Date()), -89);
+  var counts = {};
+  var total = 0;
+  var hasSource = false;
+  (ctx.rows || []).forEach(function (row) {
+    if (!row.source) return;
+    hasSource = true;
+    var when = row.bookedAt || row.firstVisit || row.latestVisit;
+    if (when && when.getTime() < cutoff.getTime()) return;
+    var source = row.source || 'Did not disclose';
+    counts[source] = (counts[source] || 0) + 1;
+    total++;
+  });
+  if (!hasSource) {
+    return {
+      available: false,
+      rows: [],
+      note: 'Lead source data is unavailable or empty in 00_Master Appointments.'
+    };
+  }
+  var rows = Object.keys(counts).map(function (source) {
+    return {
+      source: source,
+      count: counts[source],
+      pct: total ? Math.round((counts[source] / total) * 100) : 0
+    };
+  }).sort(function (a, b) {
+    if (b.count !== a.count) return b.count - a.count;
+    return String(a.source).localeCompare(String(b.source));
+  }).slice(0, 8);
+  return {
+    available: true,
+    rows: rows,
+    note: total + ' sourced customer(s) in the last 90 days'
+  };
+}
+
+function swAdminDashboardHealthAdvisorScorecard_(ctx) {
+  var groups = {};
+  (ctx.rows || []).forEach(function (row) {
+    var key = row.clientAdvisor || 'Unassigned';
+    if (!groups[key]) {
+      groups[key] = {
+        advisor: key,
+        customers: 0,
+        weightedPipeline: 0,
+        collected: 0,
+        won: 0,
+        closed: 0,
+        noTouch: 0,
+        threeDOverdue: 0,
+        escalations: 0
+      };
+    }
+    var item = groups[key];
+    if (row.isOpen) {
+      item.customers++;
+      item.weightedPipeline += row.weightedValue || 0;
+      if (row.quietHours != null && row.quietHours > 48) item.noTouch++;
+      if (row.threeDBlocked) item.threeDOverdue++;
+      if (row.escalations > 0 || row.productionDrag) item.escalations++;
+    }
+    item.collected += row.paidNet || 0;
+    if (row.stageKey === 'won' || row.stageKey === 'lost') {
+      item.closed++;
+      if (row.stageKey === 'won') item.won++;
+    }
+  });
+  return {
+    rows: Object.keys(groups).map(function (key) {
+      var item = groups[key];
+      item.winRate = item.closed ? Math.round((item.won / item.closed) * 100) : null;
+      return item;
+    }).sort(function (a, b) {
+      return (b.customers - a.customers) || String(a.advisor).localeCompare(String(b.advisor));
+    })
+  };
+}
+
+function swAdminDashboardHealthTopDeals_(openRows) {
+  return openRows.filter(function (row) {
+    return row.weightedValue > 0;
+  }).sort(function (a, b) {
+    return b.weightedValue - a.weightedValue;
+  }).slice(0, 6).map(function (row) {
+    return {
+      root: row.root,
+      customerName: row.customerName,
+      advisor: row.clientAdvisor,
+      brand: row.brand,
+      stageLabel: row.stageLabel,
+      weightedValue: row.weightedValue,
+      quietDays: row.quietHours == null ? null : Math.floor(row.quietHours / 24),
+      source: row.source || '',
+      masterUrl: row.masterUrl || ''
+    };
+  });
+}
+
+function swAdminDashboardHealthReceivables_(receivableRows) {
+  var sorted = receivableRows.sort(function (a, b) {
+    return b.balanceDue - a.balanceDue;
+  });
+  return {
+    openBalance: swAdminDashboardSum_(receivableRows, 'balanceDue'),
+    customers: receivableRows.length,
+    rows: sorted.slice(0, 6).map(function (row) {
+      return {
+        root: row.root,
+        customerName: row.customerName,
+        advisor: row.clientAdvisor,
+        brand: row.brand,
+        balanceDue: row.balanceDue,
+        stageLabel: row.stageLabel,
+        lastPaymentDate: row.lastTouch ? swAdminDashboardDateKey_(row.lastTouch) : '',
+        masterUrl: row.masterUrl || ''
+      };
+    })
+  };
+}
+
+function swAdminDashboardReadRootIndex_(ss, warnings) {
+  var out = { available: false, byRoot: {} };
+  var sh = ss.getSheetByName('07_Root_Index');
+  if (!sh || sh.getLastRow() < 2) {
+    warnings.push('Last-touch data unavailable: 07_Root_Index is missing or empty.');
+    return out;
+  }
+  var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
+  var H = swHeaderMapFromArray_(display[0].map(function (h) { return swTrim_(h); }));
+  var C = {
+    root: swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'ROOT', 'Root_ID']),
+    updatedAt: swPickIndex_(H, ['Updated At', 'UpdatedAt', 'Last Updated'])
+  };
+  if (C.root < 0 || C.updatedAt < 0) {
+    warnings.push('Last-touch data unavailable: 07_Root_Index is missing RootApptID or Updated At.');
+    return out;
+  }
+  for (var i = 1; i < values.length; i++) {
+    var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
+    var when = swAdminDashboardDateTimeValue_(swCell_(values[i], C.updatedAt), swCell_(display[i], C.updatedAt));
+    if (!root || !when) continue;
+    if (!out.byRoot[root] || when.getTime() > out.byRoot[root].getTime()) out.byRoot[root] = when;
+  }
+  out.available = true;
+  return out;
+}
+
+function swAdminDashboardReadStatusLog_(ss, appointments, warnings) {
+  var out = { available: false, threeDByRoot: {}, productionByRoot: {} };
+  var sh = ss.getSheetByName('03_Client_Status_Log');
+  if (!sh || sh.getLastRow() < 2) {
+    warnings.push('Status-log timing unavailable: 03_Client_Status_Log is missing or empty.');
+    return out;
+  }
+  var apptToRoot = {};
+  (appointments || []).forEach(function (rec) {
+    if (rec.appt && rec.root) apptToRoot[rec.appt] = rec.root;
+  });
+  var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  var display = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
+  var H = swHeaderMapFromArray_(display[0].map(function (h) { return swTrim_(h); }));
+  var C = {
+    root: swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'ROOT']),
+    appt: swPickIndex_(H, ['APPT_ID', 'Appt ID', 'APPTID', 'Appointment ID']),
+    custom: swPickIndex_(H, ['Custom Order Status', 'COS', 'Status', 'Order Status']),
+    inProduction: swPickIndex_(H, ['In Production Status', 'IPS']),
+    updatedAt: swPickIndex_(H, ['Updated At', 'UpdatedAt', 'Timestamp'])
+  };
+  if (C.updatedAt < 0 || (C.root < 0 && C.appt < 0)) {
+    warnings.push('Status-log timing unavailable: 03_Client_Status_Log is missing an appointment/root id or Updated At.');
+    return out;
+  }
+  for (var i = 1; i < values.length; i++) {
+    var root = swAdminDashboardCleanId_(swCell_(display[i], C.root));
+    var appt = swAdminDashboardCleanId_(swCell_(display[i], C.appt));
+    root = root || apptToRoot[appt] || '';
+    if (!root) continue;
+    var when = swAdminDashboardDateTimeValue_(swCell_(values[i], C.updatedAt), swCell_(display[i], C.updatedAt));
+    if (!when) continue;
+    var custom = swNorm_(swCell_(display[i], C.custom));
+    var ips = swTrim_(swCell_(display[i], C.inProduction));
+
+    if (custom) {
+      var d3 = out.threeDByRoot[root] || { requestDate: null, resolveDate: null, pending: false };
+      if (/^3d requested|^3d revision requested/.test(custom)) {
+        if (!d3.requestDate || when.getTime() > d3.requestDate.getTime()) d3.requestDate = when;
+      }
+      if (/^3d received|^3d waiting approval|^3d approved|approved for production|waiting production timeline|in production|order completed/.test(custom)) {
+        if (!d3.resolveDate || when.getTime() > d3.resolveDate.getTime()) d3.resolveDate = when;
+      }
+      d3.pending = !!(d3.requestDate && (!d3.resolveDate || d3.resolveDate.getTime() < d3.requestDate.getTime()));
+      out.threeDByRoot[root] = d3;
+    }
+
+    if (ips) {
+      var prod = out.productionByRoot[root] || { status: '', updatedAt: null };
+      if (!prod.updatedAt || when.getTime() > prod.updatedAt.getTime()) {
+        prod.status = ips;
+        prod.updatedAt = when;
+      }
+      out.productionByRoot[root] = prod;
+    }
+  }
+  out.available = true;
+  return out;
+}
+
+function swAdminDashboardStageWeights_(ss) {
+  var weights = {};
+  Object.keys(SW_ADMIN_DASHBOARD_STAGE_WEIGHTS).forEach(function (key) {
+    weights[key] = SW_ADMIN_DASHBOARD_STAGE_WEIGHTS[key];
+  });
+  var sh = ss.getSheetByName('00_Dashboard');
+  if (!sh) return weights;
+  try {
+    var values = sh.getRange('AS30:AT60').getValues();
+    values.forEach(function (row) {
+      var label = swTrim_(row[0]);
+      var value = Number(row[1]);
+      if (!label || !isFinite(value)) return;
+      var key = swAdminDashboardStageKeyFromLabel_(label);
+      if (key) weights[key] = value;
+    });
+  } catch (_) {}
+  return weights;
+}
+
+function swAdminDashboardStageKeyFromLabel_(label) {
+  var s = swNorm_(label);
+  if (/lost/.test(s)) return 'lost';
+  if (/won|completed/.test(s)) return 'won';
+  if (/production/.test(s)) return 'inProduction';
+  if (/deposit|order/.test(s)) return 'deposit';
+  if (/appointment|viewing|consult/.test(s)) return 'appointment';
+  if (/follow/.test(s)) return 'followUp';
+  if (/hot/.test(s)) return 'hotLead';
+  if (/lead/.test(s)) return 'lead';
+  return '';
+}
+
+function swAdminDashboardFirstVisit_(rows, tz) {
+  var best = null;
+  (rows || []).forEach(function (rec) {
+    var visit = swVisitDateTime_(rec, tz);
+    if (visit && (!best || visit.getTime() < best.getTime())) best = visit;
+  });
+  return best;
+}
+
+function swAdminDashboardLatestVisit_(rows, tz) {
+  var best = null;
+  (rows || []).forEach(function (rec) {
+    var visit = swVisitDateTime_(rec, tz);
+    if (visit && (!best || visit.getTime() > best.getTime())) best = visit;
+  });
+  return best;
+}
+
+function swAdminDashboardBudgetMidpoint_(rec) {
+  var min = swAdminDashboardNumberOrBlank_(rec.budgetMin);
+  var max = swAdminDashboardNumberOrBlank_(rec.budgetMax);
+  if (min !== '' && max !== '') return (Number(min) + Number(max)) / 2;
+  if (max !== '') return Number(max);
+  if (min !== '') return Number(min);
+  return 0;
+}
+
+function swAdminDashboardBestNumber_(values) {
+  for (var i = 0; i < (values || []).length; i++) {
+    if (values[i] === 0) return 0;
+    var n = swAdminDashboardNumberOrBlank_(values[i]);
+    if (n !== '') return Number(n);
+  }
+  return 0;
+}
+
+function swAdminDashboardSum_(rows, key) {
+  return (rows || []).reduce(function (sum, row) {
+    return sum + (Number(row[key]) || 0);
+  }, 0);
+}
+
+function swAdminDashboardCountWaiting_(rows) {
+  return (rows || []).filter(function (row) {
+    return row.d3AgeDays != null && row.d3AgeDays > 3;
+  }).length;
+}
+
+function swAdminDashboardCurrency_(value) {
+  var n = Number(value || 0);
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function swAdminDashboardCalendarDays_(start, end) {
+  if (!start || !end) return null;
+  var a = swAdminDashboardStartOfDay_(start).getTime();
+  var b = swAdminDashboardStartOfDay_(end).getTime();
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+function swAdminDashboardMedianLeadToDeposit_(rows, filters) {
+  var diffs = [];
+  (rows || []).forEach(function (row) {
+    if (!row.firstVisit || !row.firstDepositDate) return;
+    if (!swAdminDashboardInRange_(row.firstDepositDate, filters)) return;
+    diffs.push(swAdminDashboardCalendarDays_(row.firstVisit, row.firstDepositDate));
+  });
+  return swAdminDashboardMedian_(diffs);
+}
+
+function swAdminDashboardMedian_(values) {
+  var nums = (values || []).filter(function (n) {
+    return n != null && isFinite(Number(n));
+  }).map(Number).sort(function (a, b) { return a - b; });
+  if (!nums.length) return null;
+  var mid = Math.floor(nums.length / 2);
+  return nums.length % 2 ? nums[mid] : Math.round((nums[mid - 1] + nums[mid]) / 2);
+}
+
+function swAdminDashboardWinRate90_(rows) {
+  var cutoff = swAdminDashboardAddDays_(swAdminDashboardStartOfDay_(new Date()), -89);
+  var won = 0;
+  var closed = 0;
+  (rows || []).forEach(function (row) {
+    if (row.stageKey !== 'won' && row.stageKey !== 'lost') return;
+    var when = row.lastTouch || row.latestVisit || row.firstDepositDate;
+    if (when && when.getTime() < cutoff.getTime()) return;
+    closed++;
+    if (row.stageKey === 'won') won++;
+  });
+  return {
+    available: closed > 0,
+    value: closed ? (won / closed) * 100 : 0,
+    won: won,
+    closed: closed
+  };
+}
+
+function swAdminDashboardStartOfWeek_(date) {
+  var d = swAdminDashboardStartOfDay_(date);
+  var day = d.getDay();
+  var diff = day === 0 ? -6 : 1 - day;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+}
+
+function swAdminDashboardEndOfWeek_(date) {
+  return swAdminDashboardEndOfDay_(swAdminDashboardAddDays_(swAdminDashboardStartOfWeek_(date), 6));
+}
+
+function swAdminDashboardAddDays_(date, days) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function swAdminDashboardBookingsInRange_(appointments, filters, start, end) {
+  var count = 0;
+  (appointments || []).forEach(function (rec) {
+    if (!swAdminDashboardRecordMatchesOwnerFilters_(rec, filters)) return;
+    var bookedAt = swAdminDashboardDateTimeValue_(rec.bookedAtRaw, rec.bookedAt);
+    if (bookedAt && bookedAt.getTime() >= start.getTime() && bookedAt.getTime() <= end.getTime() && !swTrim_(rec.rescheduledFromUid)) {
+      count++;
+    }
+  });
+  return count;
+}
+
+function swAdminDashboardFirstDepositsInRange_(payments, start, end) {
+  var count = 0;
+  var firstByKey = payments.firstByKey || {};
+  Object.keys(firstByKey).forEach(function (key) {
+    var item = firstByKey[key];
+    if (item && item.when && item.when.getTime() >= start.getTime() && item.when.getTime() <= end.getTime()) {
+      count++;
+    }
+  });
+  return count;
 }
 
 function swAdminDashboardKanban_(ss, appointments, payments, filters) {
@@ -568,6 +1280,12 @@ function swAdminDashboardCustomerCard_(ss, masterGid, root, rec, rootRows, stage
     balanceDue: pay.balanceDue === 0 ? 0 : (pay.balanceDue || ''),
     orderTotal: pay.orderTotal === 0 ? 0 : (pay.orderTotal || ''),
     lastPaymentDate: pay.lastPaymentDate || '',
+    source: rec.source || '',
+    budgetMin: rec.budgetMin || '',
+    budgetMax: rec.budgetMax || '',
+    remainingBalance: rec.remainingBalance || '',
+    orderDate: rec.orderDate || '',
+    updatedAt: rec.updatedAt || '',
     clientFolder: rec.clientFolder || '',
     reportUrl: rec.reportUrl || '',
     quotationUrl: rec.quotationUrl || '',

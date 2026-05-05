@@ -230,7 +230,18 @@ function swReadAppointments_(ss) {
     dvVarietyStrategy: swPickIndex_(H, ['DV Variety Strategy', 'Diamond Variety Strategy']),
     dvCustomerRequirementsJson: swPickIndex_(H, ['DV Customer Requirements (JSON)', 'DV Customer Requirements JSON', 'Customer Diamond Requirements JSON']),
     so: swPickIndex_(H, ['SO#', 'SO #', 'SO']),
-    orderFolder: swPickIndex_(H, ['Order Folder', '05-3D Folder'])
+    orderFolder: swPickIndex_(H, ['Order Folder', '05-3D Folder']),
+    source: swPickIndex_(H, ['Source (normalized)', 'Source Normalized', 'Source', 'Lead Source']),
+    budgetMin: swPickIndex_(H, ['Budget Min', 'Budget (Min)', 'BudgetMin']),
+    budgetMax: swPickIndex_(H, ['Budget Max', 'Budget (Max)', 'BudgetMax', 'Budget']),
+    orderTotal: swPickIndex_(H, ['Order Total', 'OrderTotal', 'Order Total Value', 'Order_Total_SO', 'SO Total']),
+    paidToDate: swPickIndex_(H, ['Paid-to-Date', 'Paid to Date', 'PaidToDate', 'Paid']),
+    remainingBalance: swPickIndex_(H, ['Remaining Balance', 'Balance', 'Balance_SO', 'Balance Due']),
+    lastPaymentDate: swPickIndex_(H, ['Last Payment Date', 'LastPaymentDate', 'Last Paid At']),
+    orderDate: swPickIndex_(H, ['Order Date', 'SO Date', 'Sales Order Date']),
+    updatedAt: swPickIndex_(H, ['Updated At', 'Last Updated At', 'Last Updated', 'UpdatedAt', 'Updated At (ISO)']),
+    deadline3dMoves: swPickIndex_(H, ['# of Times 3D Deadline Moved', '3D Deadline Moves', '# 3D Deadline Moves']),
+    productionDeadlineMoves: swPickIndex_(H, ['# of Times Prod. Deadline Moved', 'Prod Deadline Moves', '# Prod Deadline Moves'])
   };
 
   var out = [];
@@ -285,7 +296,21 @@ function swReadAppointments_(ss) {
       dvVarietyStrategy: swTrim_(swCell_(drow, idx.dvVarietyStrategy)),
       dvCustomerRequirementsJson: swTrim_(swCell_(drow, idx.dvCustomerRequirementsJson)),
       so: swTrim_(swCell_(drow, idx.so)),
-      orderFolder: swTrim_(swCell_(drow, idx.orderFolder))
+      orderFolder: swTrim_(swCell_(drow, idx.orderFolder)),
+      source: swTrim_(swCell_(drow, idx.source)),
+      budgetMin: swTrim_(swCell_(drow, idx.budgetMin)),
+      budgetMax: swTrim_(swCell_(drow, idx.budgetMax)),
+      orderTotal: swTrim_(swCell_(drow, idx.orderTotal)),
+      paidToDate: swTrim_(swCell_(drow, idx.paidToDate)),
+      remainingBalance: swTrim_(swCell_(drow, idx.remainingBalance)),
+      lastPaymentDate: swTrim_(swCell_(drow, idx.lastPaymentDate)),
+      lastPaymentDateRaw: swCell_(vrow, idx.lastPaymentDate),
+      orderDate: swTrim_(swCell_(drow, idx.orderDate)),
+      orderDateRaw: swCell_(vrow, idx.orderDate),
+      updatedAt: swTrim_(swCell_(drow, idx.updatedAt)),
+      updatedAtRaw: swCell_(vrow, idx.updatedAt),
+      deadline3dMoves: swTrim_(swCell_(drow, idx.deadline3dMoves)),
+      productionDeadlineMoves: swTrim_(swCell_(drow, idx.productionDeadlineMoves))
     };
     rec.root = rec.root || rec.appt;
     rec.statusNorm = swNorm_(rec.status);
