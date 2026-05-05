@@ -204,12 +204,30 @@ function swTaskListCachePut_(key, payload) {
     swTaskListCacheRemove_(key);
     var text = swStringify_(payload);
     var chunks = Math.ceil(text.length / SW_TASK_LIST_CACHE_CHUNK_SIZE);
-    if (!chunks || chunks > 20) return;
+    if (!chunks || chunks > 20) {
+      return {
+        ok: false,
+        reason: chunks > 20 ? 'payloadTooLarge' : 'emptyPayload',
+        chunks: chunks || 0,
+        bytes: text.length
+      };
+    }
     for (var i = 0; i < chunks; i++) {
       cache.put(key + ':' + i, text.slice(i * SW_TASK_LIST_CACHE_CHUNK_SIZE, (i + 1) * SW_TASK_LIST_CACHE_CHUNK_SIZE), SW_TASK_LIST_CACHE_SECONDS);
     }
     cache.put(key + ':meta', swStringify_({ chunks: chunks }), SW_TASK_LIST_CACHE_SECONDS);
+    return {
+      ok: true,
+      chunks: chunks,
+      bytes: text.length
+    };
   } catch (_) {}
+  return {
+    ok: false,
+    reason: 'cacheWriteFailed',
+    chunks: 0,
+    bytes: 0
+  };
 }
 
 function swTaskListCacheRemove_(key) {

@@ -5,7 +5,7 @@
  * comparison, but the web app still serves from the existing source sheets.
  */
 
-var SW_READ_MODEL_VERSION = 'phase1-v1';
+var SW_READ_MODEL_VERSION = 'phase4-cache-v3';
 var SW_READ_MODEL_DEFAULT_TTL_SECONDS = 10 * 60;
 var SW_READ_MODEL_REFRESH_HANDLER = 'sw_rebuildWorkflowReadModels';
 var SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_ = {};
@@ -212,6 +212,10 @@ function swBuildCustomerReadModel_(ss, builtAt) {
     write.sourceRows = appointments.length;
     write.outputRows = rows.length;
     write.buildMs = new Date().getTime() - started;
+    write.cacheRows = 0;
+    write.cacheMs = 0;
+    write.cacheOk = false;
+    write.cacheSource = 'notAttempted';
     if (typeof swCustomerSearchReadModelRecord_ === 'function' &&
         typeof swCacheCustomerSearchReadModelRows_ === 'function') {
       var cacheStarted = new Date().getTime();
@@ -223,14 +227,23 @@ function swBuildCustomerReadModel_(ss, builtAt) {
           });
           return swCustomerSearchReadModelRecord_(obj);
         }).filter(function (rec) { return !!rec.root; });
-        swCacheCustomerSearchReadModelRows_(ss, customerSearchRows, { builtAt: swIso_(builtAt) });
+        var cacheResult = swCacheCustomerSearchReadModelRows_(ss, customerSearchRows, { builtAt: swIso_(builtAt) }) || {};
         write.cacheRows = customerSearchRows.length;
         write.cacheMs = new Date().getTime() - cacheStarted;
+        write.cacheOk = cacheResult.ok !== false;
+        write.cacheSource = 'customerReadModelCache';
+        write.cacheChunks = cacheResult.chunks || 0;
+        write.cacheBytes = cacheResult.bytes || 0;
+        if (cacheResult.reason) write.cacheError = cacheResult.reason;
       } catch (cacheErr) {
         write.cacheRows = 0;
         write.cacheMs = new Date().getTime() - cacheStarted;
+        write.cacheOk = false;
+        write.cacheSource = 'customerReadModelCache';
         write.cacheError = cacheErr && cacheErr.message ? cacheErr.message : String(cacheErr);
       }
+    } else {
+      write.cacheError = 'customerSearchCacheHelpersUnavailable';
     }
     return write;
   } catch (err) {
@@ -484,6 +497,11 @@ function swWorkflowReadModelLogSummary_(result) {
       projectionMs: model.projectionMs || 0,
       cacheRows: model.cacheRows || 0,
       cacheMs: model.cacheMs || 0,
+      cacheOk: !!model.cacheOk,
+      cacheSource: model.cacheSource || '',
+      cacheChunks: model.cacheChunks || 0,
+      cacheBytes: model.cacheBytes || 0,
+      cacheError: model.cacheError || '',
       error: model.error || ''
     };
   });

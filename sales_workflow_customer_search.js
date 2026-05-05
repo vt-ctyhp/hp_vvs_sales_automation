@@ -429,7 +429,6 @@ function swCustomerSearchReadModelRecord_(row) {
     hasAiBrief: swTrim_(row['AI Brief?']) === 'Y',
     reviewFlagCount: Number(row['Review Flag Count'] || 0) || 0,
     latestAiBriefUpdatedAt: swTrim_(row['Latest AI Brief Updated At']),
-    sourceRowsJson: swTrim_(row['Source Rows JSON']),
     searchText: swTrim_(row['Search Text'])
   };
 }
@@ -528,7 +527,7 @@ function swCacheCustomerSearchReadModelRows_(ss, rows, status) {
       rows: payload.rows
     };
   } catch (_) {}
-  swTaskListCachePut_(key, payload);
+  return swTaskListCachePut_(key, payload);
 }
 
 function swInvalidateCustomerSearchReadModelCache_(ss) {
