@@ -258,7 +258,10 @@ function swBuildTaskReadModel_(ss, builtAt) {
       write.cacheMs = new Date().getTime() - detailCacheStarted;
       write.cacheError = detailErr && detailErr.message ? detailErr.message : String(detailErr);
     }
-    var projections = swBuildTaskDashboardProjections_(ss, state, builtAt);
+    var projectionState = swBuildTaskStateFromTasks_((state.tasks || []).map(function (task) {
+      return typeof swTaskListCacheTask_ === 'function' ? swTaskListCacheTask_(task) : task;
+    }), [], {});
+    var projections = swBuildTaskDashboardProjections_(ss, projectionState, builtAt);
     write.projectionUsers = projections.users || 0;
     write.projectionKeys = projections.keys || 0;
     write.projectionMs = projections.buildMs || 0;
@@ -984,8 +987,8 @@ function swTaskDashboardProjectionUsers_(ss) {
 
 function swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, projectionType, payload) {
   var key = swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType);
-  swTaskDashboardProjectionCachePut_(key, payload);
-  return key;
+  var result = swTaskDashboardProjectionCachePut_(key, payload);
+  return result && result.ok === false ? '' : key;
 }
 
 function swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType) {
@@ -1029,7 +1032,7 @@ function swTaskDashboardProjectionCachePut_(key, payload) {
       payload: payload
     };
   } catch (_) {}
-  swTaskListCachePut_(key, payload);
+  return swTaskListCachePut_(key, payload);
 }
 
 function swPutTaskDashboardProjectionIndex_(ss, keys) {
