@@ -2445,7 +2445,7 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'client-load-timing-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'client-load-timing-v2-2026-05-05';
 
     var swClientLoadTiming = {
       startedAt: (window.performance && typeof window.performance.now === 'function') ? window.performance.now() : 0,
@@ -2536,6 +2536,14 @@
       return swClientRound_(marks[endName] - marks[startName]);
     }
 
+    function swClientPageState_() {
+      return {
+        visibilityState: document.visibilityState || '',
+        documentHidden: !!document.hidden,
+        hasFocus: document.hasFocus ? !!document.hasFocus() : false
+      };
+    }
+
     function swClientNavigationTiming_() {
       if (!window.performance || !performance.getEntriesByType) return {};
       var nav = performance.getEntriesByType('navigation');
@@ -2553,20 +2561,30 @@
     function swClientLoadPayload_(eventName, extra) {
       extra = extra || {};
       var marks = swClientLoadTiming.marks || {};
-      var firstTasks = marks.firstTasksRendered || 0;
-      var loginScreen = marks.loginScreenVisible || 0;
+      var firstTasksDom = marks.firstTasksDomReady || 0;
+      var firstTasksPaint = marks.firstTasksPaintObserved || 0;
+      var loginDom = marks.loginScreenDomReady || 0;
+      var loginPaint = marks.loginScreenPaintObserved || 0;
+      var pageState = swClientPageState_();
       var timings = {
         scriptStartMs: swClientRound_(swClientLoadTiming.startedAt),
-        initToLoginScreenMs: swClientDiff_('initStart', 'loginScreenVisible'),
-        initToAppLoadingMs: swClientDiff_('initStart', 'appLoadingShown'),
-        appLoadingToBootstrapRequestMs: swClientDiff_('appLoadingShown', 'bootstrapRequestStart'),
+        initToLoginDomMs: swClientDiff_('initStart', 'loginScreenDomReady'),
+        initToLoginPaintMs: swClientDiff_('initStart', 'loginScreenPaintObserved'),
+        loginDomToPaintMs: swClientDiff_('loginScreenDomReady', 'loginScreenPaintObserved'),
+        initToAppLoadingDomMs: swClientDiff_('initStart', 'appLoadingDomReady'),
+        appLoadingToBootstrapRequestMs: swClientDiff_('appLoadingDomReady', 'bootstrapRequestStart'),
         bootstrapRoundTripMs: swClientDiff_('bootstrapRequestStart', 'bootstrapResponse'),
         bootstrapApplyMs: swClientDiff_('bootstrapApplyStart', 'bootstrapApplyEnd'),
-        bootstrapResponseToFirstTasksMs: swClientDiff_('bootstrapResponse', 'firstTasksRendered'),
+        bootstrapResponseToFirstTasksDomMs: swClientDiff_('bootstrapResponse', 'firstTasksDomReady'),
+        bootstrapResponseToFirstTasksPaintMs: swClientDiff_('bootstrapResponse', 'firstTasksPaintObserved'),
+        firstTasksDomToPaintMs: swClientDiff_('firstTasksDomReady', 'firstTasksPaintObserved'),
         signInRoundTripMs: swClientDiff_('signInRequestStart', 'signInResponse'),
-        signInToFirstTasksMs: swClientDiff_('signInRequestStart', 'firstTasksRendered'),
-        totalToLoginScreenMs: loginScreen ? swClientRound_(loginScreen) : 0,
-        totalToFirstTasksMs: firstTasks ? swClientRound_(firstTasks) : 0
+        signInToFirstTasksDomMs: swClientDiff_('signInRequestStart', 'firstTasksDomReady'),
+        signInToFirstTasksPaintMs: swClientDiff_('signInRequestStart', 'firstTasksPaintObserved'),
+        totalToLoginDomMs: loginDom ? swClientRound_(loginDom) : 0,
+        totalToLoginPaintMs: loginPaint ? swClientRound_(loginPaint) : 0,
+        totalToFirstTasksDomMs: firstTasksDom ? swClientRound_(firstTasksDom) : 0,
+        totalToFirstTasksPaintMs: firstTasksPaint ? swClientRound_(firstTasksPaint) : 0
       };
       return {
         event: eventName || '',
@@ -2576,6 +2594,9 @@
         finalState: extra.finalState || '',
         tokenPresentOnInit: !!swClientLoadTiming.tokenPresentOnInit,
         tokenPresent: !!appState.token,
+        visibilityState: pageState.visibilityState,
+        documentHidden: pageState.documentHidden,
+        hasFocus: pageState.hasFocus,
         userEmail: (appState.user && appState.user.email) || extra.userEmail || '',
         view: appState.view || '',
         taskCount: Number(extra.taskCount || 0),
@@ -2592,13 +2613,18 @@
       };
     }
 
-    function swLogClientLoadTiming_(eventName, extra) {
+    function swLogClientLoadTiming_(eventName, extra, attempt) {
       if (!eventName || swClientLoadTiming.eventsSent[eventName]) return;
-      swClientLoadTiming.eventsSent[eventName] = true;
-      var payload = swClientLoadPayload_(eventName, extra || {});
+      attempt = Number(attempt || 0);
       window.setTimeout(function () {
         try {
-          if (!(window.google && google.script && google.script.run)) return;
+          if (!(window.google && google.script && google.script.run)) {
+            if (attempt < 10) swLogClientLoadTiming_(eventName, extra, attempt + 1);
+            return;
+          }
+          if (swClientLoadTiming.eventsSent[eventName]) return;
+          swClientLoadTiming.eventsSent[eventName] = true;
+          var payload = swClientLoadPayload_(eventName, extra || {});
           google.script.run
             .withFailureHandler(function () {})
             .sw_logClientLoadTiming(appState.token || '', payload);
@@ -3120,11 +3146,20 @@
       setActiveTab(appState.view);
       renderViewHeader(appState.view);
       renderTasks(res.tasks || []);
+      swClientMark_('firstTasksDomReady', {
+        taskCount: (res.tasks || []).length
+      });
       swClientMark_('bootstrapApplyEnd', {
         taskCount: (res.tasks || []).length
       });
-      swClientMarkAfterPaint_('firstTasksRendered', function () {
-        swLogClientLoadTiming_('dashboardVisible', {
+      swLogClientLoadTiming_('dashboardDomReady', {
+        finalState: 'dashboard',
+        taskCount: (res.tasks || []).length,
+        counts: res.counts || {},
+        userEmail: (res.user || {}).email || ''
+      });
+      swClientMarkAfterPaint_('firstTasksPaintObserved', function () {
+        swLogClientLoadTiming_('dashboardPaintObserved', {
           finalState: 'dashboard',
           taskCount: (res.tasks || []).length,
           counts: res.counts || {},
@@ -3140,8 +3175,13 @@
       document.getElementById('appShell').style.display = 'none';
       setLoginBusy(false);
       setLoginStatus('');
-      swClientMarkAfterPaint_('loginScreenVisible', function () {
-        swLogClientLoadTiming_('loginScreenVisible', {
+      swClientMark_('loginScreenDomReady');
+      swLogClientLoadTiming_('loginScreenDomReady', {
+        finalState: 'loginScreen',
+        mode: swClientLoadTiming.mode || 'loginScreen'
+      });
+      swClientMarkAfterPaint_('loginScreenPaintObserved', function () {
+        swLogClientLoadTiming_('loginScreenPaintObserved', {
           finalState: 'loginScreen',
           mode: swClientLoadTiming.mode || 'loginScreen'
         });
@@ -3158,12 +3198,12 @@
       swClientMark_('appShellShowStart');
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('appShell').style.display = '';
-      swClientMarkAfterPaint_('appShellVisible');
+      swClientMark_('appShellDomReady');
+      swClientMarkAfterPaint_('appShellPaintObserved');
     }
 
     function showAppLoading() {
       showApp();
-      swClientMark_('appLoadingShown');
       setStatus('Opening dashboard');
       var taskList = document.getElementById('taskList');
       if (taskList) taskList.innerHTML = '<div class="loading">LOADING TASKS</div>';
@@ -3172,6 +3212,7 @@
         'Loading Queue',
         'Task details will appear after the queue opens.'
       );
+      swClientMark_('appLoadingDomReady');
     }
 
     function login() {
