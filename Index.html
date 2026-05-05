@@ -1234,8 +1234,7 @@
         <button id="manageUsersButton" type="button" style="display:none">Manage Users</button>
         <button id="syncDiamondsButton" type="button" style="display:none">Sync Diamonds</button>
         <button id="logoutButton" type="button">Sign Out</button>
-        <button id="refreshOwnersButton" type="button">Refresh Owners</button>
-        <button id="generateTasksButton" class="primary" type="button">Generate Tasks</button>
+        <button id="refreshQueueButton" class="primary" type="button">Refresh Queue</button>
       </div>
     </section>
 
@@ -1335,11 +1334,8 @@
         });
       });
 
-      var refreshOwnersButton = document.getElementById('refreshOwnersButton');
-      if (refreshOwnersButton) refreshOwnersButton.addEventListener('click', refreshOwners);
-
-      var generateTasksButton = document.getElementById('generateTasksButton');
-      if (generateTasksButton) generateTasksButton.addEventListener('click', generateTasks);
+      var refreshQueueButton = document.getElementById('refreshQueueButton');
+      if (refreshQueueButton) refreshQueueButton.addEventListener('click', refreshQueue);
 
       var taskList = document.getElementById('taskList');
       if (taskList) {
@@ -3254,10 +3250,10 @@
       var message = 'Your queue is clear for this view.';
       if (appState.view === 'mine' && user.isDiamondOrderAdmin) {
         title = 'No diamond admin tasks';
-        message = 'Order, delivery, and return tasks appear when the 200_ diamond tracker has Proposing, On the Way, or due-return diamonds for Diamond Viewing appointments. Run Generate Tasks after tracker updates.';
+        message = 'Order, delivery, and return tasks appear when the 200_ diamond tracker has Proposing, On the Way, or due-return diamonds for Diamond Viewing appointments. Refresh Queue after tracker updates.';
       } else if (appState.view === 'mine' && user.isDiamondOrderAssistant) {
         title = 'No diamond assistant tasks';
-        message = 'Tracking and return tasks appear when diamonds are On the Way or have return decisions due soon. Run Generate Tasks after tracker updates.';
+        message = 'Tracking and return tasks appear when diamonds are On the Way or have return decisions due soon. Refresh Queue after tracker updates.';
       } else if (appState.view === 'cleanup') {
         title = 'No cleanup cases';
         message = 'The temporary cleanup tab stays clear once all campaign cases assigned to you are resolved.';
@@ -4492,20 +4488,12 @@
       });
     }
 
-    function generateTasks() {
-      setStatus('Generating tasks. This can take a minute on the first run.');
+    function refreshQueue() {
+      setStatus('Refreshing queue. This can take a minute on the first run.');
       serverCall('sw_generateSalesWorkflowTasks', [], function (res) {
-        setStatus('Generated: ' + (res.created || 0) + ' created, ' + (res.updated || 0) + ' updated');
+        setStatus('Queue refreshed: ' + (res.created || 0) + ' created, ' + (res.updated || 0) + ' updated');
         loadTasks(appState.view);
-      }, 'Generating tasks. This can take a minute on the first run.');
-    }
-
-    function refreshOwners() {
-      setStatus('Refreshing task owners.');
-      serverCall('sw_refreshTaskOwners', [], function (res) {
-        setStatus('Owners refreshed: ' + (res.updated || 0) + ' updated');
-        loadTasks(appState.view);
-      }, 'Refreshing task owners.');
+      }, 'Refreshing queue. This can take a minute on the first run.');
     }
 
     function copyTemplate() {

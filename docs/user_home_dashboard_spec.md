@@ -159,9 +159,9 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 ### B. Task Generation and Queue Refresh
 - `sw_generateSalesWorkflowTasks` is the central queue builder. It reads appointments from `00_Master Appointments`, supporting config/template sheets, owner lookup data, roster/schedule data, wax state, and diamond tracker data.
 - `sw_installSalesWorkflowTriggers` installs:
-  - hourly task generation;
-  - daily 7am owner refresh.
-- Admins can also run task generation and owner refresh manually from the dashboard.
+  - hourly queue refresh;
+  - 5-minute appointment automation.
+- Admins can also manually refresh the queue from the dashboard.
 - Task generation is idempotent by `TaskID`. Existing pending tasks are updated in place; completed tasks and claimed tasks are not reassigned by normal generation.
 - Every create, assignment, completion, snooze, claim, block, unblock, and bulk return action is logged to `_SalesTaskLog`.
 
@@ -239,7 +239,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 - **Unassigned Client Advisor task owner**: missing Client Advisor/legacy `Assigned Rep` routes tasks to `Admin Review` with `UNASSIGNED_REP`, but there is no sales coverage queue or claim path equivalent to JOC Coverage.
 - **JOC coverage remediation owner**: JOC users can claim coverage tasks, but missing assisted rep, missing schedule data, or out-of-office routing still needs a defined admin/JOC process for fixing the source data.
 - **Shared diamond role queue owner**: Diamond Order Admin and Assistant tasks are role-owned shared queues. There is no claim/lock workflow to show who is actively working a shared diamond task before completion.
-- **Queue freshness owner**: tasks are generated hourly and manually, but some UI messages still tell users to run Generate Tasks after tracker updates. Define who owns immediate refresh when `200_`, wax, or appointment data changes.
+- **Queue freshness owner**: tasks are generated hourly and manually, and the dashboard exposes this as Refresh Queue. Define who owns immediate refresh when `200_`, wax, or appointment data changes.
 - **Source-system schema owner**: `200_`, Sheet 100, the 3D tracker, wax tracker, and external payments ledger each have columns/functions the dashboard expects. Missing-column warnings exist in some areas, but ownership for schema drift is not explicit.
 - **Claimed/completed task reassignment policy**: generation intentionally does not reassign completed or claimed tasks. The policy is sound, but the business rule for owner changes after claim/completion should be explicit.
 

@@ -136,7 +136,8 @@ function sw_cleanupDuplicateTasksApply() {
 }
 
 /**
- * Mutating generation wrapper: refreshes owner assignment through the normal generator.
+ * Deprecated compatibility wrapper for older installed triggers/manual calls.
+ * Active code should call sw_generateSalesWorkflowTasks directly.
  */
 function sw_refreshTaskOwners() {
   var summary = sw_generateSalesWorkflowTasks();
@@ -145,7 +146,8 @@ function sw_refreshTaskOwners() {
 }
 
 /**
- * Mutating setup: replaces Sales Workflow generation and owner-refresh triggers.
+ * Mutating setup: replaces Sales Workflow generation and appointment automation triggers.
+ * Also removes legacy owner-refresh triggers; hourly generation refreshes owners.
  */
 function sw_installSalesWorkflowTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
@@ -157,11 +159,10 @@ function sw_installSalesWorkflowTriggers() {
     }
   });
   ScriptApp.newTrigger('sw_generateSalesWorkflowTasks').timeBased().everyHours(1).create();
-  ScriptApp.newTrigger('sw_refreshTaskOwners').timeBased().everyDays(1).atHour(7).create();
   ScriptApp.newTrigger('sw_processAppointmentAutomation').timeBased().everyMinutes(5).create();
   return {
     ok: true,
-    message: 'Installed hourly task generation, daily 7am owner refresh, and 5-minute appointment automation.'
+    message: 'Installed hourly queue refresh and 5-minute appointment automation.'
   };
 }
 
@@ -214,7 +215,7 @@ function sw_getBootstrap(authToken) {
         adminDashboard: user.isAdmin,
         admin: user.isAdmin
       },
-      message: 'Connected. Use Generate Tasks to create or refresh the queue.'
+      message: 'Connected. Use Refresh Queue to create or refresh the queue.'
     };
   });
 }
@@ -1280,7 +1281,7 @@ function sw_adminAssignAppointmentOwners(authToken, taskId, data) {
     rowsUpdated: targetRows
   });
 
-  var generation = sw_refreshTaskOwners();
+  var generation = sw_generateSalesWorkflowTasks();
   return {
     ok: true,
     rowsUpdated: targetRows.length,
