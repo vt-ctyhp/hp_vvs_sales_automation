@@ -648,8 +648,7 @@ function swLoupe360CountMissingAssignments_() {
     var count = 0;
     rows.forEach(function (row) {
       if (!swLoupe360NeedsAssignmentStatus_(row, C)) return;
-      if (!swDiamondCell_(row, C.customerName) || !swDiamondCell_(row, C.root) ||
-          !swDiamondCell_(row, C.assignedRep) || !swDiamondCell_(row, C.joc)) {
+      if (swLoupe360AssignmentMissing_(row, C)) {
         count++;
       }
     });
@@ -673,8 +672,7 @@ function swLoupe360CountMissingAssignmentsAfterPlan_(target, plan) {
       if (change.col) row[change.col - 1] = change.value;
     });
     if (!swLoupe360NeedsAssignmentStatus_(row, C)) return;
-    if (!swDiamondCell_(row, C.customerName) || !swDiamondCell_(row, C.root) ||
-        !swDiamondCell_(row, C.assignedRep) || !swDiamondCell_(row, C.joc)) {
+    if (swLoupe360AssignmentMissing_(row, C)) {
       count++;
     }
   });
@@ -687,6 +685,15 @@ function swLoupe360CountMissingAssignmentsAfterPlan_(target, plan) {
 
 function swLoupe360IsAssignableStockRow_(row, C) {
   return swLoupe360NeedsAssignmentStatus_(row, C);
+}
+
+function swLoupe360AssignmentMissing_(row, C) {
+  if (!swDiamondCell_(row, C.customerName)) return true;
+  if (!swDiamondCell_(row, C.root)) return true;
+  if (!swDiamondCell_(row, C.assignedRep)) return true;
+  // Keep JOC optional so an older/lean 200_ tracker is not treated as missing
+  // JOC on every active diamond just because the column does not exist.
+  return !!(C.joc && !swDiamondCell_(row, C.joc));
 }
 
 function swLoupe360NeedsAssignmentStatus_(row, C) {
