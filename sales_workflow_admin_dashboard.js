@@ -76,12 +76,18 @@ function sw_getAdminDashboard(authToken, filters) {
       ? swAdminDashboardKanban_(ss, appointments, payments, filters, indexes)
       : null;
     mark('kanban', { included: !!kanban });
+    var filterOptions = swAdminDashboardFilterOptions_(ss, appointments, filters);
+    mark('filterOptions', {
+      brands: filterOptions.brands ? filterOptions.brands.length : 0,
+      clientAdvisors: filterOptions.clientAdvisors ? filterOptions.clientAdvisors.length : 0,
+      jocs: filterOptions.jocs ? filterOptions.jocs.length : 0
+    });
 
     return {
       ok: true,
       generatedAt: swIso_(new Date()),
       filters: swAdminDashboardPublicFilters_(filters),
-      filterOptions: swAdminDashboardFilterOptions_(ss, appointments, filters),
+      filterOptions: filterOptions,
       metrics: metrics,
       health: health,
       kanban: kanban,

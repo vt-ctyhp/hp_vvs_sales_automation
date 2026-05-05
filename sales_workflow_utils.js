@@ -250,17 +250,21 @@ function swStringify_(obj) {
   return JSON.stringify(obj || {});
 }
 
+var SW_TIMING_CAPTURE_STACK_ = [];
+
 function swTimed_(operation, fn) {
   var started = new Date().getTime();
   try {
     return fn();
   } finally {
+    var payload = {
+      operation: operation,
+      ms: new Date().getTime() - started
+    };
     try {
-      Logger.log('SW_TIMING ' + JSON.stringify({
-        operation: operation,
-        ms: new Date().getTime() - started
-      }));
+      Logger.log('SW_TIMING ' + JSON.stringify(payload));
     } catch (_) {}
+    swCaptureTiming_('operation', payload);
   }
 }
 
@@ -269,17 +273,50 @@ function swStepTimer_(operation) {
   var last = started;
   return function (step, extra) {
     var now = new Date().getTime();
+    var payload = {
+      operation: operation,
+      step: step,
+      ms: now - last,
+      totalMs: now - started,
+      extra: extra || {}
+    };
     try {
-      Logger.log('SW_TIMING_STEP ' + JSON.stringify({
-        operation: operation,
-        step: step,
-        ms: now - last,
-        totalMs: now - started,
-        extra: extra || {}
-      }));
+      Logger.log('SW_TIMING_STEP ' + JSON.stringify(payload));
     } catch (_) {}
+    swCaptureTiming_('step', payload);
     last = now;
   };
+}
+
+function swTimingCaptureStart_() {
+  var bucket = [];
+  try { SW_TIMING_CAPTURE_STACK_.push(bucket); } catch (_) {}
+  return bucket;
+}
+
+function swTimingCaptureStop_(bucket) {
+  try {
+    var stack = SW_TIMING_CAPTURE_STACK_;
+    if (stack[stack.length - 1] === bucket) {
+      stack.pop();
+    } else {
+      var index = stack.indexOf(bucket);
+      if (index >= 0) stack.splice(index, 1);
+    }
+  } catch (_) {}
+  return bucket || [];
+}
+
+function swCaptureTiming_(type, payload) {
+  try {
+    var stack = SW_TIMING_CAPTURE_STACK_;
+    if (!stack || !stack.length) return;
+    var item = { type: type };
+    Object.keys(payload || {}).forEach(function (key) {
+      item[key] = payload[key];
+    });
+    stack[stack.length - 1].push(item);
+  } catch (_) {}
 }
 
 function swParseJson_(text, fallback) {

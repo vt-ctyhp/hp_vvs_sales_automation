@@ -1903,6 +1903,7 @@ function sw_testSalesWorkflowDryRun() {
 
 function swBenchmarkSalesWorkflowStep_(out, operation, fn) {
   var started = new Date().getTime();
+  var timingCapture = typeof swTimingCaptureStart_ === 'function' ? swTimingCaptureStart_() : [];
   var step = {
     operation: operation,
     ok: true
@@ -1913,11 +1914,26 @@ function swBenchmarkSalesWorkflowStep_(out, operation, fn) {
     step.ok = false;
     step.error = err && err.message ? err.message : String(err);
   } finally {
+    if (typeof swTimingCaptureStop_ === 'function') {
+      step.timings = swTimingCaptureStop_(timingCapture);
+    }
     step.ms = new Date().getTime() - started;
     out.steps.push(step);
-    Logger.log('SW_BENCHMARK_STEP ' + JSON.stringify(step));
+    Logger.log('SW_BENCHMARK_STEP ' + JSON.stringify(swBenchmarkSalesWorkflowStepForLog_(step)));
   }
   return step;
+}
+
+function swBenchmarkSalesWorkflowStepForLog_(step) {
+  return {
+    operation: step.operation,
+    ok: step.ok,
+    skipped: !!step.skipped,
+    reason: step.reason || '',
+    error: step.error || '',
+    ms: step.ms || 0,
+    result: step.result || {}
+  };
 }
 
 function swBenchmarkSalesWorkflowSkip_(out, operation, reason) {
@@ -2160,12 +2176,29 @@ function swBenchmarkSalesWorkflowSummary_(steps) {
     summary.slowest.push({
       operation: step.operation,
       ms: step.ms || 0,
-      ok: step.ok !== false
+      ok: step.ok !== false,
+      timings: swBenchmarkSalesWorkflowTimingSummary_(step.timings)
     });
   });
   summary.slowest.sort(function (a, b) { return b.ms - a.ms; });
   summary.slowest = summary.slowest.slice(0, 8);
   return summary;
+}
+
+function swBenchmarkSalesWorkflowTimingSummary_(timings) {
+  var out = [];
+  (timings || []).forEach(function (item) {
+    if (!item || item.type !== 'step') return;
+    out.push({
+      operation: item.operation || '',
+      step: item.step || '',
+      ms: item.ms || 0,
+      totalMs: item.totalMs || 0,
+      extra: item.extra || {}
+    });
+  });
+  if (out.length > 12) out = out.slice(0, 12);
+  return out;
 }
 
 function swBenchmarkSalesWorkflowLogSummary_(out) {
