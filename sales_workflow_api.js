@@ -175,8 +175,18 @@ function sw_getBootstrap(authToken) {
     mark('spreadsheet');
     swRequireWorkflowReadSheets_(ss, { templates: false });
     mark('requiredSheets');
-    var user = swAuthUserForApi_(ss, authToken);
-    mark('identity', { mode: authToken ? 'passwordSession' : 'appsScriptIdentity' });
+    var user;
+    var identityMode = authToken ? 'passwordSession' : 'appsScriptIdentity';
+    if (authToken) {
+      user = swAuthUserForApi_(ss, authToken);
+    } else if (typeof swBuildBootstrapUser_ === 'function') {
+      var bootstrapUser = swBuildBootstrapUser_(ss, true);
+      user = bootstrapUser.user;
+      identityMode = bootstrapUser.lightweight ? 'appsScriptIdentityLightweight' : 'appsScriptIdentity';
+    } else {
+      user = swAuthUserForApi_(ss, authToken);
+    }
+    mark('identity', { mode: identityMode });
     return swBuildBootstrapResponse_(ss, user, mark);
   });
 }

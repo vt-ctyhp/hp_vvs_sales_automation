@@ -2,7 +2,7 @@
  * Sales workflow task repository: task state, queue projections, row writes, and task logs.
  */
 
-var SW_TASK_LIST_CACHE_SECONDS = 2 * 60;
+var SW_TASK_LIST_CACHE_SECONDS = 10 * 60;
 var SW_TASK_LIST_CACHE_CHUNK_SIZE = 75000;
 var SW_TASK_LIST_MEMORY_CACHE_ = {};
 

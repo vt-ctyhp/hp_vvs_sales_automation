@@ -27,6 +27,7 @@ function sw_login(email, password, options) {
     email: user.email,
     name: user.name,
     roles: user.roles,
+    user: user,
     issuedAt: swIso_(new Date())
   }), SW_AUTH_SESSION_SECONDS);
   swAuthCacheApiUser_(ss, user);
@@ -182,6 +183,9 @@ function swCurrentUserFromAuthToken_(ss, token) {
   var session = swParseJson_(cached, null);
   if (!session || !session.email) throw new Error('Session expired. Please sign in again.');
 
+  var sessionUser = swAuthUserFromSession_(session);
+  if (sessionUser) return sessionUser;
+
   var apiUser = swAuthCachedApiUser_(ss, session.email);
   if (apiUser) return apiUser;
 
@@ -190,6 +194,24 @@ function swCurrentUserFromAuthToken_(ss, token) {
   apiUser = swAuthUserFromRow_(row);
   swAuthCacheApiUser_(ss, apiUser);
   return apiUser;
+}
+
+function swAuthUserFromSession_(session) {
+  session = session || {};
+  if (session.user && session.user.email && Array.isArray(session.user.roles)) return session.user;
+  var email = swNormEmail_(session.email || '');
+  if (!email) return null;
+  var roles = Array.isArray(session.roles) ? session.roles : swAuthRoles_(session.roles || '');
+  return {
+    email: email,
+    name: swTrim_(session.name || '') || email,
+    roles: roles,
+    isAdmin: swAuthHasRole_(roles, 'Admin'),
+    isJoc: swAuthHasRole_(roles, 'JOC'),
+    isRep: swAuthHasRole_(roles, SW_OWNER_ROLES.SALES_REP),
+    isDiamondOrderAdmin: swAuthHasRole_(roles, SW_OWNER_ROLES.DIAMOND_ORDER_ADMIN),
+    isDiamondOrderAssistant: swAuthHasRole_(roles, SW_OWNER_ROLES.DIAMOND_ORDER_ASSISTANT)
+  };
 }
 
 function swAuthUserFromRow_(row) {
