@@ -152,9 +152,6 @@ const BUNDLES = [
   { title: 'Confirm delivery + stone decision dialogs',     out: '15 - Diamonds — Confirm Delivery & Stone Decisions (Server + UI).txt',
     tests: [/^Diamonds_ConfirmDelivery_v1$/, /^dlg_confirm_delivery_v1$/, /^Diamonds_StoneDecision_v1$/, /^dlg_stone_decision_v1$/] },
 
-  { title: 'Ack pipes + dashboard + schedule + snapshot',   out: '16 - Acknowledgements Suite.txt',
-    tests: [/^ack_pipes$/, /^ack_phase_d_dashboard$/, /^ack_phase_e_schedule$/, /^ack_phase_f_snapshot$/] },
-
   { title: 'Reminders + queues + DV hooks + shim + dialog + debug', out: '99 - Reminders & Follow-ups Suite.txt',
     tests: [/^Reminders_v1$/, /^followups_menu$/, /^setup_shims$/, /^dv_reminders_constants$/, /^dv_queue_upserts$/, /^dv_hooks_master$/, /^dlg_reminders_snooze$/, /^99_debug_utils$/] },
 ];

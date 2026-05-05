@@ -12,7 +12,6 @@
 const SH_MASTER   = '00_Master Appointments';
 const SH_STATUSLOG= '03_Client_Status_Log';
 const SH_ROOTIDX  = '07_Root_Index';
-const SH_REPSMAP  = '08_Reps_Map';
 const SH_METRICS  = '100_Metrics_View';
 const SH_DASH     = '00_Dashboard';
 
@@ -248,6 +247,7 @@ function buildMetricsView_() {
   const iRoot = findCol_(MH, ['RootApptID','Root Appt ID','ROOT','Root_ID']);
   const iBrand= findCol_(MH, ['Brand']);
   const iRep  = findCol_(MH, ['Assigned Rep','AssignedRep','Rep','Sales Rep']);
+  const iAssisted = findCol_(MH, ['Assisted Rep','AssistedRep','Assistant Rep','Assisted By','JOC'], false);
   const iVisitType = findCol_(MH, ['Visit Type','VisitType','Type']);
   const iVisitDate = findCol_(MH, ['Visit Date','Visit_Date','Appt Date','Appointment Date']);
   const iSO    = findCol_(MH, ['SO#','SO Number','SO No','Sales Order #'], false);
@@ -283,7 +283,7 @@ function buildMetricsView_() {
       so:'', orderTotal:null, paidToDate:null, remain:null, lastPay:null,
       d3Due:null, d3Moves:0, prodDue:null, prodMoves:0,
       stage:null, conv:null, source:null, bMin:null, bMax:null,
-      phone:null, email:null, orderDate:null, apptIds:new Set(),
+      phone:null, email:null, orderDate:null, apptIds:new Set(), assistedReps:new Set(),
       cos:null, ips:null
     }; per.set(root, o); }
     return o;
@@ -294,6 +294,7 @@ function buildMetricsView_() {
     if (vDate) { o.visitCount++; if (!o.firstVisit || vDate < o.firstVisit) o.firstVisit = vDate; if (vType==='diamond viewing') { if (!o.firstDV || vDate < o.firstDV) o.firstDV = vDate; } }
     if (iBrand>=0 && r[iBrand]) o.brand = r[iBrand];
     if (iRep>=0 && r[iRep]) o.rep = r[iRep];
+    if (iAssisted>=0 && r[iAssisted]) o.assistedReps.add(String(r[iAssisted]).trim());
     if (iSO>=0 && r[iSO]) o.so = r[iSO];
     if (iOTot>=0 && isNum_(r[iOTot])) o.orderTotal = num_(r[iOTot]);
     if (iPaid>=0 && isNum_(r[iPaid])) o.paidToDate = num_(r[iPaid]);
@@ -315,22 +316,6 @@ function buildMetricsView_() {
     if (iCust>=0 && r[iCust] && !o.custName) o.custName = r[iCust];
     if (iCOS>=0 && r[iCOS]) o.cos = r[iCOS];   
     if (iIPS>=0 && r[iIPS]) o.ips = r[iIPS];   
-  }
-
-  // --- Reps Map (Assigned / Assisted)
-  const repsSh = ss.getSheetByName(SH_REPSMAP);
-  const R = repsSh.getDataRange().getValues(); const RH = R.shift().map(x=>String(x||'').trim());
-  const riRoot = findCol_(RH, ['RootApptID','Root Appt ID','ROOT','Root_ID']);
-  const riRep  = findCol_(RH, ['Rep','Rep Name','Assigned Rep','Sales Rep','Name']);
-  const riRole = findCol_(RH, ['Role','Rep Role']);
-  const riInc  = findCol_(RH, ['Include?','Include','Use?'], false);
-  const assignedByRoot = new Map(); const assistedByRoot = new Map();
-  for (const r of R) {
-    const root = r[riRoot], rep = r[riRep], role = String(r[riRole]||'').trim().toLowerCase();
-    const inc  = riInc>=0 ? String(r[riInc]||'').trim().toUpperCase() : 'Y';
-    if (!root || !rep || inc!=='Y') continue;
-    if (role==='assigned') assignedByRoot.set(root, rep);
-    else if (role==='assisted') { const arr = assistedByRoot.get(root)||[]; if (!arr.includes(rep)) arr.push(rep); assistedByRoot.set(root, arr); }
   }
 
   // --- Root Index (last touch)
@@ -364,8 +349,8 @@ function buildMetricsView_() {
 
   const rows=[];
   for (const [root,o] of per.entries()) {
-    const assigned = assignedByRoot.get(root) || o.rep || '';
-    const assisted = (assistedByRoot.get(root)||[]).join(', ');
+    const assigned = o.rep || '';
+    const assisted = Array.from(o.assistedReps || []).filter(Boolean).join(', ');
 
     const payInfo = firstPayByRoot.get(root) || { d:null, amt:null, so:'' };
     // Guard on amount too, even though the map is already filtered — keeps intent explicit
@@ -3048,18 +3033,6 @@ function auditOrphanData() {
     if (orphans.length) log.push(`   Sample: ${orphans.slice(0,3).map(r=>r[col]).join(' | ')}`);
   } else {
     log.push(`⚠️  Sheet 07_Root_Index KHÔNG TÌM THẤY`);
-  }
-
-  // 3) Reps Map
-  const repsMap = ss.getSheetByName('08_Reps_Map');
-  if (repsMap) {
-    const rm = repsMap.getDataRange().getValues();
-    const rmh = rm.shift().map(h => String(h||'').trim());
-    const col = rmh.findIndex(h => /root.*id|rootappt/i.test(h));
-    const orphans = rm.filter(r => String(r[col]||'').trim() && !validRoots.has(String(r[col]).trim()));
-    log.push(`${orphans.length > 0 ? '🔴' : '✅'} Reps Map: ${rm.length} rows | ${orphans.length} ORPHANED`);
-  } else {
-    log.push(`⚠️  Sheet 08_Reps_Map KHÔNG TÌM THẤY`);
   }
 
   // 4) Status Log

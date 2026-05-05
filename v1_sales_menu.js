@@ -24,18 +24,6 @@ function onOpen(e) {
   const waxMenu = ui.createMenu('Wax Print')
     .addItem('Pull pending requests', 'wax_adminOpenDialog_');
 
-  // ✅ Acknowledgements submenu (Phase B + Phase C actions)
-  // Requires functions from Phase B: runAllPipes, buildRootIndex, buildRepsMap, recomputeAckStatusSummary
-  // And from Phase C: buildTodaysQueuesAll_WithReminders, openMyQueue, refreshMyQueueHybrid, submitMyQueueUnified
-  const ackMenu = ui.createMenu('✅ Acknowledgements')
-    .addItem('Build today’s queues', 'buildTodaysQueuesAll_WithReminders')
-    .addItem('Open my queue', 'openMyQueue')
-    .addItem('Refresh my queue', 'refreshMyQueueHybrid')
-    .addItem('Submit my queue', 'submitMyQueueUnified')
-    .addItem('Refresh ACK dashboard', 'buildAckDashboard')
-    .addSeparator()
-    .addItem('Recompute ACK status from log', 'recomputeAckStatusSummary');
-
   // 💎 Sales — primary workflow
   ui.createMenu('💎 Sales')
     .addItem('Authorize Drive', 'authorizeDriveOnce')
@@ -97,8 +85,6 @@ function onOpen(e) {
     .addItem('Restore Properties from Backup Sheet', 'recovery_restoreScriptPropertiesFromBackupSheet')
     .addToUi();
 
-  // ✅ Acknowledgements — top-level menu
-  ackMenu.addToUi();
   addAutoAssignMenu();
   try {
     if (typeof resolver_onOpen_ === 'function') resolver_onOpen_();
