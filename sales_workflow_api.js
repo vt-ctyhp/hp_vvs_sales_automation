@@ -237,7 +237,8 @@ function sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user) {
     request = swRequestTaskGeneration_('Task completion', {
       taskId: task && task.taskId || '',
       rootApptId: task && (task.root || task.appt) || '',
-      requestedBy: user && (user.email || user.name) || ''
+      requestedBy: user && (user.email || user.name) || '',
+      lockWaitMs: 500
     });
   } catch (err) {
     request = {
@@ -262,7 +263,9 @@ function sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user) {
     requestedAt: request && request.requestedAt || swIso_(new Date()),
     taskId: task && task.taskId || '',
     rootApptId: task && (task.root || task.appt) || '',
-    requestCount: Number(request && request.requestCount || 0)
+    requestCount: Number(request && request.requestCount || 0),
+    lockless: !!(request && request.lockless),
+    lockReason: request && request.lockReason || ''
   };
 }
 
@@ -472,7 +475,8 @@ function swCompleteTaskGenerationTimingExtra_(result) {
     error: result.error || '',
     asyncRequestError: result.asyncRequestError || '',
     asyncRequestReason: result.asyncRequestReason || '',
-    lockless: !!result.lockless
+    lockless: !!result.lockless,
+    lockReason: result.lockReason || ''
   };
 }
 
@@ -1869,8 +1873,13 @@ function sw_completeTask(authToken, taskId, data) {
       snoozeUntil: task.snoozeUntil || ''
     });
 
+    var template = swCompleteTaskTimed_(timing, 'swTemplateForType_', function () {
+      return swTemplateForType_(ss, task.taskType);
+    }, function (result) {
+      return { templateFound: !!result };
+    });
     swCompleteTaskTimed_(timing, 'swValidateCompletion_', function () {
-      swValidateCompletion_(ss, task, data);
+      swValidateCompletion_(ss, task, data, template);
     });
     var diamondAction = swCompleteTaskTimed_(timing, 'swDiamondHandleTaskCompletion_', function () {
       return swDiamondHandleTaskCompletion_(ss, task, data, user);
@@ -1913,11 +1922,6 @@ function sw_completeTask(authToken, taskId, data) {
       return swCompleteTaskActionTimingExtra_(result);
     });
 
-    var template = swCompleteTaskTimed_(timing, 'swTemplateForType_', function () {
-      return swTemplateForType_(ss, task.taskType);
-    }, function (result) {
-      return { templateFound: !!result };
-    });
     var payload = swCompleteTaskTimed_(timing, 'swParseJson_payload', function () {
       return swParseJson_(task.payloadJson, {});
     });
@@ -1989,8 +1993,8 @@ function sw_completeTask(authToken, taskId, data) {
     }, function (result) {
       return swCompleteTaskGenerationTimingExtra_(result);
     });
-    var completedTask = swCompleteTaskTimed_(timing, 'swGetTaskById_reload', function () {
-      return swGetTaskById_(ss, taskId);
+    var completedTask = swCompleteTaskTimed_(timing, 'completion_response_task', function () {
+      return task;
     }, function (result) {
       return {
         found: !!result,
@@ -3408,6 +3412,230 @@ function sw_diagnoseTaskVisibilityForOwner(authToken, ownerNameOrEmail) {
   };
   Logger.log('SW_TASK_VISIBILITY_DIAGNOSTIC ' + JSON.stringify(out, null, 2));
   return out;
+}
+
+/**
+ * Mutating admin diagnostic: creates an isolated synthetic cleanup task,
+ * completes it through the real sw_completeTask path, then closes the
+ * synthetic rows so no customer source data is touched and nothing stays
+ * pending in the queue.
+ */
+function sw_diagnoseCompleteTaskTiming(authToken, options) {
+  if (authToken && typeof authToken === 'object' && options == null) {
+    options = authToken;
+    authToken = '';
+  }
+  options = options || {};
+  if (options.confirm !== 'RUN_SYNTHETIC_COMPLETION_TIMING') {
+    throw new Error('Pass confirm=RUN_SYNTHETIC_COMPLETION_TIMING to run the synthetic completion diagnostic.');
+  }
+
+  var started = new Date().getTime();
+  var mark = typeof swStepTimer_ === 'function'
+    ? swStepTimer_('sw_diagnoseCompleteTaskTiming')
+    : function () {};
+  var ss = swSpreadsheet_();
+  mark('swSpreadsheet_');
+  sw_prepareSalesWorkflowRuntimeForTaskCompletion_(ss);
+  mark('sw_prepareSalesWorkflowRuntimeForTaskCompletion_');
+  var user = swAuthUserForApi_(ss, authToken);
+  if (!user.isAdmin) throw new Error('Admin access required.');
+  mark('swAuthUserForApi_', { requestedBy: user.email || user.name || '' });
+
+  var now = new Date();
+  var tz = swTimezone_();
+  var stamp = Utilities.formatDate(now, tz, 'yyyyMMdd_HHmmss');
+  var runId = 'DIAG_' + stamp + '_' + Utilities.getUuid().slice(0, 8);
+  var campaignId = 'DIAG_COMPLETE_TASK_TIMING';
+  var root = 'DIAG-' + stamp;
+  var caseId = swDataCleanupCaseId_(campaignId, root, now);
+  var customerName = 'Synthetic Completion Timing ' + stamp;
+  var cleanupCase = {
+    caseId: caseId,
+    campaignId: campaignId,
+    root: root,
+    appt: root,
+    customerName: customerName,
+    brand: 'VVS',
+    clientAdvisor: user.name || 'Diagnostic Admin',
+    clientAdvisorEmail: user.email || '',
+    joc: user.name || 'Diagnostic Admin',
+    jocEmail: user.email || '',
+    stageKey: 'diagnostic',
+    currentSalesStage: 'Lead',
+    currentConvStatus: 'Follow-Up Required',
+    currentCustomOrder: '',
+    currentInProduction: '',
+    lastTouchAt: swIso_(now),
+    staleDays: 0,
+    status: SW_DATA_CLEANUP_STATUS.OPEN,
+    campaignTab: 'N',
+    proposalJson: '',
+    proposedBy: '',
+    proposedByEmail: '',
+    proposedRole: '',
+    proposedAt: '',
+    confirmationBy: '',
+    confirmationEmail: '',
+    confirmedAt: '',
+    returnReason: '',
+    returnedBy: '',
+    returnedAt: '',
+    revisionCount: 0,
+    appliedAt: '',
+    appliedResultJson: '',
+    createdAt: swIso_(now),
+    updatedAt: swIso_(now)
+  };
+  swWriteDataCleanupCase_(ss, cleanupCase);
+  mark('swWriteDataCleanupCase_', { caseId: caseId });
+
+  var ctx = swBuildDataCleanupImmediateContext_(ss);
+  mark('swBuildDataCleanupImmediateContext_');
+  var rec = {
+    row: '',
+    root: root,
+    appt: root,
+    uid: runId,
+    name: customerName,
+    email: user.email || '',
+    phone: '',
+    brand: 'VVS',
+    visitDate: Utilities.formatDate(now, tz, 'M/d/yyyy'),
+    visitTime: '',
+    visitTimeRaw: '',
+    visitType: 'Diagnostic',
+    assignedRep: user.name || 'Diagnostic Admin',
+    assignedRepEmail: user.email || '',
+    assistedRep: user.name || 'Diagnostic Admin',
+    assistedRepEmail: user.email || '',
+    reportUrl: 'https://docs.google.com/spreadsheets/d/diagnostic-placeholder',
+    clientFolder: 'https://drive.google.com/drive/folders/diagnostic-placeholder',
+    salesStage: 'Lead',
+    convStatus: 'Follow-Up Required',
+    customOrder: '',
+    inProduction: '',
+    nextSteps: 'Synthetic timing diagnostic. No customer source data should be applied.'
+  };
+  var task = swBuildDataCleanupTask_(ss, null, ctx, rec, cleanupCase, SW_TASKS.DATA_CLEANUP_REVIEW, SW_OWNER_ROLES.JOC, now, '', now, {
+    phase: 'review',
+    taskId: swDataCleanupTaskId_(caseId, 'REVIEW', 'JOC', 0),
+    ownerName: user.name || 'Diagnostic Admin',
+    ownerEmail: user.email || ''
+  });
+  mark('swBuildDataCleanupTask_', { taskId: task.taskId });
+  swDataCleanupUpsertImmediateTask_(ss, task, user, 'DIAGNOSTIC_CREATE');
+  mark('swDataCleanupUpsertImmediateTask_', { taskId: task.taskId });
+
+  var completion = null;
+  var completionError = '';
+  var completionMs = 0;
+  try {
+    var completionStarted = new Date().getTime();
+    completion = sw_completeTask(authToken, task.taskId, {
+      cleanupProposal: {
+        salesStage: 'Lead',
+        convStatus: 'Follow-Up Required',
+        cleanupNotes: 'Synthetic timing diagnostic run ' + runId + '. No customer source data should be applied.',
+        verification: {
+          ownersVerified: true,
+          contactVerified: true,
+          opsStatusReviewed: true,
+          nextStepsCurrent: true
+        }
+      }
+    });
+    completionMs = new Date().getTime() - completionStarted;
+    mark('sw_completeTask_synthetic', { taskId: task.taskId, ms: completionMs });
+  } catch (err) {
+    completionMs = completionMs || (new Date().getTime() - started);
+    completionError = swTrim_(err && err.message || err);
+    mark('sw_completeTask_synthetic_error', { taskId: task.taskId, error: completionError });
+  }
+
+  var closeError = '';
+  try {
+    var closeCase = swReadDataCleanupCaseByTask_(ss, task) || cleanupCase;
+    closeCase.status = SW_DATA_CLEANUP_STATUS.APPLIED;
+    closeCase.appliedAt = swIso_(new Date());
+    closeCase.appliedResultJson = swStringify_({
+      diagnostic: true,
+      runId: runId,
+      completedTaskId: task.taskId,
+      completionMs: completionMs,
+      completionError: completionError
+    });
+    closeCase.updatedAt = closeCase.appliedAt;
+    swWriteDataCleanupCase_(ss, closeCase);
+    swDataCleanupBlockTasksForCase_(ss, caseId, '', user, 'SYNTHETIC_DIAGNOSTIC_CLOSED');
+    mark('close_synthetic_rows', { caseId: caseId });
+  } catch (closeErr) {
+    closeError = swTrim_(closeErr && closeErr.message || closeErr);
+    mark('close_synthetic_rows_error', { caseId: caseId, error: closeError });
+  }
+
+  var out = {
+    ok: !completionError,
+    synthetic: true,
+    runId: runId,
+    caseId: caseId,
+    taskId: task.taskId,
+    completionMs: completionMs,
+    totalMs: new Date().getTime() - started,
+    completion: completion ? {
+      ok: !!completion.ok,
+      taskStatus: completion.task && completion.task.status || '',
+      queueRefreshPending: !!completion.queueRefreshPending,
+      generation: completion.generation || null
+    } : null,
+    error: completionError,
+    closeError: closeError,
+    note: 'See SW_COMPLETE_TASK_TIMING and SW_TIMING_STEP logs for the detailed step breakdown.'
+  };
+  Logger.log('SW_SYNTHETIC_COMPLETE_TASK_DIAGNOSTIC ' + JSON.stringify(out));
+  return out;
+}
+
+function sw_clearSyntheticCompleteTaskTimingRequest(authToken) {
+  var ss = swSpreadsheet_();
+  var user = swAuthUserForApi_(ss, authToken);
+  if (!user.isAdmin) throw new Error('Admin access required.');
+  if (typeof swOrchReadTaskGenerationRequest_ !== 'function' ||
+      typeof swOrchClearTaskGenerationRequest_ !== 'function') {
+    return { ok: true, cleared: false, reason: 'orchestrator_request_helpers_unavailable' };
+  }
+  var request = swOrchReadTaskGenerationRequest_();
+  if (!request) return { ok: true, cleared: false, reason: 'none' };
+  var taskId = String(request.taskId || '');
+  var root = String(request.rootApptId || '');
+  var synthetic = taskId.indexOf('SWC|DC|DIAG_COMPLETE_TASK_TIMING|') === 0 ||
+    root.indexOf('DIAG-') === 0;
+  if (!synthetic) {
+    return {
+      ok: true,
+      cleared: false,
+      reason: 'non_synthetic_request_pending',
+      requestId: request.requestId || '',
+      taskId: taskId,
+      rootApptId: root
+    };
+  }
+  var cleared = swOrchClearTaskGenerationRequest_(request);
+  try { Logger.log('SW_SYNTHETIC_COMPLETE_TASK_REQUEST_CLEAR ' + JSON.stringify({
+    requestedBy: user.email || user.name || '',
+    requestId: request.requestId || '',
+    taskId: taskId,
+    rootApptId: root,
+    cleared: cleared
+  })); } catch (_) {}
+  return {
+    ok: true,
+    synthetic: true,
+    requestId: request.requestId || '',
+    taskId: taskId,
+    rootApptId: root,
+    cleared: cleared
+  };
 }
 
 /**

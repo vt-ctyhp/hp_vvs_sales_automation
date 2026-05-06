@@ -317,7 +317,7 @@ function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
   swWriteDataCleanupCase_(ss, cleanupCase);
   if (timingStep) timingStep('swWriteDataCleanupCase_', { caseId: cleanupCase.caseId });
 
-  swDataCleanupBlockTasksForCase_(ss, cleanupCase.caseId, task.taskId, user, 'SUPERSEDED_BY_PROPOSAL', function (candidate) {
+  var caseTaskState = swDataCleanupBlockTasksForCase_(ss, cleanupCase.caseId, task.taskId, user, 'SUPERSEDED_BY_PROPOSAL', function (candidate) {
     return candidate.taskType === SW_TASKS.DATA_CLEANUP_REVIEW || candidate.taskType === SW_TASKS.DATA_CLEANUP_REVISE;
   });
   if (timingStep) timingStep('swDataCleanupBlockTasksForCase_', { caseId: cleanupCase.caseId });
@@ -332,7 +332,7 @@ function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
     taskId: swDataCleanupTaskId_(cleanupCase.caseId, 'CONFIRM', swDataCleanupRoleKey_(confirmRole), Number(cleanupCase.revisionCount) || 0)
   });
   if (timingStep) timingStep('swBuildDataCleanupTask_', { taskId: confirmTask.taskId });
-  swDataCleanupUpsertImmediateTask_(ss, confirmTask, user, 'CREATE');
+  swDataCleanupUpsertImmediateTask_(ss, confirmTask, user, 'CREATE', caseTaskState);
   if (timingStep) timingStep('swDataCleanupUpsertImmediateTask_', { taskId: confirmTask.taskId });
   return {
     action: 'DATA_CLEANUP_PROPOSED',
@@ -869,8 +869,13 @@ function swDataCleanupCaseIdFromTask_(task) {
     : '';
 }
 
-function swDataCleanupUpsertImmediateTask_(ss, task, actor, eventType) {
-  var existing = swGetTaskById_(ss, task.taskId);
+function swDataCleanupUpsertImmediateTask_(ss, task, actor, eventType, existingState) {
+  var existing = existingState && existingState.byId ? existingState.byId[task.taskId] : null;
+  if (!existing && !(existingState && existingState.completeForCase)) {
+    existing = typeof swReadFreshTaskRowByIdFast_ === 'function'
+      ? swReadFreshTaskRowByIdFast_(ss, task.taskId)
+      : swGetTaskById_(ss, task.taskId);
+  }
   if (existing && existing.status !== SW_STATUSES.COMPLETED) {
     task.rowNumber = existing.rowNumber;
     task.createdAt = existing.createdAt || task.createdAt;
@@ -883,20 +888,30 @@ function swDataCleanupUpsertImmediateTask_(ss, task, actor, eventType) {
 }
 
 function swDataCleanupBlockTasksForCase_(ss, caseId, exceptTaskId, actor, reason, predicate) {
-  var state = swReadTaskState_(ss);
-  Object.keys(state.byId || {}).forEach(function (taskId) {
-    var t = state.byId[taskId];
-    if (taskId === exceptTaskId) return;
-    if (String(taskId).indexOf('SWC|' + caseId + '|') !== 0) return;
-    if (predicate && !predicate(t)) return;
-    if (t.status === SW_STATUSES.COMPLETED || t.status === SW_STATUSES.BLOCKED) return;
+  var sh = swEnsureSheet_(ss, SW_SHEETS.TASKS, SW_TASK_HEADERS);
+  var state = { rows: [], tasks: [], byId: {}, completeForCase: true };
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return state;
+  var prefix = 'SWC|' + caseId + '|';
+  var taskIds = sh.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+  for (var i = 0; i < taskIds.length; i++) {
+    var taskId = String(taskIds[i][0] || '');
+    if (taskId === exceptTaskId) continue;
+    if (taskId.indexOf(prefix) !== 0) continue;
+    var t = swReadTaskRowAtNumber_(sh, i + 2);
+    if (!t || !t.taskId) continue;
+    state.tasks.push(t);
+    state.byId[t.taskId] = t;
+    if (predicate && !predicate(t)) continue;
+    if (t.status === SW_STATUSES.COMPLETED || t.status === SW_STATUSES.BLOCKED) continue;
     t.status = SW_STATUSES.BLOCKED;
     t.coverageReason = reason || 'DATA_CLEANUP_SUPERSEDED';
     t.updatedAt = swIso_(new Date());
     t.lastEvent = 'BLOCK';
     swWriteTaskRow_(ss, t);
     swAppendTaskLog_(ss, 'BLOCK', t, actor || swSystemUser_(), t.currentOwner, t.currentOwner, { reason: reason || '' });
-  });
+  }
+  return state;
 }
 
 function swDataCleanupRowsByRoot_(appointments) {

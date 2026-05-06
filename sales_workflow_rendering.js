@@ -2,8 +2,8 @@
  * Sales workflow rendering: template data, attachments, missing fields, and completion validation.
  */
 
-function swValidateCompletion_(ss, task, data) {
-  var template = swTemplateForType_(ss, task.taskType);
+function swValidateCompletion_(ss, task, data, template) {
+  template = template || swTemplateForType_(ss, task.taskType);
   var payload = swParseJson_(task.payloadJson, {});
   var renderData = swRenderDataForTask_(task, payload);
   var missingTemplateFields = swMissingFieldsForTask_(task, template, renderData);

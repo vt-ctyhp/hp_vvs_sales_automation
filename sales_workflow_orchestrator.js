@@ -494,7 +494,8 @@ function swOrchRecordSkip_(summary, name, reason) {
 
 function swRequestTaskGeneration_(reason, details) {
   details = details || {};
-  var lockedRequest = swOrchWithScriptLock_(5000, function () {
+  var lockWaitMs = Math.max(100, Math.min(5000, Number(details.lockWaitMs || 5000)));
+  var lockedRequest = swOrchWithScriptLock_(lockWaitMs, function () {
     var props = PropertiesService.getScriptProperties();
     var prior = swOrchReadTaskGenerationRequest_() || {};
     var request = swBuildTaskGenerationRequest_(reason, details, prior, false);

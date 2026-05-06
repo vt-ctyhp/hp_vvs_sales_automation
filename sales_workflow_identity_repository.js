@@ -294,8 +294,8 @@ function swReadTemplates_(ss, readOnly) {
   return out;
 }
 
-function swTemplateForType_(ss, taskType) {
-  return swReadTemplates_(ss)[taskType] || swDefaultTemplate_(taskType);
+function swTemplateForType_(ss, taskType, readOnly) {
+  return swReadTemplates_(ss, readOnly !== false)[taskType] || swDefaultTemplate_(taskType);
 }
 
 function swDefaultTemplate_(taskType) {
