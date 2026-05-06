@@ -59,6 +59,7 @@ function deleteTestPayments() {
   var rowNums = info.rows.map(function(r) { return r.sheetRow; }).sort(function(a,b){ return b-a; });
 
   rowNums.forEach(function(r) { sh.deleteRow(r); });
+  try { if (typeof swInvalidatePaymentReadModelsAfterWrite_ === 'function') swInvalidatePaymentReadModelsAfterWrite_(null, 'Test payments deleted'); } catch (_) {}
 
   ui.alert('✅ Đã xóa ' + rowNums.length + ' rows của "' + DELETE_SUBMITTED_BY + '" khỏi Payments sheet.');
 }

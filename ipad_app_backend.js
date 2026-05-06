@@ -27,10 +27,58 @@
 
 // ── Receipt generator entry point ──────────────────────────────────────
 function ipad_receiptDoGet(e) {
+  var launchContext;
+  try {
+    launchContext = (typeof swResolvePaymentAppLaunch_ === 'function')
+      ? swResolvePaymentAppLaunch_(e)
+      : { ok: true, source: 'direct', mode: 'payment' };
+  } catch (err) {
+    return ipad_receiptAccessDenied_(err);
+  }
+  var template = HtmlService.createTemplateFromFile('ipad_app');
+  template.IPAD_LAUNCH_JSON = ipad_safeTemplateJson_(launchContext || {});
   return HtmlService
-    .createHtmlOutputFromFile('ipad_app')
+    .createHtmlOutput(template.evaluate().getContent())
     .setTitle('HP & VVS — Receipt Generator')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function ipad_safeTemplateJson_(obj) {
+  return JSON.stringify(obj || {})
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
+function ipad_receiptAccessDenied_(err) {
+  var message = err && err.message ? err.message : String(err || 'Payment app access unavailable.');
+  var html = [
+    '<!doctype html><html><head><base target="_top"><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<title>Payment App Access</title>',
+    '<style>',
+    ':root{--bg:#F7F1EB;--surface:#FBF7F1;--ink:#2A2725;--muted:#8A8178;--rule:#D4CFC4;}',
+    'body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,sans-serif;}',
+    '.wrap{max-width:560px;margin:12vh auto;padding:32px;background:var(--surface);border:1px solid var(--rule);}',
+    '.eyebrow{color:var(--muted);font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px;}',
+    'h1{font-family:Georgia,serif;font-weight:400;font-size:30px;margin:0 0 12px;}',
+    'p{line-height:1.5;margin:0;color:#4A4540;}',
+    '</style></head><body><main class="wrap">',
+    '<div class="eyebrow">Payment App</div>',
+    '<h1>Open from the dashboard</h1>',
+    '<p>', ipad_escapeHtml_(message), '</p>',
+    '</main></body></html>'
+  ].join('');
+  return HtmlService.createHtmlOutput(html).setTitle('Payment App Access');
+}
+
+function ipad_escapeHtml_(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -376,6 +424,8 @@ function ipad_submit(payload) {
     if (!submitRes || !submitRes.ok) {
       return { ok: false, error: 'rp_submit failed', detail: JSON.stringify(submitRes) };
     }
+    payload.paymentId = submitRes.paymentId || '';
+    payload.pmtId = submitRes.paymentId || '';
 
     const docRes = rp_makeDocForPayment(submitRes.row, payload);
     if (!docRes || !docRes.ok) {

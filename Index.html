@@ -1512,6 +1512,17 @@
       padding: 24px 28px;
     }
 
+    .customer-detail-primary-actions {
+      align-content: start;
+      display: grid;
+      gap: 8px;
+      min-width: 180px;
+    }
+
+    .customer-detail-primary-actions button {
+      width: 100%;
+    }
+
     .customer-section-heading {
       align-items: baseline;
       display: flex;
@@ -2646,6 +2657,7 @@
         </div>
       </nav>
       <div class="toolbar-actions">
+        <button id="launchPaymentsButton" type="button" style="display:none">Payments</button>
         <button id="refreshQueueButton" class="primary" type="button">Refresh Queue</button>
       </div>
     </section>
@@ -2908,6 +2920,19 @@
         });
       }
 
+      var launchPaymentsButton = document.getElementById('launchPaymentsButton');
+      if (launchPaymentsButton) {
+        launchPaymentsButton.addEventListener('click', function () {
+          closeNavigationMenus();
+          openPaymentAppLaunch({
+            source: 'dashboard-toolbar',
+            view: appState.view || '',
+            mode: 'payment',
+            action: 'recordPayment'
+          }, launchPaymentsButton);
+        });
+      }
+
       ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
@@ -2972,6 +2997,8 @@
             return;
           }
           if (closestMatch_(event.target, '.js-customer-status-open')) return openCustomerStatusAction();
+          var customerPaymentButton = closestMatch_(event.target, '.js-payment-app-launch');
+          if (customerPaymentButton) return openPaymentAppLaunch(paymentLaunchContextFromButton(customerPaymentButton), customerPaymentButton);
           if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
           if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
           if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
@@ -3052,6 +3079,8 @@
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
           if (closestMatch_(event.target, '.js-customer-status-open')) return openCustomerStatusAction();
+          var detailPaymentButton = closestMatch_(event.target, '.js-payment-app-launch');
+          if (detailPaymentButton) return openPaymentAppLaunch(paymentLaunchContextFromButton(detailPaymentButton), detailPaymentButton);
           if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
           if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
           if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
@@ -3095,6 +3124,8 @@
           if (closestMatch_(event.target, '.js-admin-save-assignment')) return adminSaveAssignment();
           if (closestMatch_(event.target, '.js-admin-block')) return adminBlock();
           if (closestMatch_(event.target, '.js-admin-unblock')) return adminUnblock();
+          var workspacePaymentButton = closestMatch_(event.target, '.js-payment-app-launch');
+          if (workspacePaymentButton) return openPaymentAppLaunch(paymentLaunchContextFromButton(workspacePaymentButton), workspacePaymentButton);
           if (closestMatch_(event.target, '.js-customer-status-save')) return saveCustomerSearchStatus();
           if (closestMatch_(event.target, '.js-customer-deadline-save')) return saveCustomerSearch3DDeadline();
           if (closestMatch_(event.target, '.js-customer-revision-save')) return submitCustomerSearch3DRevision();
@@ -3277,6 +3308,56 @@
           setStatus((err && err.message) ? err.message : String(err), true);
         })
         .sw_getAppointmentUploadFolder(appState.token, appState.selectedTaskId, artifactType);
+    }
+
+    function openPaymentAppLaunch(context, sourceButton) {
+      context = context || {};
+      var launchMode = context.mode || context.launchMode || 'payment';
+      var targetName = launchMode === 'diamondViewing' ? 'swDiamondViewingPaymentApp' : 'swPaymentApp';
+      var popup = window.open('', targetName, 'width=1180,height=860,resizable=yes,scrollbars=yes');
+      if (popup) {
+        try {
+          popup.document.write('<!doctype html><title>Opening Payments</title><body style="background:#F7F1EB;color:#2A2725;font-family:Inter,system-ui,sans-serif;padding:32px"><div style="color:#8A8178;font-size:11px;letter-spacing:.14em;text-transform:uppercase">Opening Payments</div></body>');
+          popup.document.close();
+        } catch (_) {}
+      }
+
+      var loadingButton = lockLoadingButton(sourceButton);
+      setBusy(true, launchMode === 'diamondViewing' ? 'Opening diamond viewing payment app' : 'Opening payments app');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          var url = paymentLaunchUrlFromResponse(res);
+          if (!url) {
+            if (popup && !popup.closed) popup.close();
+            setStatus((res && (res.message || res.error)) || 'No payment app URL was returned.', true);
+            return;
+          }
+          if (popup && !popup.closed) {
+            popup.location.href = url;
+          } else {
+            var opened = window.open(url, '_blank');
+            if (!opened) {
+              setStatus('Payment app is ready, but the popup was blocked. Allow popups and click Payments again.', true);
+              return;
+            }
+          }
+          setStatus(launchMode === 'diamondViewing' ? 'Diamond viewing payment app opened.' : 'Payments app opened.');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false, '');
+          releaseLoadingButton(loadingButton);
+          if (popup && !popup.closed) popup.close();
+          setStatus((err && err.message) ? err.message : String(err), true);
+        })
+        .sw_getPaymentAppLaunch(appState.token, context);
+    }
+
+    function paymentLaunchUrlFromResponse(res) {
+      if (typeof res === 'string') return res;
+      res = res || {};
+      return res.url || res.launchUrl || res.paymentAppUrl || res.href || '';
     }
 
     function appointmentDriveFolderCacheKey(taskId, artifactType) {
@@ -3521,6 +3602,7 @@
         bulkReturns: !!(user.isAdmin || user.isDiamondOrderAdmin),
         coverage: !!(user.isJoc || user.isAdmin),
         adminDashboard: !!user.isAdmin,
+        payments: !!(user.isAdmin || user.isJoc || user.isRep),
         employeeSchedules: !!user.isAdmin,
         admin: !!user.isAdmin
       };
@@ -3560,6 +3642,7 @@
       document.getElementById('tab-bulkReturns').style.display = res.views && res.views.bulkReturns ? '' : 'none';
       document.getElementById('tab-coverage').style.display = res.views && res.views.coverage ? '' : 'none';
       document.getElementById('tab-adminDashboard').style.display = res.views && res.views.adminDashboard ? '' : 'none';
+      document.getElementById('launchPaymentsButton').style.display = res.views && res.views.payments ? '' : 'none';
       document.getElementById('tab-employeeSchedules').style.display = res.views && res.views.employeeSchedules ? '' : 'none';
       document.getElementById('tab-admin').style.display = res.views && res.views.admin ? '' : 'none';
       document.getElementById('manageUsersButton').style.display = user.isAdmin ? '' : 'none';
@@ -4088,7 +4171,7 @@
       skills = skills || {};
       return [
         '<div class="schedule-pill-row">',
-          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-skill-lab" type="checkbox"' + (skills.labDiamond ? ' checked' : '') + '><span>Lab</span></label>',
+          '<label class="schedule-natural-control"><span>Lab</span><select class="schedule-skill-lab">' + optionTags(['None', 'Primary', 'Backup'], skills.labDiamond || 'None') + '</select></label>',
           '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-skill-general" type="checkbox"' + (skills.generalAppointment !== false ? ' checked' : '') + '><span>General</span></label>',
           '<label class="schedule-natural-control"><span>Natural</span><select class="schedule-skill-natural">' + optionTags(['None', 'Primary', 'Backup'], skills.naturalDiamond || 'None') + '</select></label>',
         '</div>'
@@ -4278,7 +4361,7 @@
           defaultJoc: (row.querySelector('.schedule-default-joc') || {}).value || '',
           coverageEnabled: !!((row.querySelector('.schedule-coverage-enabled') || {}).checked),
           skills: {
-            labDiamond: !!((row.querySelector('.schedule-skill-lab') || {}).checked),
+            labDiamond: (row.querySelector('.schedule-skill-lab') || {}).value || 'None',
             naturalDiamond: (row.querySelector('.schedule-skill-natural') || {}).value || 'None',
             generalAppointment: !!((row.querySelector('.schedule-skill-general') || {}).checked)
           },
@@ -4887,6 +4970,8 @@
             '</div>',
           '</div>',
           '<div class="customer-detail-primary-actions">',
+            '<button class="js-payment-app-launch" type="button" data-payment-mode="payment" data-root="' + escapeAttrValue(card.root || '') + '" data-row="' + escapeAttrValue(card.row || '') + '" data-so="' + escapeAttrValue(card.so || '') + '" data-brand="' + escapeAttrValue(card.brand || '') + '" data-customer-name="' + escapeAttrValue(card.customerName || '') + '">Record Payment</button>',
+            '<button class="js-payment-app-launch" type="button" data-payment-mode="diamondViewing" data-root="' + escapeAttrValue(card.root || '') + '" data-row="' + escapeAttrValue(card.row || '') + '" data-so="' + escapeAttrValue(card.so || '') + '" data-brand="' + escapeAttrValue(card.brand || '') + '" data-customer-name="' + escapeAttrValue(card.customerName || '') + '">$25 Diamond Viewing</button>',
             '<button class="primary js-customer-status-open" type="button">Update Client Status</button>',
           '</div>',
         '</div>'
@@ -5208,6 +5293,54 @@
 
     function activeCustomerDetailPayload() {
       return ((appState.customerSearch || {}).detail) || {};
+    }
+
+    function paymentLaunchContextFromButton(button) {
+      button = button || {};
+      var detail = activeCustomerDetailPayload();
+      var card = detail.card || {};
+      var mode = button.getAttribute ? (button.getAttribute('data-payment-mode') || 'payment') : 'payment';
+      var row = button.getAttribute ? (button.getAttribute('data-row') || card.row || '') : (card.row || '');
+      var root = button.getAttribute ? (button.getAttribute('data-root') || card.root || detail.root || '') : (card.root || detail.root || '');
+      var so = button.getAttribute ? (button.getAttribute('data-so') || card.so || '') : (card.so || '');
+      var brand = button.getAttribute ? (button.getAttribute('data-brand') || card.brand || '') : (card.brand || '');
+      var customerName = button.getAttribute ? (button.getAttribute('data-customer-name') || card.customerName || '') : (card.customerName || '');
+      var context = {
+        source: 'dashboard-customer-detail',
+        view: appState.view || '',
+        mode: mode,
+        launchMode: mode,
+        paymentMode: mode,
+        panel: mode === 'diamondViewing' ? 'dv' : 'm',
+        action: mode === 'diamondViewing' ? 'diamondViewingDeposit' : 'recordPayment',
+        root: root,
+        rootApptId: root,
+        appt: card.appt || '',
+        so: so,
+        brand: brand,
+        customerName: customerName,
+        row: row,
+        rowIndex: row,
+        masterRow: row,
+        masterRowIndex: row,
+        visitType: card.visitType || '',
+        visitDate: card.visitDate || '',
+        visitTime: card.visitTime || '',
+        customer: {
+          root: root,
+          rootApptId: root,
+          appt: card.appt || '',
+          so: so,
+          brand: brand,
+          customerName: customerName,
+          row: row,
+          rowIndex: row,
+          masterRow: row,
+          masterRowIndex: row
+        }
+      };
+      if (mode === 'diamondViewing') context.openDiamondViewing = true;
+      return context;
     }
 
     function customerSearchRoot() {

@@ -1184,6 +1184,11 @@ function swInvalidateDiamondReadModelsAfterWrite_(ss, reason) {
 }
 
 function swInvalidatePaymentReadModelsAfterWrite_(ss, reason) {
+  try {
+    if (typeof swInvalidateAdminDashboardPaymentReceiptCache_ === 'function') {
+      swInvalidateAdminDashboardPaymentReceiptCache_();
+    }
+  } catch (_) {}
   try { swInvalidateAdminDashboardReadModelCache_(ss || swSpreadsheet_()); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Payment source updated', 'payments'); } catch (_) {}
   try { swMarkWorkflowReadModelsStale_(ss || swSpreadsheet_(), reason || 'Payment source updated', 'customers'); } catch (_) {}

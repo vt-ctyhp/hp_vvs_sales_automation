@@ -3460,6 +3460,8 @@ body.brand-vvs .gf-submit-btn { color:var(--bg); }
 </div>
 
 <script>
+window.__IPAD_LAUNCH = <?!= IPAD_LAUNCH_JSON ?>;
+
 /* ═══════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════ */
@@ -3530,7 +3532,45 @@ function setButtonLoading(btn, on) {
   buildPM('mPM','m'); buildPM('dvPM','dv');
   addLine();
   applyDT();
+  window.setTimeout(applyLaunchContext, 0);
 })();
+
+function applyLaunchContext(){
+  const launch = window.__IPAD_LAUNCH || {};
+  if (!launch || launch._applied) return;
+  launch._applied = true;
+
+  const brand = String(launch.brand || '').toUpperCase().includes('VVS') ? 'VVS'
+    : String(launch.brand || '').toUpperCase().includes('HP') ? 'HPUSA'
+    : '';
+  if (brand && S.brand !== brand) swBrand(brand);
+
+  const mode = String(launch.mode || 'payment').toLowerCase();
+  const rowIndex = Number(launch.masterRowIndex || launch.rowIndex || 0);
+  if (mode === 'intake' || mode === 'walkin') {
+    openWalkin();
+    return;
+  }
+
+  if (rowIndex >= 2) {
+    if (mode === 'diamondviewing') {
+      openDV();
+      _doLoadRecord('dv', rowIndex, function(rec){ if (rec && rec.ok) onCustLoaded(rec, 'dv'); });
+    } else {
+      _doLoadRecord('m', rowIndex, function(rec){ if (rec && rec.ok) onCustLoaded(rec, 'm'); });
+    }
+    return;
+  }
+
+  const query = String(launch.query || launch.customerName || launch.soNumber || launch.rootApptId || '').trim();
+  if (query.length >= 2) {
+    const field = mode === 'diamondviewing' ? $('dvQ') : $('mQ');
+    if (field) {
+      field.value = query;
+      onQ({ target: field }, mode === 'diamondviewing' ? 'dv' : 'm');
+    }
+  }
+}
 
 
 /* ═══════════════════════════════════════════

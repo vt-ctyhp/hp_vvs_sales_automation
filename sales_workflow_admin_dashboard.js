@@ -522,8 +522,10 @@ function swAdminDashboardReadPaymentReceiptRows_(warnings, options) {
   }
 
   var cacheKey = swAdminDashboardPaymentsCacheKey_(target);
-  var cached = swAdminDashboardCachedPaymentReceiptRows_(cacheKey);
-  if (cached !== null) return { rows: cached, cacheHit: true };
+  if (!options.forceLive) {
+    var cached = swAdminDashboardCachedPaymentReceiptRows_(cacheKey);
+    if (cached !== null) return { rows: cached, cacheHit: true };
+  }
 
   var sh = target.sh;
   var lr = sh.getLastRow();
@@ -647,6 +649,15 @@ function swAdminDashboardCachePaymentReceiptRows_(cacheKey, rows) {
   try {
     var text = swStringify_({ cachedAt: swIso_(new Date()), rows: rows });
     if (text.length < 90000) CacheService.getScriptCache().put(cacheKey, text, SW_ADMIN_DASHBOARD_PAYMENTS_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swInvalidateAdminDashboardPaymentReceiptCache_() {
+  try { SW_ADMIN_DASHBOARD_PAYMENTS_MEMORY_CACHE_ = {}; } catch (_) {}
+  try {
+    var target = swAdminDashboardPaymentsSheet_();
+    var cacheKey = swAdminDashboardPaymentsCacheKey_(target);
+    if (cacheKey) CacheService.getScriptCache().remove(cacheKey);
   } catch (_) {}
 }
 

@@ -1530,12 +1530,42 @@ function rp_resolveDestAndClientFolders_(payload) {
 
 
 /*** === DOC GENERATION + AR SHORTCUT === ***/
+function rp_resolveLedgerRowForDocUpdate_(ledgerRow, paymentId) {
+  ledgerRow = Number(ledgerRow || 0);
+  paymentId = String(paymentId || '').trim();
+  if (!paymentId) return ledgerRow;
+  const target = rp_getLedgerTarget();
+  const sh = target.sh;
+  const lr = sh.getLastRow();
+  const lc = sh.getLastColumn();
+  if (ledgerRow >= 2 && ledgerRow <= lr) {
+    const head = sh.getRange(1, 1, 1, lc).getValues()[0].map(v => String(v).trim());
+    const H = {}; head.forEach((h, i) => H[h] = i);
+    const cPaymentId = H['PAYMENT_ID'] != null ? H['PAYMENT_ID'] : H['Payment ID'];
+    if (cPaymentId == null) return ledgerRow;
+    const currentId = String(sh.getRange(ledgerRow, cPaymentId + 1).getValue() || '').trim();
+    if (currentId === paymentId) return ledgerRow;
+  }
+  if (lr < 2) throw new Error('Payment ledger row not found for payment id ' + paymentId);
+  const head2 = sh.getRange(1, 1, 1, lc).getValues()[0].map(v => String(v).trim());
+  const H2 = {}; head2.forEach((h, i) => H2[h] = i);
+  const cPaymentId2 = H2['PAYMENT_ID'] != null ? H2['PAYMENT_ID'] : H2['Payment ID'];
+  if (cPaymentId2 == null) return ledgerRow;
+  const ids = sh.getRange(2, cPaymentId2 + 1, lr - 1, 1).getValues();
+  for (let i = ids.length - 1; i >= 0; i--) {
+    if (String(ids[i][0] || '').trim() === paymentId) return i + 2;
+  }
+  throw new Error('Payment ledger row not found for payment id ' + paymentId);
+}
+
 function rp_makeDocForPayment(ledgerRow, payload) {
   try {
     if (!payload || !payload.docType) return { ok:false, reason:'BAD_PAYLOAD', hint:'Missing payload or docType' };
     var docType = String(payload.docType);
     var anchorType = String(payload.anchorType || '');
     var brand = String(payload.brand || '').trim();
+    var expectedPaymentId = String(payload.paymentId || payload.pmtId || '').trim();
+    ledgerRow = rp_resolveLedgerRowForDocUpdate_(ledgerRow, expectedPaymentId);
     try {
       const { sh } = rp_getLedgerTarget();
       const lc = sh.getLastColumn();
@@ -1543,6 +1573,7 @@ function rp_makeDocForPayment(ledgerRow, payload) {
       const H = {}; head.forEach((h,i)=> H[h]=i);
       const rowVals = sh.getRange(ledgerRow, 1, 1, lc).getValues()[0];
       payload.pmtId = String(rowVals[H['PAYMENT_ID']] || '');
+      payload.paymentId = payload.pmtId;
       if (!brand) { try { brand = String(rowVals[H['Brand']] || '').trim(); } catch (_){} }
     } catch(_){}
     var resolved = rp_resolveDestAndClientFolders_(payload);
@@ -1571,6 +1602,7 @@ function rp_makeDocForPayment(ledgerRow, payload) {
       if (arMonthly) { ar = rp_createDriveShortcut_(arMonthly.getId(), out.pdfId, (out.docNumber || 'Doc') + '.pdf'); arShortcutURL = (ar && ar.url) || ''; }
       rp_updateLedgerRow_(ledgerRow, { 'ARShortcutID': (ar && ar.id) || '', 'ARShortcutURL': arShortcutURL });
     } catch (e) { Logger.log('AR shortcut error: ' + ((e && e.message) ? e.message : e)); }
+    try { if (typeof swInvalidatePaymentReadModelsAfterWrite_ === 'function') swInvalidatePaymentReadModelsAfterWrite_(null, 'Payment document generated'); } catch (_) {}
     return { ok: true, row: ledgerRow, brand, docNumber: out.docNumber || '', docId: out.docId, pdfId: out.pdfId, docUrl: out.docUrl, pdfUrl: out.pdfUrl, paymentsFolderURL: resolved.paymentsFolderUrl, wrote: resolved.wrote, arShortcutURL };
   } catch (e) { return { ok:false, reason:'UNCAUGHT', hint:(e && e.message) ? e.message : String(e) }; }
 }
@@ -1713,33 +1745,43 @@ function rp_persistSavedLinesToMaster_({ masterRowIndex, rootApptId, lines, subt
 
 function rp_applyReceiptToMaster({ masterRowIndex, amount, when } = {}) {
   if (!masterRowIndex || masterRowIndex < 2 || !amount) throw new Error('Usage: rp_applyReceiptToMaster({masterRowIndex: <row>, amount: 50, when:new Date()})');
-  const ss = SpreadsheetApp.getActive();
-  const sh = ss.getSheetByName('00_Master Appointments');
-  if (!sh) throw new Error('Missing sheet "00_Master Appointments".');
-  let header = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0] || [];
-  let H = rp_hIndex_(header);
-  let cPTD = rp_pick(H, 'Paid-to-Date', 'Paid-To-Date', 'Paid to Date', 'Paid-to-date');
-  if (!cPTD) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Paid-to-Date'); header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]; H = rp_hIndex_(header); cPTD = H['Paid-to-Date']; }
-  let cLPD = rp_pick(H, 'Last Payment Date', 'LastPaymentDate');
-  if (!cLPD) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Last Payment Date'); header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]; H = rp_hIndex_(header); cLPD = H['Last Payment Date']; }
-  const H2 = rp_hIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]);
-  const cRB = rp_pick(H2, 'Remaining Balance', 'Balance') || 0;
-  const cOT = rp_pick(H2, 'Order Total', 'Order Total ') || 0;
-  const row = masterRowIndex;
-  let paidToDate = 0, orderTotal = 0;
-  if (cOT) { const readMin = Math.min(cPTD, cOT); const readSpan = Math.max(cPTD, cOT) - readMin + 1; const block = sh.getRange(row, readMin, 1, readSpan).getValues()[0]; paidToDate = rp_num_(block[cPTD - readMin]); orderTotal = rp_num_(block[cOT  - readMin]); } else { paidToDate = rp_num_(sh.getRange(row, cPTD).getValue()); }
-  const newPaid = paidToDate + rp_num_(amount);
-  const whenVal = when || new Date();
-  const targets = [{ col: cPTD, val: newPaid }, { col: cLPD, val: whenVal }];
-  let newBal;
-  if (cOT && cRB) { newBal = Math.max(0, orderTotal - newPaid); targets.push({ col: cRB, val: newBal }); }
-  targets.sort((a, b) => a.col - b.col);
-  const runs = []; let cur = null;
-  for (const t of targets) { if (!cur) { cur = { start: t.col, vals: [t.val] }; } else if (t.col === cur.start + cur.vals.length) { cur.vals.push(t.val); } else { runs.push(cur); cur = { start: t.col, vals: [t.val] }; } }
-  if (cur) runs.push(cur);
-  runs.forEach(r => { sh.getRange(row, r.start, 1, r.vals.length).setValues([r.vals]); });
-  if (cOT && cRB) return { ok: true, row, newPaid, newBal };
-  return { ok: true, row, newPaid };
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    lock.waitLock(15000);
+    locked = true;
+    const ss = SpreadsheetApp.getActive();
+    const sh = ss.getSheetByName('00_Master Appointments');
+    if (!sh) throw new Error('Missing sheet "00_Master Appointments".');
+    let header = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0] || [];
+    let H = rp_hIndex_(header);
+    let cPTD = rp_pick(H, 'Paid-to-Date', 'Paid-To-Date', 'Paid to Date', 'Paid-to-date');
+    if (!cPTD) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Paid-to-Date'); header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]; H = rp_hIndex_(header); cPTD = H['Paid-to-Date']; }
+    let cLPD = rp_pick(H, 'Last Payment Date', 'LastPaymentDate');
+    if (!cLPD) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Last Payment Date'); header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]; H = rp_hIndex_(header); cLPD = H['Last Payment Date']; }
+    const H2 = rp_hIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]);
+    const cRB = rp_pick(H2, 'Remaining Balance', 'Balance') || 0;
+    const cOT = rp_pick(H2, 'Order Total', 'Order Total ') || 0;
+    const row = masterRowIndex;
+    let paidToDate = 0, orderTotal = 0;
+    if (cOT) { const readMin = Math.min(cPTD, cOT); const readSpan = Math.max(cPTD, cOT) - readMin + 1; const block = sh.getRange(row, readMin, 1, readSpan).getValues()[0]; paidToDate = rp_num_(block[cPTD - readMin]); orderTotal = rp_num_(block[cOT  - readMin]); } else { paidToDate = rp_num_(sh.getRange(row, cPTD).getValue()); }
+    const newPaid = paidToDate + rp_num_(amount);
+    const whenVal = when || new Date();
+    const targets = [{ col: cPTD, val: newPaid }, { col: cLPD, val: whenVal }];
+    let newBal;
+    if (cOT && cRB) { newBal = Math.max(0, orderTotal - newPaid); targets.push({ col: cRB, val: newBal }); }
+    targets.sort((a, b) => a.col - b.col);
+    const runs = []; let cur = null;
+    for (const t of targets) { if (!cur) { cur = { start: t.col, vals: [t.val] }; } else if (t.col === cur.start + cur.vals.length) { cur.vals.push(t.val); } else { runs.push(cur); cur = { start: t.col, vals: [t.val] }; } }
+    if (cur) runs.push(cur);
+    runs.forEach(r => { sh.getRange(row, r.start, 1, r.vals.length).setValues([r.vals]); });
+    if (cOT && cRB) return { ok: true, row, newPaid, newBal };
+    return { ok: true, row, newPaid };
+  } finally {
+    if (locked) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  }
 }
 
 function rp_calcGrossCashInForAppt_(rootApptId) {

@@ -1477,6 +1477,8 @@ $('btnSubmit').addEventListener('click', function () {
               freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';
               showToast('Save failed.'); return;
             }
+            payload.paymentId = res.paymentId || '';
+            payload.pmtId = res.paymentId || '';
             google.script.run
               .withSuccessHandler(function (out) {
                 freezeUI(false); btn.disabled = false; btn.textContent = 'Submit';

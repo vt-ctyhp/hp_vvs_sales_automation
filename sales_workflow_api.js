@@ -631,9 +631,151 @@ function swBootstrapViewsForUser_(user, cleanupTabEnabled) {
     cleanup: !!cleanupTabEnabled,
     coverage: user.isJoc || user.isAdmin,
     adminDashboard: user.isAdmin,
+    payments: swCanUsePaymentApp_(user),
     employeeSchedules: user.isAdmin,
     admin: user.isAdmin
   };
+}
+
+var SW_PAYMENT_APP_LAUNCH_SECONDS = 10 * 60;
+
+function sw_getPaymentAppLaunch(authToken, request) {
+  return swTimed_('sw_getPaymentAppLaunch', function () {
+    var mark = swStepTimer_('sw_getPaymentAppLaunch');
+    var ss = swSpreadsheet_();
+    mark('spreadsheet');
+    var user = swAuthUserForApi_(ss, authToken);
+    mark('identity');
+    if (!swCanUsePaymentApp_(user)) throw new Error('Payment app access requires Admin, JOC, or Client Advisor access.');
+
+    var context = swPaymentLaunchContext_(request || {});
+    context.issuedAt = swIso_(new Date());
+    context.user = swPaymentLaunchUser_(user);
+
+    var token = swPaymentLaunchToken_();
+    var cachePayload = swStringify_(context);
+    if (cachePayload.length > 90000) throw new Error('Payment launch context is too large.');
+    CacheService.getScriptCache().put(swPaymentLaunchCacheKey_(token), cachePayload, SW_PAYMENT_APP_LAUNCH_SECONDS);
+    mark('launchToken', { mode: context.mode || '', hasRoot: !!context.rootApptId, hasRow: !!context.masterRowIndex });
+
+    return {
+      ok: true,
+      url: swPaymentAppUrl_(token),
+      expiresInSeconds: SW_PAYMENT_APP_LAUNCH_SECONDS,
+      mode: context.mode || 'payment'
+    };
+  });
+}
+
+function swCanUsePaymentApp_(user) {
+  user = user || {};
+  return !!(user.isAdmin || user.isJoc || user.isRep);
+}
+
+function swPaymentLaunchContext_(request) {
+  request = request || {};
+  var mode = swPaymentLaunchMode_(request.mode || request.view || request.flow || '');
+  var brand = swTrim_(request.brand || '');
+  var brandUpper = brand.toUpperCase();
+  if (brandUpper.indexOf('VVS') >= 0) brand = 'VVS';
+  else if (brandUpper.indexOf('HP') >= 0) brand = 'HPUSA';
+
+  var masterRowIndex = Number(request.masterRowIndex || request.rowIndex || request.row || 0);
+  masterRowIndex = isFinite(masterRowIndex) && masterRowIndex >= 2 ? Math.floor(masterRowIndex) : 0;
+
+  return {
+    ok: true,
+    source: 'salesDashboard',
+    mode: mode,
+    rootApptId: swTrim_(request.rootApptId || request.root || request.appt || ''),
+    masterRowIndex: masterRowIndex,
+    brand: brand,
+    soNumber: swTrim_(request.soNumber || request.so || ''),
+    customerName: swTrim_(request.customerName || request.name || ''),
+    query: swTrim_(request.query || request.search || request.customerName || request.name || '')
+  };
+}
+
+function swPaymentLaunchMode_(mode) {
+  var value = swNorm_(mode || '');
+  if (/diamond/.test(value)) return 'diamondViewing';
+  if (/walk|intake/.test(value)) return 'intake';
+  if (/search/.test(value)) return 'search';
+  return 'payment';
+}
+
+function swPaymentLaunchUser_(user) {
+  user = user || {};
+  return {
+    email: user.email || '',
+    name: user.name || '',
+    isAdmin: !!user.isAdmin,
+    isJoc: !!user.isJoc,
+    isRep: !!user.isRep
+  };
+}
+
+function swPaymentLaunchToken_() {
+  var uuid = Utilities.getUuid ? Utilities.getUuid() : String(new Date().getTime()) + Math.random();
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    'paymentLaunch|' + uuid + '|' + new Date().getTime()
+  );
+  return 'pay_' + Utilities.base64EncodeWebSafe(digest).replace(/=+$/g, '');
+}
+
+function swPaymentLaunchCacheKey_(token) {
+  return 'sw:paymentLaunch:v1:' + swTrim_(token);
+}
+
+function swPaymentAppUrl_(token) {
+  var base = '';
+  try {
+    base = WEBAPP_EXEC_URL_();
+  } catch (err) {
+    try {
+      base = (ScriptApp.getService().getUrl && ScriptApp.getService().getUrl()) || '';
+      if (base) base = base.replace(/\/dev(\b|$)/, '/exec');
+    } catch (_) {
+      base = '';
+    }
+  }
+  if (!base) throw new Error('Web app URL is unavailable. Set WEBAPP_EXEC_URL in Script Properties or deploy the web app.');
+  return swUrlWithParams_(base, { app: 'ipad', launch: token });
+}
+
+function swUrlWithParams_(base, params) {
+  var pairs = [];
+  Object.keys(params || {}).forEach(function (key) {
+    var value = params[key];
+    if (value == null || value === '') return;
+    pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)));
+  });
+  if (!pairs.length) return base;
+  return base + (base.indexOf('?') >= 0 ? '&' : '?') + pairs.join('&');
+}
+
+function swResolvePaymentAppLaunch_(e) {
+  var p = (e && e.parameter) || {};
+  var token = swTrim_(p.launch || p.paymentLaunch || p.token || '');
+  if (token) {
+    var cached = CacheService.getScriptCache().get(swPaymentLaunchCacheKey_(token));
+    if (!cached) throw new Error('Payment app link expired. Open it again from the Sales Dashboard.');
+    var parsed = swParseJson_(cached, null);
+    if (!(parsed && parsed.ok)) throw new Error('Payment app link is invalid. Open it again from the Sales Dashboard.');
+    parsed.launchTokenPresent = true;
+    return parsed;
+  }
+
+  var ss = swSpreadsheet_();
+  var user = swAuthUserForApi_(ss, '');
+  if (!(user && user.email && swCanUsePaymentApp_(user))) {
+    throw new Error('Open the payment app from the Sales Dashboard so your workflow access can be verified.');
+  }
+  var direct = swPaymentLaunchContext_(p);
+  direct.source = 'directWorkflowIdentity';
+  direct.user = swPaymentLaunchUser_(user);
+  return direct;
 }
 
 /**
@@ -2454,8 +2596,8 @@ function swWriteEmployeeRosterRows_(ss, people, actor) {
       coverageenabled: coverageEnabled ? 'Y' : 'N',
       assistedcoveragepartner: swTrim_(person.coveragePartner || ''),
       coveragepartner: swTrim_(person.coveragePartner || ''),
-      labdiamond: swTruthy_(skills.labDiamond) ? 'Y' : 'N',
-      lab: swTruthy_(skills.labDiamond) ? 'Y' : 'N',
+      labdiamond: swNormalizeLabSkill_(skills.labDiamond || 'None'),
+      lab: swNormalizeLabSkill_(skills.labDiamond || 'None'),
       naturaldiamond: swNormalizeNaturalSkill_(skills.naturalDiamond || 'None'),
       natural: swNormalizeNaturalSkill_(skills.naturalDiamond || 'None'),
       generalappointment: swTruthy_(skills.generalAppointment) ? 'Y' : 'N',
