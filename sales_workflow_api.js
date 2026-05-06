@@ -210,6 +210,189 @@ function sw_completeTaskAsyncGenerationEnabled_() {
   }
 }
 
+function swCompleteTaskTimingEnabled_() {
+  try {
+    var raw = swTrim_(PropertiesService.getScriptProperties().getProperty('SW_COMPLETE_TASK_TIMING') || '');
+    if (!raw) return true;
+    return !/^(n|no|false|0|off)$/i.test(raw);
+  } catch (_) {
+    return true;
+  }
+}
+
+function swCompleteTaskTimingVerboseEnabled_() {
+  try {
+    var raw = swTrim_(PropertiesService.getScriptProperties().getProperty('SW_COMPLETE_TASK_TIMING_VERBOSE') || '');
+    return /^(y|yes|true|1|on)$/i.test(raw);
+  } catch (_) {
+    return false;
+  }
+}
+
+function swCompleteTaskTimingStart_(meta) {
+  if (!swCompleteTaskTimingEnabled_()) return null;
+  var now = new Date().getTime();
+  return {
+    traceId: swCompleteTaskTimingTraceId_(now),
+    operation: 'sw_completeTask',
+    startedAt: swIso_(new Date(now)),
+    startedMs: now,
+    meta: swCompleteTaskTimingSafeObject_(meta || {}),
+    steps: []
+  };
+}
+
+function swCompleteTaskTimingTraceId_(startedMs) {
+  try {
+    return 'CT-' + String(startedMs || new Date().getTime()) + '-' + Utilities.getUuid().slice(0, 8);
+  } catch (_) {
+    return 'CT-' + String(startedMs || new Date().getTime()) + '-' + Math.floor(Math.random() * 1000000);
+  }
+}
+
+function swCompleteTaskTimingMeta_(trace, meta) {
+  if (!trace || !meta) return;
+  var safe = swCompleteTaskTimingSafeObject_(meta);
+  Object.keys(safe).forEach(function (key) {
+    trace.meta[key] = safe[key];
+  });
+}
+
+function swCompleteTaskTimed_(trace, step, fn, extra) {
+  if (!trace) return fn();
+  var started = new Date().getTime();
+  var result = null;
+  var thrown = null;
+  try {
+    result = fn();
+    return result;
+  } catch (err) {
+    thrown = err;
+    throw err;
+  } finally {
+    var now = new Date().getTime();
+    var item = {
+      traceId: trace.traceId,
+      operation: trace.operation,
+      step: step,
+      ms: now - started,
+      totalMs: now - trace.startedMs,
+      ok: !thrown
+    };
+    if (thrown) item.error = swTrim_(thrown && thrown.message || thrown);
+    var extraPayload = null;
+    try {
+      extraPayload = typeof extra === 'function' ? extra(result, thrown) : extra;
+    } catch (extraErr) {
+      extraPayload = { extraError: swTrim_(extraErr && extraErr.message || extraErr) };
+    }
+    if (extraPayload) item.extra = swCompleteTaskTimingSafeObject_(extraPayload);
+    trace.steps.push(item);
+    if (swCompleteTaskTimingVerboseEnabled_()) {
+      try { Logger.log('SW_COMPLETE_TASK_TIMING_STEP ' + JSON.stringify(item)); } catch (_) {}
+    }
+  }
+}
+
+function swCompleteTaskTimingFinish_(trace, status, extra) {
+  if (!trace) return;
+  var now = new Date().getTime();
+  var payload = {
+    traceId: trace.traceId,
+    operation: trace.operation,
+    status: status || 'ok',
+    startedAt: trace.startedAt,
+    finishedAt: swIso_(new Date(now)),
+    totalMs: now - trace.startedMs,
+    meta: swCompleteTaskTimingSafeObject_(trace.meta || {}),
+    steps: trace.steps.map(function (step) {
+      return {
+        step: step.step,
+        ms: step.ms,
+        totalMs: step.totalMs,
+        ok: step.ok,
+        error: step.error || '',
+        extra: step.extra || {}
+      };
+    }),
+    slowest: swCompleteTaskTimingSlowest_(trace.steps, 8)
+  };
+  if (extra) payload.extra = swCompleteTaskTimingSafeObject_(extra);
+  try { Logger.log('SW_COMPLETE_TASK_TIMING ' + JSON.stringify(payload)); } catch (_) {}
+}
+
+function swCompleteTaskTimingSlowest_(steps, limit) {
+  var copy = (steps || []).slice();
+  copy.sort(function (a, b) { return Number(b.ms || 0) - Number(a.ms || 0); });
+  return copy.slice(0, limit || 8).map(function (step) {
+    return {
+      step: step.step,
+      ms: step.ms,
+      ok: step.ok,
+      error: step.error || ''
+    };
+  });
+}
+
+function swCompleteTaskTimingSafeObject_(value) {
+  if (value == null) return {};
+  if (typeof value !== 'object') return { value: swCompleteTaskTimingSafeValue_(value) };
+  if (Object.prototype.toString.call(value) === '[object Array]') {
+    return { count: value.length };
+  }
+  var out = {};
+  Object.keys(value).slice(0, 20).forEach(function (key) {
+    out[key] = swCompleteTaskTimingSafeValue_(value[key]);
+  });
+  return out;
+}
+
+function swCompleteTaskTimingSafeValue_(value) {
+  if (value == null) return '';
+  var type = typeof value;
+  if (type === 'number' || type === 'boolean') return value;
+  if (Object.prototype.toString.call(value) === '[object Date]') return swIso_(value);
+  if (Object.prototype.toString.call(value) === '[object Array]') return { count: value.length };
+  if (type === 'object') {
+    var keys = [];
+    try { keys = Object.keys(value).slice(0, 10); } catch (_) {}
+    return {
+      type: 'object',
+      keys: keys.join(',')
+    };
+  }
+  var text = swTrim_(value);
+  return text.length > 240 ? text.slice(0, 237) + '...' : text;
+}
+
+function swCompleteTaskActionTimingExtra_(result) {
+  if (!result) return { action: '' };
+  if (typeof result !== 'object') return { action: '', value: swCompleteTaskTimingSafeValue_(result) };
+  var out = {
+    action: swTrim_(result.action || result.type || ''),
+    ok: result.ok !== false,
+    keys: Object.keys(result).slice(0, 10).join(',')
+  };
+  if (result.rootApptId) out.rootApptId = result.rootApptId;
+  if (result.outcome) out.outcome = result.outcome;
+  if (result.rowsUpdated != null) out.rowsUpdated = result.rowsUpdated;
+  if (result.error) out.error = result.error;
+  return out;
+}
+
+function swCompleteTaskGenerationTimingExtra_(result) {
+  if (!result) return {};
+  if (typeof result !== 'object') return { value: swCompleteTaskTimingSafeValue_(result) };
+  return {
+    ok: result.ok !== false,
+    skipped: !!result.skipped,
+    reason: result.reason || '',
+    requestCount: Number(result.requestCount || 0),
+    error: result.error || '',
+    asyncRequestError: result.asyncRequestError || ''
+  };
+}
+
 /**
  * Editor-only, read-only duplicate task audit. Logs to Apps Script only.
  */
@@ -1518,95 +1701,232 @@ function sw_acknowledgeTask(authToken, taskId, data) {
  * Mutating task action: validates and completes a pending task, then requests queue refresh.
  */
 function sw_completeTask(authToken, taskId, data) {
-  if (!taskId && /^SW\|/.test(String(authToken || ''))) {
-    taskId = authToken;
-    authToken = '';
-  }
-  if (typeof taskId === 'object' && data == null) {
-    data = taskId;
-    taskId = authToken;
-    authToken = '';
-  }
-  var ss = swSpreadsheet_();
-  sw_setupSalesWorkflow();
-  var user = swAuthUserForApi_(ss, authToken);
-  var task = swGetTaskById_(ss, taskId);
-  if (!task) throw new Error('Task not found: ' + taskId);
-  if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
-  if (!swTaskPendingLike_(task, new Date().getTime())) {
-    var inactiveCleanupMessage = typeof swDataCleanupInactiveTaskMessage_ === 'function'
-      ? swDataCleanupInactiveTaskMessage_(ss, task)
-      : '';
-    throw new Error(inactiveCleanupMessage || 'Only pending or due snoozed tasks can be completed.');
-  }
+  var timing = swCompleteTaskTimingStart_({
+    rawTaskId: typeof taskId === 'string' ? taskId : '',
+    authTokenProvided: !!authToken
+  });
+  try {
+    swCompleteTaskTimed_(timing, 'normalize_arguments', function () {
+      if (!taskId && /^SW\|/.test(String(authToken || ''))) {
+        taskId = authToken;
+        authToken = '';
+      }
+      if (typeof taskId === 'object' && data == null) {
+        data = taskId;
+        taskId = authToken;
+        authToken = '';
+      }
+      data = data || {};
+    }, function () {
+      return {
+        taskId: taskId || '',
+        hasData: !!data
+      };
+    });
 
-  data = data || {};
-  swValidateCompletion_(ss, task, data);
-  var diamondAction = swDiamondHandleTaskCompletion_(ss, task, data, user);
-  var postConsultAction = typeof swHandlePostConsultTaskCompletion_ === 'function'
-    ? swHandlePostConsultTaskCompletion_(ss, task, data, user)
-    : null;
-  var dataCleanupAction = typeof swHandleDataCleanupTaskCompletion_ === 'function'
-    ? swHandleDataCleanupTaskCompletion_(ss, task, data, user)
-    : null;
-  var appointmentAction = typeof swHandleAppointmentCompletion_ === 'function'
-    ? swHandleAppointmentCompletion_(ss, task, data, user)
-    : null;
-  var approvalAction = task.taskType === SW_TASKS.APPROVE && typeof swMarkAppointmentSummaryApproved_ === 'function'
-    ? swMarkAppointmentSummaryApproved_(ss, task.root || task.appt || '', data.approvedText || '', user)
-    : null;
-  var jocHandoffAction = task.taskType === SW_TASKS.FINAL && typeof swMarkAppointmentJocHandoff_ === 'function'
-    ? swMarkAppointmentJocHandoff_(ss, task.root || task.appt || '', user)
-    : null;
+    var ss = swCompleteTaskTimed_(timing, 'swSpreadsheet_', function () {
+      return swSpreadsheet_();
+    });
+    swCompleteTaskTimed_(timing, 'sw_setupSalesWorkflow', function () {
+      sw_setupSalesWorkflow();
+    });
+    var user = swCompleteTaskTimed_(timing, 'swAuthUserForApi_', function () {
+      return swAuthUserForApi_(ss, authToken);
+    }, function (result) {
+      return {
+        requestedBy: result && (result.email || result.name) || '',
+        role: result && result.role || ''
+      };
+    });
+    swCompleteTaskTimingMeta_(timing, {
+      requestedBy: user && (user.email || user.name) || '',
+      role: user && user.role || ''
+    });
 
-  var template = swTemplateForType_(ss, task.taskType);
-  var payload = swParseJson_(task.payloadJson, {});
-  var renderData = swRenderDataForTask_(task, payload);
-  var renderedTemplate = swRenderedCopyableTemplateForTask_(task, template, renderData);
-  var renderedAttachments = swAttachmentsForTask_(task, template, renderData);
-  payload.completion = data;
-  payload.renderedTemplate = renderedTemplate;
-  payload.renderedAttachments = renderedAttachments;
-  payload.completedBy = user.name || user.email;
-  payload.completedByEmail = user.email;
-  payload.completedAt = swIso_(new Date());
-  if (diamondAction) payload.diamondAction = diamondAction;
-  if (postConsultAction) payload.postConsultAction = postConsultAction;
-  if (dataCleanupAction) payload.dataCleanupAction = dataCleanupAction;
-  if (appointmentAction) payload.appointmentAction = appointmentAction;
-  if (approvalAction) payload.approvalAction = approvalAction;
-  if (jocHandoffAction) payload.jocHandoffAction = jocHandoffAction;
+    var task = swCompleteTaskTimed_(timing, 'swGetTaskById_', function () {
+      return swGetTaskById_(ss, taskId);
+    }, function (result) {
+      return {
+        found: !!result,
+        taskId: result && result.taskId || taskId || '',
+        taskType: result && result.taskType || '',
+        rootApptId: result && (result.root || result.appt) || ''
+      };
+    });
+    if (!task) throw new Error('Task not found: ' + taskId);
+    swCompleteTaskTimingMeta_(timing, {
+      taskId: task.taskId || taskId || '',
+      taskType: task.taskType || '',
+      rootApptId: task.root || task.appt || '',
+      currentOwner: task.currentOwner || '',
+      taskStatus: task.status || ''
+    });
 
-  var oldOwner = task.currentOwner;
-  task.status = SW_STATUSES.COMPLETED;
-  task.completedBy = user.name || user.email;
-  task.completedByEmail = user.email;
-  task.completedAt = payload.completedAt;
-  task.updatedAt = payload.completedAt;
-  task.lastEvent = 'COMPLETE';
-  task.snoozeUntil = '';
-  task.snoozeReason = '';
-  task.snoozedBy = '';
-  task.snoozedAt = '';
-  task.payloadJson = swStringify_(payload);
-  swWriteTaskRow_(ss, task);
-  swAppendTaskLog_(ss, 'COMPLETE', task, user, oldOwner, task.currentOwner, data);
+    swCompleteTaskTimed_(timing, 'swCanActOnTask_', function () {
+      if (!swCanActOnTask_(task, user)) throw new Error('You are not the current owner for this task.');
+    }, {
+      currentOwner: task.currentOwner || '',
+      requestedBy: user.email || user.name || ''
+    });
+    swCompleteTaskTimed_(timing, 'swTaskPendingLike_', function () {
+      if (!swTaskPendingLike_(task, new Date().getTime())) {
+        var inactiveCleanupMessage = typeof swDataCleanupInactiveTaskMessage_ === 'function'
+          ? swDataCleanupInactiveTaskMessage_(ss, task)
+          : '';
+        throw new Error(inactiveCleanupMessage || 'Only pending or due snoozed tasks can be completed.');
+      }
+    }, {
+      status: task.status || '',
+      snoozeUntil: task.snoozeUntil || ''
+    });
 
-  if (appointmentAction || approvalAction || jocHandoffAction ||
-      (dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED')) {
-    var readModelReason = dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED'
-      ? 'Data cleanup writeback updated customer source data'
-      : 'Appointment task completion updated source data';
-    try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, readModelReason); } catch (_) {}
+    swCompleteTaskTimed_(timing, 'swValidateCompletion_', function () {
+      swValidateCompletion_(ss, task, data);
+    });
+    var diamondAction = swCompleteTaskTimed_(timing, 'swDiamondHandleTaskCompletion_', function () {
+      return swDiamondHandleTaskCompletion_(ss, task, data, user);
+    }, function (result) {
+      return swCompleteTaskActionTimingExtra_(result);
+    });
+    var postConsultAction = swCompleteTaskTimed_(timing, 'swHandlePostConsultTaskCompletion_', function () {
+      return typeof swHandlePostConsultTaskCompletion_ === 'function'
+        ? swHandlePostConsultTaskCompletion_(ss, task, data, user)
+        : null;
+    }, function (result) {
+      return swCompleteTaskActionTimingExtra_(result);
+    });
+    var dataCleanupAction = swCompleteTaskTimed_(timing, 'swHandleDataCleanupTaskCompletion_', function () {
+      return typeof swHandleDataCleanupTaskCompletion_ === 'function'
+        ? swHandleDataCleanupTaskCompletion_(ss, task, data, user)
+        : null;
+    }, function (result) {
+      return swCompleteTaskActionTimingExtra_(result);
+    });
+    var appointmentAction = swCompleteTaskTimed_(timing, 'swHandleAppointmentCompletion_', function () {
+      return typeof swHandleAppointmentCompletion_ === 'function'
+        ? swHandleAppointmentCompletion_(ss, task, data, user)
+        : null;
+    }, function (result) {
+      return swCompleteTaskActionTimingExtra_(result);
+    });
+    var approvalAction = swCompleteTaskTimed_(timing, 'swMarkAppointmentSummaryApproved_', function () {
+      return task.taskType === SW_TASKS.APPROVE && typeof swMarkAppointmentSummaryApproved_ === 'function'
+        ? swMarkAppointmentSummaryApproved_(ss, task.root || task.appt || '', data.approvedText || '', user)
+        : null;
+    }, function (result) {
+      return swCompleteTaskActionTimingExtra_(result);
+    });
+    var jocHandoffAction = swCompleteTaskTimed_(timing, 'swMarkAppointmentJocHandoff_', function () {
+      return task.taskType === SW_TASKS.FINAL && typeof swMarkAppointmentJocHandoff_ === 'function'
+        ? swMarkAppointmentJocHandoff_(ss, task.root || task.appt || '', user)
+        : null;
+    }, function (result) {
+      return swCompleteTaskActionTimingExtra_(result);
+    });
+
+    var template = swCompleteTaskTimed_(timing, 'swTemplateForType_', function () {
+      return swTemplateForType_(ss, task.taskType);
+    }, function (result) {
+      return { templateFound: !!result };
+    });
+    var payload = swCompleteTaskTimed_(timing, 'swParseJson_payload', function () {
+      return swParseJson_(task.payloadJson, {});
+    });
+    var renderData = swCompleteTaskTimed_(timing, 'swRenderDataForTask_', function () {
+      return swRenderDataForTask_(task, payload);
+    });
+    var renderedTemplate = swCompleteTaskTimed_(timing, 'swRenderedCopyableTemplateForTask_', function () {
+      return swRenderedCopyableTemplateForTask_(task, template, renderData);
+    }, function (result) {
+      return { renderedChars: String(result || '').length };
+    });
+    var renderedAttachments = swCompleteTaskTimed_(timing, 'swAttachmentsForTask_', function () {
+      return swAttachmentsForTask_(task, template, renderData);
+    }, function (result) {
+      return { attachmentCount: result && result.length || 0 };
+    });
+    swCompleteTaskTimed_(timing, 'build_completion_payload', function () {
+      payload.completion = data;
+      payload.renderedTemplate = renderedTemplate;
+      payload.renderedAttachments = renderedAttachments;
+      payload.completedBy = user.name || user.email;
+      payload.completedByEmail = user.email;
+      payload.completedAt = swIso_(new Date());
+      if (diamondAction) payload.diamondAction = diamondAction;
+      if (postConsultAction) payload.postConsultAction = postConsultAction;
+      if (dataCleanupAction) payload.dataCleanupAction = dataCleanupAction;
+      if (appointmentAction) payload.appointmentAction = appointmentAction;
+      if (approvalAction) payload.approvalAction = approvalAction;
+      if (jocHandoffAction) payload.jocHandoffAction = jocHandoffAction;
+    }, {
+      payloadKeys: Object.keys(payload || {}).length
+    });
+
+    var oldOwner = task.currentOwner;
+    swCompleteTaskTimed_(timing, 'mutate_task_record', function () {
+      task.status = SW_STATUSES.COMPLETED;
+      task.completedBy = user.name || user.email;
+      task.completedByEmail = user.email;
+      task.completedAt = payload.completedAt;
+      task.updatedAt = payload.completedAt;
+      task.lastEvent = 'COMPLETE';
+      task.snoozeUntil = '';
+      task.snoozeReason = '';
+      task.snoozedBy = '';
+      task.snoozedAt = '';
+      task.payloadJson = swStringify_(payload);
+    });
+    swCompleteTaskTimed_(timing, 'swWriteTaskRow_', function () {
+      swWriteTaskRow_(ss, task);
+    });
+    swCompleteTaskTimed_(timing, 'swAppendTaskLog_', function () {
+      swAppendTaskLog_(ss, 'COMPLETE', task, user, oldOwner, task.currentOwner, data);
+    });
+
+    swCompleteTaskTimed_(timing, 'read_model_invalidation', function () {
+      if (appointmentAction || approvalAction || jocHandoffAction ||
+          (dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED')) {
+        var readModelReason = dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED'
+          ? 'Data cleanup writeback updated customer source data'
+          : 'Appointment task completion updated source data';
+        try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, readModelReason); } catch (_) {}
+      }
+    }, {
+      invalidationCandidate: !!(appointmentAction || approvalAction || jocHandoffAction ||
+        (dataCleanupAction && dataCleanupAction.action === 'DATA_CLEANUP_APPLIED'))
+    });
+    var generation = swCompleteTaskTimed_(timing, 'sw_requestSalesWorkflowTaskGenerationAfterSubmit_', function () {
+      return sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user);
+    }, function (result) {
+      return swCompleteTaskGenerationTimingExtra_(result);
+    });
+    var completedTask = swCompleteTaskTimed_(timing, 'swGetTaskById_reload', function () {
+      return swGetTaskById_(ss, taskId);
+    }, function (result) {
+      return {
+        found: !!result,
+        status: result && result.status || ''
+      };
+    });
+    var response = {
+      ok: true,
+      task: completedTask,
+      generation: generation,
+      queueRefreshPending: !!(generation && generation.skipped),
+      generationError: generation && generation.ok === false ? generation.error : ''
+    };
+    swCompleteTaskTimingFinish_(timing, 'ok', {
+      queueRefreshPending: response.queueRefreshPending,
+      generationReason: generation && generation.reason || '',
+      generationError: response.generationError || ''
+    });
+    return response;
+  } catch (err) {
+    swCompleteTaskTimingFinish_(timing, 'error', {
+      error: swTrim_(err && err.message || err)
+    });
+    throw err;
   }
-  var generation = sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user);
-  return {
-    ok: true,
-    task: swGetTaskById_(ss, taskId),
-    generation: generation,
-    queueRefreshPending: !!(generation && generation.skipped),
-    generationError: generation && generation.ok === false ? generation.error : ''
-  };
 }
 
 /**
