@@ -10,6 +10,7 @@ var SW_TASK_DETAIL_CACHE_BUCKETS = 16;
 var SW_TASK_DETAIL_MEMORY_CACHE_ = {};
 var SW_TASK_ROW_INDEX_MEMORY_CACHE_ = {};
 var SW_TASK_ROOT_INDEX_MEMORY_CACHE_ = {};
+var SW_TASK_ROW_NUMBER_MEMORY_CACHE_ = {};
 
 function swReadTaskState_(ss, readOnly, options) {
   var sh = readOnly
@@ -213,6 +214,10 @@ function swTaskRowIndexCacheKey_(ss) {
   return 'sw:taskRowIndex:v1:' + ss.getId();
 }
 
+function swTaskRowNumberCacheKey_(ss, taskId) {
+  return 'sw:taskRowNumber:v1:' + ss.getId() + ':' + encodeURIComponent(swTrim_(taskId));
+}
+
 function swTaskRootIndexCacheKey_(ss) {
   return 'sw:taskRootIndex:v1:' + ss.getId();
 }
@@ -330,6 +335,7 @@ function swCacheTaskLookupIndexes_(ss, state) {
     cachedAt: swIso_(new Date()),
     byId: rowById
   });
+  var singleResult = swCacheTaskRowNumbers_(ss, rowById);
   var rootResult = swTaskListCachePut_(swTaskRootIndexCacheKey_(ss), {
     cachedAt: swIso_(new Date()),
     byRoot: byRoot
@@ -344,15 +350,86 @@ function swCacheTaskLookupIndexes_(ss, state) {
     rows: tasks.length,
     rowKeys: rowKeys,
     rootKeys: rootKeys,
-    reason: [rowResult.reason || '', rootResult.reason || ''].filter(Boolean).join(',')
+    singleRows: singleResult.rows || 0,
+    reason: [rowResult.reason || '', singleResult.reason || '', rootResult.reason || ''].filter(Boolean).join(',')
   };
+}
+
+function swCacheTaskRowNumbers_(ss, rowById) {
+  rowById = rowById || {};
+  var ids = Object.keys(rowById);
+  if (!ids.length) return { ok: true, rows: 0, reason: '' };
+  var now = new Date().getTime();
+  var memoryPrefix = ss.getId() + ':';
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (_) {}
+  var rows = 0;
+  var reason = '';
+  var batch = {};
+  var batchSize = 0;
+  ids.forEach(function (taskId) {
+    var rowNumber = Number(rowById[taskId] || 0) || 0;
+    if (!rowNumber) return;
+    rows++;
+    try {
+      SW_TASK_ROW_NUMBER_MEMORY_CACHE_[memoryPrefix + taskId] = {
+        expiresAt: now + SW_TASK_LIST_CACHE_SECONDS * 1000,
+        rowNumber: rowNumber
+      };
+    } catch (_) {}
+    if (cache) {
+      batch[swTaskRowNumberCacheKey_(ss, taskId)] = String(rowNumber);
+      batchSize++;
+    }
+    if (batchSize >= 90) {
+      try { cache.putAll(batch, SW_TASK_LIST_CACHE_SECONDS); } catch (err) { reason = 'singleRowCacheWriteFailed'; }
+      batch = {};
+      batchSize = 0;
+    }
+  });
+  if (cache && batchSize) {
+    try { cache.putAll(batch, SW_TASK_LIST_CACHE_SECONDS); } catch (err2) { reason = 'singleRowCacheWriteFailed'; }
+  }
+  return { ok: !reason, rows: rows, reason: reason };
+}
+
+function swCacheTaskRowNumber_(ss, taskId, rowNumber) {
+  taskId = swTrim_(taskId);
+  rowNumber = Number(rowNumber || 0) || 0;
+  if (!taskId || !rowNumber) return;
+  var memoryKey = ss.getId() + ':' + taskId;
+  try {
+    SW_TASK_ROW_NUMBER_MEMORY_CACHE_[memoryKey] = {
+      expiresAt: new Date().getTime() + SW_TASK_LIST_CACHE_SECONDS * 1000,
+      rowNumber: rowNumber
+    };
+  } catch (_) {}
+  try {
+    CacheService.getScriptCache().put(swTaskRowNumberCacheKey_(ss, taskId), String(rowNumber), SW_TASK_LIST_CACHE_SECONDS);
+  } catch (_) {}
 }
 
 function swReadCachedTaskRowNumber_(ss, taskId) {
   taskId = swTrim_(taskId);
   if (!taskId) return 0;
-  var key = swTaskRowIndexCacheKey_(ss);
+  var memoryKey = ss.getId() + ':' + taskId;
   var now = new Date().getTime();
+  try {
+    var singleMemory = SW_TASK_ROW_NUMBER_MEMORY_CACHE_[memoryKey];
+    if (singleMemory && singleMemory.expiresAt > now) return Number(singleMemory.rowNumber || 0) || 0;
+  } catch (_) {}
+  try {
+    var single = CacheService.getScriptCache().get(swTaskRowNumberCacheKey_(ss, taskId));
+    var singleRowNumber = Number(single || 0) || 0;
+    if (singleRowNumber) {
+      SW_TASK_ROW_NUMBER_MEMORY_CACHE_[memoryKey] = {
+        expiresAt: now + SW_TASK_LIST_CACHE_SECONDS * 1000,
+        rowNumber: singleRowNumber
+      };
+      return singleRowNumber;
+    }
+  } catch (_) {}
+  var key = swTaskRowIndexCacheKey_(ss);
   try {
     var memory = SW_TASK_ROW_INDEX_MEMORY_CACHE_[key];
     if (memory && memory.expiresAt > now && memory.byId) {
@@ -522,6 +599,7 @@ function swInvalidateTaskDetailRowCache_(ss, taskId) {
     if (memory && memory.byId) delete memory.byId[taskId];
   } catch (_) {}
   try { CacheService.getScriptCache().remove(swTaskDetailSingleCacheKey_(ss, taskId)); } catch (_) {}
+  try { delete SW_TASK_ROW_NUMBER_MEMORY_CACHE_[ss.getId() + ':' + taskId]; } catch (_) {}
 }
 
 function swTaskDetailCacheById_(tasks) {
@@ -980,6 +1058,7 @@ function swAppendTaskRow_(ss, task) {
   sh.appendRow(row);
   task.rowNumber = sh.getLastRow();
   swInvalidateTaskDetailRowCache_(ss, task.taskId);
+  swCacheTaskRowNumber_(ss, task.taskId, task.rowNumber);
   swInvalidateTaskListCache_(ss);
   return task.rowNumber;
 }
@@ -996,6 +1075,7 @@ function swWriteTaskRow_(ss, task) {
   }
   sh.getRange(task.rowNumber, 1, 1, SW_TASK_HEADERS.length).setValues([swTaskToRow_(task)]);
   swInvalidateTaskDetailRowCache_(ss, task.taskId);
+  swCacheTaskRowNumber_(ss, task.taskId, task.rowNumber);
   swInvalidateTaskListCache_(ss);
 }
 
