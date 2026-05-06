@@ -158,6 +158,58 @@ function sw_tryGenerateSalesWorkflowTasksAfterSubmit_(reason) {
   });
 }
 
+function sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user) {
+  if (!sw_completeTaskAsyncGenerationEnabled_()) {
+    return sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion');
+  }
+  if (typeof swRequestTaskGeneration_ !== 'function') {
+    return sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion async helper unavailable');
+  }
+
+  var request = null;
+  try {
+    request = swRequestTaskGeneration_('Task completion', {
+      taskId: task && task.taskId || '',
+      rootApptId: task && (task.root || task.appt) || '',
+      requestedBy: user && (user.email || user.name) || ''
+    });
+  } catch (err) {
+    request = {
+      ok: false,
+      error: swTrim_(err && err.message || err)
+    };
+  }
+
+  if (request && request.ok === false) {
+    var fallback = sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion async request failed');
+    if (fallback && typeof fallback === 'object') {
+      fallback.asyncRequestError = request.error || request.reason || 'TASK_GENERATION_REQUEST_FAILED';
+    }
+    return fallback;
+  }
+
+  return {
+    ok: true,
+    skipped: true,
+    reason: 'ASYNC_REQUESTED',
+    message: 'Task was saved. Queue refresh is pending and will run in the background.',
+    requestedAt: request && request.requestedAt || swIso_(new Date()),
+    taskId: task && task.taskId || '',
+    rootApptId: task && (task.root || task.appt) || '',
+    requestCount: Number(request && request.requestCount || 0)
+  };
+}
+
+function sw_completeTaskAsyncGenerationEnabled_() {
+  try {
+    var raw = swTrim_(PropertiesService.getScriptProperties().getProperty('SW_COMPLETE_TASK_ASYNC_GENERATION') || '');
+    if (!raw) return true;
+    return !/^(n|no|false|0)$/i.test(raw);
+  } catch (_) {
+    return true;
+  }
+}
+
 /**
  * Editor-only, read-only duplicate task audit. Logs to Apps Script only.
  */
@@ -1463,7 +1515,7 @@ function sw_acknowledgeTask(authToken, taskId, data) {
 }
 
 /**
- * Mutating task action: validates and completes a pending task, then refreshes generation.
+ * Mutating task action: validates and completes a pending task, then requests queue refresh.
  */
 function sw_completeTask(authToken, taskId, data) {
   if (!taskId && /^SW\|/.test(String(authToken || ''))) {
@@ -1547,7 +1599,7 @@ function sw_completeTask(authToken, taskId, data) {
       : 'Appointment task completion updated source data';
     try { if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') swInvalidateAppointmentReadModelsAfterWrite_(ss, readModelReason); } catch (_) {}
   }
-  var generation = sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion');
+  var generation = sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user);
   return {
     ok: true,
     task: swGetTaskById_(ss, taskId),

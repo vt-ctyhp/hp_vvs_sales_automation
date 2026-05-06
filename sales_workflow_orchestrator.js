@@ -10,6 +10,7 @@ var SW_ORCH_HANDLER = 'sw_backgroundOrchestrator';
 var SW_ORCH_LEASE_KEY = 'SW_ORCH_LEASE_JSON';
 var SW_ORCH_INTAKE_KEY = 'SW_ORCH_INTAKE_JSON';
 var SW_ORCH_STATE_KEY = 'SW_ORCH_STATE_JSON';
+var SW_ORCH_TASK_GENERATION_REQUEST_KEY = 'SW_ORCH_TASK_GENERATION_REQUEST_JSON';
 var SW_ORCH_LEASE_MS = 8 * 60 * 1000;
 var SW_ORCH_STALE_HEARTBEAT_MS = 8 * 60 * 1000;
 var SW_ORCH_INTAKE_DRAIN_MS = 2 * 60 * 1000;
@@ -113,7 +114,25 @@ function sw_backgroundOrchestrator(e) {
         return summary;
       }
       var heavyMaintenanceEnabled = swOrchHeavyMaintenanceEnabled_(e);
-      if (!heavyMaintenanceEnabled) {
+      var taskGenerationRequest = swOrchReadTaskGenerationRequest_();
+      if (taskGenerationRequest) {
+        if (automationJob.result && automationJob.result.generatedTasks) {
+          swOrchClearTaskGenerationRequest_(taskGenerationRequest);
+          swOrchRecordSkip_(summary, 'sw_generateSalesWorkflowTasks', 'alreadyGeneratedByAppointmentAutomationForRequest');
+        } else {
+          var requestedTaskJob = swOrchRunJob_(summary, runId, 'sw_generateSalesWorkflowTasks', function () {
+            return typeof sw_generateSalesWorkflowTasks === 'function'
+              ? sw_generateSalesWorkflowTasks()
+              : { ok: true, skipped: true, reason: 'sw_generateSalesWorkflowTasks unavailable' };
+          });
+          if (requestedTaskJob.ok) {
+            state.lastTaskGenerationAt = swOrchIso_(new Date());
+            swOrchClearTaskGenerationRequest_(taskGenerationRequest);
+          } else {
+            swOrchUpdateTaskGenerationRequestError_(taskGenerationRequest, swOrchTaskGenerationJobError_(requestedTaskJob));
+          }
+        }
+      } else if (!heavyMaintenanceEnabled) {
         swOrchRecordSkip_(summary, 'sw_generateSalesWorkflowTasks', 'heavyMaintenanceDisabledForIntakeSafety');
       } else if (!automationJob.result || !automationJob.result.generatedTasks) {
         var taskDue = swOrchIntervalDue_(state.lastTaskGenerationAt, SW_ORCH_HOURLY_MS);
@@ -260,6 +279,7 @@ function sw_getBackgroundOrchestratorStatus() {
     leaseStale: swOrchLeaseStale_(lease),
     heavyMaintenanceEnabled: swOrchHeavyMaintenanceEnabled_({}),
     intake: swOrchReadJsonProperty_(SW_ORCH_INTAKE_KEY, {}),
+    taskGenerationRequest: swOrchReadTaskGenerationRequest_(),
     state: swOrchReadState_(),
     triggers: swOrchListRelevantTriggers_()
   };
@@ -470,6 +490,75 @@ function swOrchRecordSkip_(summary, name, reason) {
     reason: reason || 'notDue',
     ms: 0
   });
+}
+
+function swRequestTaskGeneration_(reason, details) {
+  details = details || {};
+  return swOrchWithScriptLock_(5000, function () {
+    var props = PropertiesService.getScriptProperties();
+    var prior = swOrchReadTaskGenerationRequest_() || {};
+    var now = swOrchIso_(new Date());
+    var request = {
+      ok: true,
+      pending: true,
+      requestId: swOrchTaskGenerationRequestId_(),
+      firstRequestedAt: prior.firstRequestedAt || prior.requestedAt || now,
+      requestedAt: now,
+      reason: reason || details.reason || prior.reason || '',
+      taskId: details.taskId || prior.taskId || '',
+      rootApptId: details.rootApptId || prior.rootApptId || '',
+      requestedBy: details.requestedBy || prior.requestedBy || '',
+      requestCount: Math.max(0, Number(prior.requestCount || 0)) + 1
+    };
+    props.setProperty(SW_ORCH_TASK_GENERATION_REQUEST_KEY, JSON.stringify(request));
+    return request;
+  });
+}
+
+function swOrchReadTaskGenerationRequest_() {
+  var request = swOrchReadJsonProperty_(SW_ORCH_TASK_GENERATION_REQUEST_KEY, null);
+  return request && request.requestedAt ? request : null;
+}
+
+function swOrchClearTaskGenerationRequest_(request) {
+  var expectedId = request && request.requestId || '';
+  return swOrchWithScriptLock_(5000, function () {
+    var current = swOrchReadTaskGenerationRequest_();
+    if (!current) return { ok: true, cleared: false, reason: 'none' };
+    if (expectedId && current.requestId && current.requestId !== expectedId) {
+      return { ok: true, cleared: false, reason: 'newerRequestPending', currentRequestId: current.requestId };
+    }
+    PropertiesService.getScriptProperties().deleteProperty(SW_ORCH_TASK_GENERATION_REQUEST_KEY);
+    return { ok: true, cleared: true };
+  });
+}
+
+function swOrchUpdateTaskGenerationRequestError_(request, error) {
+  var expectedId = request && request.requestId || '';
+  return swOrchWithScriptLock_(5000, function () {
+    var current = swOrchReadTaskGenerationRequest_();
+    if (!current) return { ok: true, updated: false, reason: 'none' };
+    if (expectedId && current.requestId && current.requestId !== expectedId) {
+      return { ok: true, updated: false, reason: 'newerRequestPending', currentRequestId: current.requestId };
+    }
+    current.lastAttemptAt = swOrchIso_(new Date());
+    current.lastError = error || 'Task generation failed.';
+    current.attemptCount = Math.max(0, Number(current.attemptCount || 0)) + 1;
+    PropertiesService.getScriptProperties().setProperty(SW_ORCH_TASK_GENERATION_REQUEST_KEY, JSON.stringify(current));
+    return { ok: true, updated: true };
+  });
+}
+
+function swOrchTaskGenerationJobError_(job) {
+  if (!job) return 'Task generation failed.';
+  if (job.error) return job.error;
+  if (job.result && job.result.error) return String(job.result.error);
+  if (job.result && job.result.reason) return String(job.result.reason);
+  return 'Task generation failed.';
+}
+
+function swOrchTaskGenerationRequestId_() {
+  return 'taskgen_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000000);
 }
 
 function swOrchAcuitySubmitted_(result) {
