@@ -843,31 +843,8 @@ function swReadTaskRowById_(ss, taskId, readOnly) {
   if (readOnly) {
     var cachedDetail = swReadCachedTaskDetailRow_(ss, taskId);
     if (cachedDetail) return cachedDetail;
-    var cachedRowNumber = swReadCachedTaskRowNumber_(ss, taskId);
-    if (cachedRowNumber) {
-      var indexedRow = swReadTaskRowAtNumber_(sh, cachedRowNumber);
-      if (indexedRow && String(indexedRow.taskId) === String(taskId)) {
-        swCacheTaskDetailRow_(ss, indexedRow);
-        return indexedRow;
-      }
-    }
-    var cachedTask = swCachedTaskListRowById_(ss, taskId);
-    if (cachedTask && cachedTask.rowNumber) {
-      var cachedRow = swReadTaskRowAtNumber_(sh, cachedTask.rowNumber);
-      if (cachedRow && String(cachedRow.taskId) === String(taskId)) {
-        swCacheTaskDetailRow_(ss, cachedRow);
-        return cachedRow;
-      }
-    }
-    var readModelState = swReadTaskListStateFromFreshReadModel_(ss);
-    var readModelTask = readModelState && readModelState.byId ? readModelState.byId[taskId] : null;
-    if (readModelTask && readModelTask.rowNumber) {
-      var readModelRow = swReadTaskRowAtNumber_(sh, readModelTask.rowNumber);
-      if (readModelRow && String(readModelRow.taskId) === String(taskId)) {
-        swCacheTaskDetailRow_(ss, readModelRow);
-        return readModelRow;
-      }
-    }
+    var indexedTask = swReadTaskRowFromCachedIndexes_(ss, sh, taskId);
+    if (indexedTask) return indexedTask;
     var foundTask = swReadTaskRowByIdOnePass_(sh, taskId);
     if (foundTask) swCacheTaskDetailRow_(ss, foundTask);
     return foundTask;
@@ -877,6 +854,44 @@ function swReadTaskRowById_(ss, taskId, readOnly) {
   if (!rowNumber) return null;
 
   return swReadTaskRowAtNumber_(sh, rowNumber);
+}
+
+function swReadFreshTaskRowByIdFast_(ss, taskId) {
+  var sh = swGetRequiredSheet_(ss, SW_SHEETS.TASKS);
+  var indexedTask = swReadTaskRowFromCachedIndexes_(ss, sh, taskId);
+  if (indexedTask) return indexedTask;
+  var foundTask = swReadTaskRowByIdOnePass_(sh, taskId);
+  if (foundTask) swCacheTaskDetailRow_(ss, foundTask);
+  return foundTask;
+}
+
+function swReadTaskRowFromCachedIndexes_(ss, sh, taskId) {
+  var cachedRowNumber = swReadCachedTaskRowNumber_(ss, taskId);
+  if (cachedRowNumber) {
+    var indexedRow = swReadTaskRowAtNumber_(sh, cachedRowNumber);
+    if (indexedRow && String(indexedRow.taskId) === String(taskId)) {
+      swCacheTaskDetailRow_(ss, indexedRow);
+      return indexedRow;
+    }
+  }
+  var cachedTask = swCachedTaskListRowById_(ss, taskId);
+  if (cachedTask && cachedTask.rowNumber) {
+    var cachedRow = swReadTaskRowAtNumber_(sh, cachedTask.rowNumber);
+    if (cachedRow && String(cachedRow.taskId) === String(taskId)) {
+      swCacheTaskDetailRow_(ss, cachedRow);
+      return cachedRow;
+    }
+  }
+  var readModelState = swReadTaskListStateFromFreshReadModel_(ss);
+  var readModelTask = readModelState && readModelState.byId ? readModelState.byId[taskId] : null;
+  if (readModelTask && readModelTask.rowNumber) {
+    var readModelRow = swReadTaskRowAtNumber_(sh, readModelTask.rowNumber);
+    if (readModelRow && String(readModelRow.taskId) === String(taskId)) {
+      swCacheTaskDetailRow_(ss, readModelRow);
+      return readModelRow;
+    }
+  }
+  return null;
 }
 
 function swCachedTaskListRowById_(ss, taskId) {

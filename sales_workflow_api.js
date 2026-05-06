@@ -1261,7 +1261,9 @@ function sw_getTaskDetail(authToken, taskId) {
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
     var task = swReadTaskRowById_(ss, taskId, true);
     if (task && typeof swIsCleanupCampaignTask_ === 'function' && swIsCleanupCampaignTask_(task)) {
-      task = swReadTaskRowById_(ss, taskId, false) || task;
+      task = (typeof swReadFreshTaskRowByIdFast_ === 'function'
+        ? swReadFreshTaskRowByIdFast_(ss, taskId)
+        : swReadTaskRowById_(ss, taskId, false)) || task;
     }
     mark('taskRowLookup');
     if (!task) throw new Error('Task not found: ' + taskId);
