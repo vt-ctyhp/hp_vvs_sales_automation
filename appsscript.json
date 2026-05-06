@@ -19,5 +19,8 @@
   "webapp": {
     "executeAs": "USER_DEPLOYING",
     "access": "DOMAIN"
+  },
+  "executionApi": {
+    "access": "DOMAIN"
   }
 }
