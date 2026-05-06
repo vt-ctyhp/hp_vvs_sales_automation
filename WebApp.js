@@ -1,9 +1,10 @@
 function doGet(e) {
   var p = (e && e.parameter) || {};
   var app = String(p.app || p.view || p.ui || '').toLowerCase();
+  var hasPaymentLaunchToken = !!(p.launch || p.paymentLaunch || p.token);
   var op = String(p.op || p.action || p.a || '').toLowerCase();
 
-  if (app === 'receipt' || app === 'receipts' || app === 'ipad') {
+  if (hasPaymentLaunchToken || app === 'receipt' || app === 'receipts' || app === 'payment' || app === 'payments' || app === 'ipad') {
     return ipad_receiptDoGet(e);
   }
 
