@@ -21,13 +21,20 @@ function sw_backgroundOrchestrator(e) {
     var startedAt = new Date();
     var lease = swOrchAcquireLease_(runId, e);
     if (!lease.ok) {
-      return {
+      var skippedSummary = {
         ok: true,
+        runId: runId,
         skipped: true,
         reason: lease.reason || 'LEASE_ACTIVE',
         activeLease: lease.lease || null,
-        at: swOrchIso_(startedAt)
+        startedAt: swOrchIso_(startedAt),
+        source: e && e.legacyHandler ? ('legacy:' + e.legacyHandler) : 'timeBased',
+        jobs: []
       };
+      try {
+        Logger.log('SW_ORCH_SUMMARY ' + JSON.stringify(swOrchSummaryForLog_(skippedSummary)));
+      } catch (_) {}
+      return skippedSummary;
     }
 
     var state = swOrchReadState_();
@@ -227,7 +234,7 @@ function sw_removeBackgroundOrchestratorTrigger() {
 }
 
 function sw_getBackgroundOrchestratorStatus() {
-  return {
+  var status = {
     ok: true,
     handler: SW_ORCH_HANDLER,
     lease: swOrchReadJsonProperty_(SW_ORCH_LEASE_KEY, null),
@@ -235,16 +242,36 @@ function sw_getBackgroundOrchestratorStatus() {
     state: swOrchReadState_(),
     triggers: swOrchListRelevantTriggers_()
   };
+  try {
+    Logger.log('SW_ORCH_STATUS ' + JSON.stringify(status));
+  } catch (_) {}
+  return status;
 }
 
 function swOrchRedirectLegacyTrigger_(handler, e) {
   if (!e || !e.triggerUid) return null;
   if (handler === SW_ORCH_HANDLER) return null;
   if (typeof sw_backgroundOrchestrator !== 'function') return null;
-  return sw_backgroundOrchestrator({
-    legacyHandler: handler,
-    legacyTriggerUid: e.triggerUid
-  });
+  try {
+    return sw_backgroundOrchestrator({
+      legacyHandler: handler,
+      legacyTriggerUid: e.triggerUid
+    });
+  } catch (err) {
+    try {
+      Logger.log('SW_ORCH_LEGACY_REDIRECT_ERROR ' + JSON.stringify({
+        handler: handler,
+        error: swOrchErrorMessage_(err)
+      }));
+    } catch (_) {}
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'LEGACY_REDIRECT_ERROR',
+      handler: handler,
+      error: swOrchErrorMessage_(err)
+    };
+  }
 }
 
 function swOrchMarkIntakeStart_(reason) {
