@@ -108,6 +108,7 @@ function acuityPollAndSubmit(e) {
     // Load UIDs đã có trên Master (cache 55s)
     const existingUIDs = acuityGetMasterUIDs_();
     Logger.log('Existing UIDs on Master: ' + existingUIDs.size);
+    const cancelableUIDs = acuityGetCancelableMasterUIDs_();
 
     const lists = acuityFetchAppointmentLists_(userId, apiKey);
     const activeList = lists.activeList || [];
@@ -135,7 +136,7 @@ function acuityPollAndSubmit(e) {
 
     canceledList.forEach(function (appt) {
       const uid = String(appt.id);
-      if (existingUIDs.has(uid)) canceledExisting.push(appt);
+      if (cancelableUIDs.has(uid)) canceledExisting.push(appt);
       else skipped++;
     });
 
@@ -183,10 +184,13 @@ function acuityPollAndSubmit(e) {
       for (const appt of canceledBatch.items) {
         try {
           const uid = String(appt.id);
-          acuityCancelOnMaster_(uid);
-          CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
-          canceled++;
           checkedCanceled++;
+          if (acuityCancelOnMaster_(uid)) {
+            CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+            canceled++;
+          } else {
+            skipped++;
+          }
         } catch (err) {
           errors++;
           Logger.log('❌ Error canceled appt ' + (appt && appt.id) + ': ' + (err && err.message || err));
@@ -335,6 +339,35 @@ function acuityGetMasterUIDs_() {
   return new Set(uids);
 }
 
+function acuityGetCancelableMasterUIDs_() {
+  const ss  = SpreadsheetApp.getActive();
+  const sh  = ss.getSheetByName('00_Master Appointments');
+  const hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const H   = {};
+  hdr.forEach((h, i) => { if (h) H[String(h).trim()] = i + 1; });
+
+  if (!H['CalendlyEventUID'] || !H['Status']) return new Set();
+
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return new Set();
+
+  const uids = sh.getRange(2, H['CalendlyEventUID'], lastRow - 1, 1).getValues();
+  const statuses = sh.getRange(2, H['Status'], lastRow - 1, 1).getValues();
+  const cancelable = [];
+
+  for (let i = 0; i < uids.length; i++) {
+    const uid = String(uids[i][0] || '').trim();
+    if (!uid) continue;
+    const status = String(statuses[i][0] || '').trim();
+    if (/canceled|rescheduled/i.test(status)) continue;
+    cancelable.push(uid);
+    const rescheduleIndex = uid.indexOf('_R');
+    if (rescheduleIndex > 0) cancelable.push(uid.slice(0, rescheduleIndex));
+  }
+
+  return new Set(cancelable);
+}
+
 function acuityCancelOnMaster_(acuityUid) {
   const ss  = SpreadsheetApp.getActive();
   const sh  = ss.getSheetByName('00_Master Appointments');
@@ -342,10 +375,10 @@ function acuityCancelOnMaster_(acuityUid) {
   const H   = {};
   hdr.forEach((h, i) => { if (h) H[String(h).trim()] = i + 1; });
 
-  if (!H['CalendlyEventUID'] || !H['Status']) return;
+  if (!H['CalendlyEventUID'] || !H['Status']) return false;
 
   const lastRow = sh.getLastRow();
-  if (lastRow < 2) return;
+  if (lastRow < 2) return false;
 
   const uids = sh.getRange(2, H['CalendlyEventUID'], lastRow - 1, 1).getValues();
 
@@ -355,7 +388,7 @@ function acuityCancelOnMaster_(acuityUid) {
     const rowUid = String(uids[i][0]).trim();
     if (!rowUid.startsWith(acuityUid + '_R')) continue;
     const st = String(sh.getRange(i + 2, H['Status']).getValue() || '').trim();
-    if (/canceled/i.test(st)) continue;
+    if (/canceled|rescheduled/i.test(st)) continue;
     masterRow = i + 2; // không break → lấy dòng cuối cùng
   }
 
@@ -365,7 +398,7 @@ function acuityCancelOnMaster_(acuityUid) {
       const rowUid = String(uids[i][0]).trim();
       if (rowUid !== acuityUid) continue;
       const st = String(sh.getRange(i + 2, H['Status']).getValue() || '').trim();
-      if (/canceled/i.test(st)) continue;
+      if (/canceled|rescheduled/i.test(st)) continue;
       masterRow = i + 2;
       break;
     }
@@ -373,13 +406,13 @@ function acuityCancelOnMaster_(acuityUid) {
 
   if (!masterRow) {
     Logger.log('Cancel: no active row found for uid=' + acuityUid);
-    return;
+    return false;
   }
 
   const curStatus = String(sh.getRange(masterRow, H['Status']).getValue() || '').trim();
   if (/canceled/i.test(curStatus)) {
     Logger.log('Already canceled, skip: row=' + masterRow + ' uid=' + acuityUid);
-    return;
+    return false;
   }
 
   sh.getRange(masterRow, H['Status']).setValue('Canceled');
@@ -390,6 +423,7 @@ function acuityCancelOnMaster_(acuityUid) {
     sh.getRange(masterRow, H['Automation Notes']).setValue(prev ? prev + '\n' + note : note);
   }
   Logger.log('Canceled on Master: row=' + masterRow + ' uid=' + acuityUid);
+  return true;
 }
 
 // ─── NORMALIZE ────────────────────────────────────────────────────────────────

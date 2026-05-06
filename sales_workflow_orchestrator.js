@@ -597,6 +597,8 @@ function swOrchResultSummary_(result) {
   var keys = [
     'ok', 'skipped', 'reason', 'message',
     'submitted', 'rescheduled', 'edited', 'canceled', 'updated',
+    'checkedExisting', 'existingCandidates', 'checkedCanceled', 'canceledCandidates',
+    'deferredExisting', 'deferredCanceled',
     'processed', 'errors', 'generatedTasks', 'created', 'repaired',
     'allFresh', 'totalMs'
   ];
