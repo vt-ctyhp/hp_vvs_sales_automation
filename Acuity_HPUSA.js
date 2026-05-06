@@ -60,6 +60,11 @@ const ACUITY_CFG = {
   },
 };
 
+var ACUITY_ACTIVE_EXISTING_CURSOR_PROP = 'ACUITY_ACTIVE_EXISTING_CURSOR';
+var ACUITY_CANCELED_EXISTING_CURSOR_PROP = 'ACUITY_CANCELED_EXISTING_CURSOR';
+var ACUITY_ACTIVE_EXISTING_BATCH_SIZE = 8;
+var ACUITY_CANCELED_EXISTING_BATCH_SIZE = 8;
+
 // ─── TRIGGER MANAGEMENT ───────────────────────────────────────────────────────
 
 function installAcuityTrigger() {
@@ -104,45 +109,40 @@ function acuityPollAndSubmit(e) {
     const existingUIDs = acuityGetMasterUIDs_();
     Logger.log('Existing UIDs on Master: ' + existingUIDs.size);
 
-    const appointments = acuityFetchAppointments_(userId, apiKey);
-    Logger.log('Fetched: ' + appointments.length);
+    const lists = acuityFetchAppointmentLists_(userId, apiKey);
+    const activeList = lists.activeList || [];
+    const canceledList = lists.canceledList || [];
+    Logger.log('Fetched: active=' + activeList.length + ' canceled=' + canceledList.length);
 
     let submitted = 0, rescheduled = 0, edited = 0, canceled = 0, skipped = 0, errors = 0;
+    let checkedExisting = 0, checkedCanceled = 0;
+    const activeExisting = [];
+    const newActive = [];
+    const canceledExisting = [];
 
-    for (const appt of appointments) {
+    activeList.forEach(function (appt) {
+      const uid = String(appt.id);
+      if (existingUIDs.has(uid)) {
+        activeExisting.push(appt);
+        return;
+      }
+      if (SP.getProperty('ACUITY:DONE:' + uid)) {
+        skipped++;
+        return;
+      }
+      newActive.push(appt);
+    });
+
+    canceledList.forEach(function (appt) {
+      const uid = String(appt.id);
+      if (existingUIDs.has(uid)) canceledExisting.push(appt);
+      else skipped++;
+    });
+
+    for (const apptRef of newActive) {
       try {
+        const appt = acuityFetchAppointmentDetail_(userId, apiKey, apptRef);
         const uid = String(appt.id);
-
-        // ── 1. Handle cancel ─────────────────────────────────────────
-        if (appt.canceled) {
-          if (existingUIDs.has(uid)) {
-            acuityCancelOnMaster_(uid);
-            CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
-            canceled++;
-          }
-          skipped++;
-          continue;
-        }
-
-        // ── 2. Đã có trên Master → check reschedule hay edit ─────────
-        if (existingUIDs.has(uid)) {
-          const result = acuityHandleExisting_(appt, formId);
-          if (result === 'rescheduled' || result === 'edited') {
-            CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
-          }
-          if (result === 'rescheduled') rescheduled++;
-          if (result === 'edited') edited++;
-          skipped++;
-          continue;
-        }
-
-        // ── 3. Đã submit (SP) nhưng chưa trong cache Master ──────────
-        if (SP.getProperty('ACUITY:DONE:' + uid)) {
-          skipped++;
-          continue;
-        }
-
-        // ── 4. Mới hoàn toàn → submit form ───────────────────────────
         const fieldMap = acuityToFormFieldMap_(appt);
         acuitySubmitToForm_(formId, fieldMap);
         SP.setProperty('ACUITY:DONE:' + uid, '1');
@@ -150,15 +150,53 @@ function acuityPollAndSubmit(e) {
         CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
         submitted++;
         Logger.log('✅ Submitted: ' + uid + ' | ' + appt.firstName + ' ' + appt.lastName);
-
       } catch (err) {
         errors++;
-        Logger.log('❌ Error appt ' + (appt && appt.id) + ': ' + (err && err.message || err));
+        Logger.log('❌ Error new appt ' + (apptRef && apptRef.id) + ': ' + (err && err.message || err));
+      }
+    }
+
+    if (!submitted) {
+      const activeBatch = acuityRotatingBatch_(activeExisting, ACUITY_ACTIVE_EXISTING_CURSOR_PROP, ACUITY_ACTIVE_EXISTING_BATCH_SIZE);
+      for (const apptRef of activeBatch.items) {
+        try {
+          const appt = acuityFetchAppointmentDetail_(userId, apiKey, apptRef);
+          const result = acuityHandleExisting_(appt, formId);
+          checkedExisting++;
+          if (result === 'rescheduled' || result === 'edited') {
+            CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+          }
+          if (result === 'rescheduled') {
+            rescheduled++;
+            break;
+          }
+          if (result === 'edited') edited++;
+        } catch (err) {
+          errors++;
+          Logger.log('❌ Error existing appt ' + (apptRef && apptRef.id) + ': ' + (err && err.message || err));
+        }
+      }
+    }
+
+    if (!submitted && !rescheduled) {
+      const canceledBatch = acuityRotatingBatch_(canceledExisting, ACUITY_CANCELED_EXISTING_CURSOR_PROP, ACUITY_CANCELED_EXISTING_BATCH_SIZE);
+      for (const appt of canceledBatch.items) {
+        try {
+          const uid = String(appt.id);
+          acuityCancelOnMaster_(uid);
+          CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+          canceled++;
+          checkedCanceled++;
+        } catch (err) {
+          errors++;
+          Logger.log('❌ Error canceled appt ' + (appt && appt.id) + ': ' + (err && err.message || err));
+        }
       }
     }
 
     SP.setProperty('ACUITY_LAST_FETCH', new Date().toISOString());
-    Logger.log('Done — submitted=' + submitted + ' rescheduled=' + rescheduled + ' edited=' + edited + ' canceled=' + canceled + ' skipped=' + skipped + ' errors=' + errors);
+    skipped += Math.max(0, activeExisting.length - checkedExisting) + Math.max(0, canceledExisting.length - checkedCanceled);
+    Logger.log('Done — submitted=' + submitted + ' rescheduled=' + rescheduled + ' edited=' + edited + ' canceled=' + canceled + ' checkedExisting=' + checkedExisting + '/' + activeExisting.length + ' checkedCanceled=' + checkedCanceled + '/' + canceledExisting.length + ' skipped=' + skipped + ' errors=' + errors);
     return {
       ok: errors === 0,
       submitted: submitted,
@@ -168,6 +206,12 @@ function acuityPollAndSubmit(e) {
       skipped: skipped,
       errors: errors,
       formSubmitted: submitted + rescheduled,
+      checkedExisting: checkedExisting,
+      existingCandidates: activeExisting.length,
+      checkedCanceled: checkedCanceled,
+      canceledCandidates: canceledExisting.length,
+      deferredExisting: Math.max(0, activeExisting.length - checkedExisting),
+      deferredCanceled: Math.max(0, canceledExisting.length - checkedCanceled),
       checkedAt: new Date().toISOString()
     };
 
@@ -179,6 +223,19 @@ function acuityPollAndSubmit(e) {
 // ─── ACUITY API ───────────────────────────────────────────────────────────────
 
 function acuityFetchAppointments_(userId, apiKey) {
+  const lists = acuityFetchAppointmentLists_(userId, apiKey);
+  const active = lists.activeList.map(a => acuityFetchAppointmentDetail_(userId, apiKey, a));
+  const allAppts = [...active, ...lists.canceledList];
+  const seen = new Set();
+  return allAppts.filter(a => {
+    const key = String(a.id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function acuityFetchAppointmentLists_(userId, apiKey) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const pastStart = new Date(todayStart.getTime() - 7  * 24 * 3600 * 1000);
@@ -213,29 +270,37 @@ function acuityFetchAppointments_(userId, apiKey) {
   canceledList.forEach(a => { a.canceled = true; });
 
   Logger.log('Active: ' + activeList.length + ' | Canceled: ' + canceledList.length);
+  return { activeList: activeList, canceledList: canceledList };
+}
 
-  // Re-fetch từng active appointment bằng ID để lấy data mới nhất
-  // (list endpoint có thể bị cache phía Acuity)
-  const active = activeList.map(a => {
-    try {
-      const r = UrlFetchApp.fetch(
-        ACUITY_CFG.BASE_URL + '/appointments/' + a.id,
-        { method: 'get', headers: { 'Authorization': auth }, muteHttpExceptions: true }
-      );
-      if (r.getResponseCode() === 200) return JSON.parse(r.getContentText());
-    } catch(_) {}
-    return a; // fallback về list data nếu lỗi
-  });
+function acuityFetchAppointmentDetail_(userId, apiKey, appt) {
+  const auth = 'Basic ' + Utilities.base64Encode(userId + ':' + apiKey);
+  try {
+    const r = UrlFetchApp.fetch(
+      ACUITY_CFG.BASE_URL + '/appointments/' + appt.id,
+      { method: 'get', headers: { 'Authorization': auth }, muteHttpExceptions: true }
+    );
+    if (r.getResponseCode() === 200) return JSON.parse(r.getContentText());
+  } catch(_) {}
+  return appt;
+}
 
-  // Deduplicate trước khi return
-  const allAppts = [...active, ...canceledList];
-  const seen = new Set();
-  return allAppts.filter(a => {
-    const key = String(a.id);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+function acuityRotatingBatch_(items, cursorProp, batchSize) {
+  items = items || [];
+  batchSize = Math.max(1, Number(batchSize || 1) || 1);
+  if (items.length <= batchSize) {
+    try { PropertiesService.getScriptProperties().setProperty(cursorProp, '0'); } catch (_) {}
+    return { items: items.slice(), start: 0, next: 0, total: items.length };
+  }
+  const props = PropertiesService.getScriptProperties();
+  const start = Math.max(0, Number(props.getProperty(cursorProp) || 0) || 0) % items.length;
+  const out = [];
+  for (let i = 0; i < batchSize; i++) {
+    out.push(items[(start + i) % items.length]);
+  }
+  const next = (start + batchSize) % items.length;
+  props.setProperty(cursorProp, String(next));
+  return { items: out, start: start, next: next, total: items.length };
 }
 
 // ─── MASTER HELPERS ───────────────────────────────────────────────────────────
