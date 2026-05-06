@@ -494,25 +494,62 @@ function swOrchRecordSkip_(summary, name, reason) {
 
 function swRequestTaskGeneration_(reason, details) {
   details = details || {};
-  return swOrchWithScriptLock_(5000, function () {
+  var lockedRequest = swOrchWithScriptLock_(5000, function () {
     var props = PropertiesService.getScriptProperties();
     var prior = swOrchReadTaskGenerationRequest_() || {};
-    var now = swOrchIso_(new Date());
-    var request = {
-      ok: true,
-      pending: true,
-      requestId: swOrchTaskGenerationRequestId_(),
-      firstRequestedAt: prior.firstRequestedAt || prior.requestedAt || now,
-      requestedAt: now,
-      reason: reason || details.reason || prior.reason || '',
-      taskId: details.taskId || prior.taskId || '',
-      rootApptId: details.rootApptId || prior.rootApptId || '',
-      requestedBy: details.requestedBy || prior.requestedBy || '',
-      requestCount: Math.max(0, Number(prior.requestCount || 0)) + 1
-    };
+    var request = swBuildTaskGenerationRequest_(reason, details, prior, false);
     props.setProperty(SW_ORCH_TASK_GENERATION_REQUEST_KEY, JSON.stringify(request));
     return request;
   });
+  if (lockedRequest && lockedRequest.ok !== false) return lockedRequest;
+  if (lockedRequest && lockedRequest.reason === 'SCRIPT_LOCK_BUSY') {
+    return swRequestTaskGenerationWithoutLock_(reason, details, lockedRequest.reason);
+  }
+  return lockedRequest;
+}
+
+function swRequestTaskGenerationWithoutLock_(reason, details, lockReason) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var prior = swOrchReadTaskGenerationRequest_() || {};
+    var request = swBuildTaskGenerationRequest_(reason, details || {}, prior, true);
+    request.lockReason = lockReason || 'SCRIPT_LOCK_BUSY';
+    props.setProperty(SW_ORCH_TASK_GENERATION_REQUEST_KEY, JSON.stringify(request));
+    try { Logger.log('SW_ORCH_TASK_GENERATION_REQUEST_LOCKLESS ' + JSON.stringify({
+      requestId: request.requestId,
+      reason: request.reason,
+      taskId: request.taskId,
+      rootApptId: request.rootApptId,
+      requestCount: request.requestCount,
+      lockReason: request.lockReason
+    })); } catch (_) {}
+    return request;
+  } catch (err) {
+    return {
+      ok: false,
+      reason: lockReason || 'TASK_GENERATION_REQUEST_FAILED',
+      error: swOrchErrorMessage_(err)
+    };
+  }
+}
+
+function swBuildTaskGenerationRequest_(reason, details, prior, lockless) {
+  details = details || {};
+  prior = prior || {};
+  var now = swOrchIso_(new Date());
+  return {
+    ok: true,
+    pending: true,
+    requestId: swOrchTaskGenerationRequestId_(),
+    firstRequestedAt: prior.firstRequestedAt || prior.requestedAt || now,
+    requestedAt: now,
+    reason: reason || details.reason || prior.reason || '',
+    taskId: details.taskId || prior.taskId || '',
+    rootApptId: details.rootApptId || prior.rootApptId || '',
+    requestedBy: details.requestedBy || prior.requestedBy || '',
+    requestCount: Math.max(0, Number(prior.requestCount || 0)) + 1,
+    lockless: !!lockless
+  };
 }
 
 function swOrchReadTaskGenerationRequest_() {

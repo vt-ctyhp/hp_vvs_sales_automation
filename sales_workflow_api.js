@@ -229,7 +229,7 @@ function sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user) {
     return sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion');
   }
   if (typeof swRequestTaskGeneration_ !== 'function') {
-    return sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion async helper unavailable');
+    return swTaskGenerationAsyncRequestFallbackResponse_(task, 'ASYNC_HELPER_UNAVAILABLE', 'Task generation request helper is unavailable.');
   }
 
   var request = null;
@@ -247,11 +247,11 @@ function sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user) {
   }
 
   if (request && request.ok === false) {
-    var fallback = sw_tryGenerateSalesWorkflowTasksAfterSubmit_('Task completion async request failed');
-    if (fallback && typeof fallback === 'object') {
-      fallback.asyncRequestError = request.error || request.reason || 'TASK_GENERATION_REQUEST_FAILED';
-    }
-    return fallback;
+    return swTaskGenerationAsyncRequestFallbackResponse_(
+      task,
+      request.reason || 'TASK_GENERATION_REQUEST_FAILED',
+      request.error || request.reason || 'Task generation request could not be recorded.'
+    );
   }
 
   return {
@@ -263,6 +263,21 @@ function sw_requestSalesWorkflowTaskGenerationAfterSubmit_(task, user) {
     taskId: task && task.taskId || '',
     rootApptId: task && (task.root || task.appt) || '',
     requestCount: Number(request && request.requestCount || 0)
+  };
+}
+
+function swTaskGenerationAsyncRequestFallbackResponse_(task, reason, error) {
+  return {
+    ok: true,
+    skipped: true,
+    reason: 'ASYNC_REQUEST_NOT_RECORDED',
+    message: 'Task was saved. Queue refresh remains pending; use manual Refresh Queue if dependent tasks are needed immediately.',
+    requestedAt: swIso_(new Date()),
+    taskId: task && task.taskId || '',
+    rootApptId: task && (task.root || task.appt) || '',
+    requestCount: 0,
+    asyncRequestError: swTrim_(error || reason || ''),
+    asyncRequestReason: swTrim_(reason || '')
   };
 }
 
@@ -455,7 +470,9 @@ function swCompleteTaskGenerationTimingExtra_(result) {
     reason: result.reason || '',
     requestCount: Number(result.requestCount || 0),
     error: result.error || '',
-    asyncRequestError: result.asyncRequestError || ''
+    asyncRequestError: result.asyncRequestError || '',
+    asyncRequestReason: result.asyncRequestReason || '',
+    lockless: !!result.lockless
   };
 }
 
