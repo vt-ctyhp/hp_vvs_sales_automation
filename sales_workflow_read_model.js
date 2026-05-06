@@ -933,6 +933,8 @@ function swBuildTaskDashboardProjections_(ss, state, builtAt) {
     var builtAtIso = swIso_(builtAt);
     var expiresAtIso = swIso_(new Date(builtAt.getTime() + SW_TASK_DASHBOARD_CACHE_SECONDS * 1000));
     var keys = [];
+    var publicTasksById = {};
+    var userProjectionPayloads = [];
     users.forEach(function (user) {
       var buckets = swBuildVisibleTaskBuckets_(state, user, { cleanupCampaignTabEnabled: cleanupTabEnabled });
       var counts = {
@@ -952,15 +954,27 @@ function swBuildTaskDashboardProjections_(ss, state, builtAt) {
         counts: counts,
         ageSeconds: 0
       };
-      keys.push(swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, 'bootstrap', swMergeObjects_(base, {
-        tasks: buckets.mine
-      })));
+      var views = {};
       ['mine', 'cleanup', 'coverage', 'admin'].forEach(function (viewName) {
-        keys.push(swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, 'view:' + viewName, swMergeObjects_(base, {
-          view: viewName,
-          tasks: buckets[viewName] || []
-        })));
+        views[viewName] = swTaskDashboardProjectionTaskIds_(buckets[viewName] || [], publicTasksById);
       });
+      userProjectionPayloads.push({
+        user: user,
+        payload: swMergeObjects_(base, {
+          compact: true,
+          views: views
+        })
+      });
+    });
+    keys.push(swPutTaskDashboardTaskDictionary_(ss, {
+      ok: true,
+      version: SW_READ_MODEL_VERSION,
+      builtAt: builtAtIso,
+      expiresAt: expiresAtIso,
+      tasksById: publicTasksById
+    }));
+    userProjectionPayloads.forEach(function (entry) {
+      keys.push(swPutTaskDashboardProjection_(ss, entry.user, cleanupTabEnabled, 'user', entry.payload));
     });
     swPutTaskDashboardProjectionIndex_(ss, keys.filter(Boolean));
     swClearTaskDashboardInvalidation_(ss);
@@ -983,23 +997,24 @@ function swBuildTaskDashboardProjections_(ss, state, builtAt) {
 }
 
 function swReadTaskDashboardBootstrapProjection_(ss, user, config) {
-  return swReadTaskDashboardProjection_(ss, user, config, 'bootstrap');
+  return swReadTaskDashboardProjection_(ss, user, config, 'mine', true);
 }
 
 function swReadTaskDashboardViewProjection_(ss, user, viewName, config) {
   viewName = swTrim_(viewName || 'mine');
   if (['mine', 'cleanup', 'coverage', 'admin'].indexOf(viewName) < 0) return null;
-  return swReadTaskDashboardProjection_(ss, user, config, 'view:' + viewName);
+  return swReadTaskDashboardProjection_(ss, user, config, viewName, false);
 }
 
-function swReadTaskDashboardProjection_(ss, user, config, projectionType) {
+function swReadTaskDashboardProjection_(ss, user, config, viewName, bootstrap) {
   if (!swTaskReadModelServingEnabled_(config)) return null;
   var cleanupTabEnabled = typeof swDataCleanupCampaignTabEnabled_ === 'function'
     ? swDataCleanupCampaignTabEnabled_(config || [])
     : false;
   user = user || {};
   if (!user.email) return null;
-  var key = swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType);
+  viewName = swTrim_(viewName || 'mine');
+  var key = swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, 'user');
   var payload = swTaskDashboardProjectionCacheGet_(key);
   if (!payload || payload.version !== SW_READ_MODEL_VERSION) return null;
   if (payload.signature !== swTaskDashboardUserSignature_(user, cleanupTabEnabled)) return null;
@@ -1009,9 +1024,22 @@ function swReadTaskDashboardProjection_(ss, user, config, projectionType) {
   if (!builtAtMs || !expiresAtMs || expiresAtMs < nowMs) return null;
   var invalidatedAt = swTaskDashboardInvalidatedAt_(ss);
   if (invalidatedAt && swReadModelDateMs_(invalidatedAt) > builtAtMs) return null;
-  payload.ageSeconds = Math.max(0, Math.round((nowMs - builtAtMs) / 1000));
-  payload.source = 'taskDashboardProjection';
-  return payload;
+  var tasks = swTaskDashboardProjectionTasksForView_(ss, payload, viewName);
+  if (!tasks) return null;
+  return {
+    ok: true,
+    version: payload.version,
+    builtAt: payload.builtAt,
+    expiresAt: payload.expiresAt,
+    email: payload.email,
+    signature: payload.signature,
+    totalTasks: payload.totalTasks || 0,
+    counts: payload.counts || {},
+    ageSeconds: Math.max(0, Math.round((nowMs - builtAtMs) / 1000)),
+    source: 'taskDashboardProjection',
+    view: bootstrap ? '' : viewName,
+    tasks: tasks
+  };
 }
 
 function swTaskDashboardProjectionUsers_(ss) {
@@ -1035,6 +1063,12 @@ function swPutTaskDashboardProjection_(ss, user, cleanupTabEnabled, projectionTy
   return result && result.ok === false ? '' : key;
 }
 
+function swPutTaskDashboardTaskDictionary_(ss, payload) {
+  var key = swTaskDashboardTaskDictionaryKey_(ss);
+  var result = swTaskDashboardProjectionCachePut_(key, payload);
+  return result && result.ok === false ? '' : key;
+}
+
 function swTaskDashboardProjectionKey_(ss, user, cleanupTabEnabled, projectionType) {
   return 'sw:taskDashboard:v1:' + ss.getId() + ':' +
     encodeURIComponent(swNormEmail_(user && user.email || '')) + ':' +
@@ -1051,6 +1085,35 @@ function swTaskDashboardUserSignature_(user, cleanupTabEnabled) {
     cleanupTabEnabled ? 'cleanupY' : 'cleanupN'
   ];
   return parts.join('|').replace(/[^a-z0-9@._|,-]+/gi, '').slice(0, 220);
+}
+
+function swTaskDashboardProjectionTaskIds_(tasks, publicTasksById) {
+  var ids = [];
+  (tasks || []).forEach(function (task) {
+    if (!task || !task.taskId) return;
+    ids.push(task.taskId);
+    if (!publicTasksById[task.taskId]) publicTasksById[task.taskId] = task;
+  });
+  return ids;
+}
+
+function swTaskDashboardProjectionTasksForView_(ss, payload, viewName) {
+  var ids = payload && payload.views ? payload.views[viewName] : null;
+  if (!ids) return null;
+  var dictPayload = swTaskDashboardProjectionCacheGet_(swTaskDashboardTaskDictionaryKey_(ss));
+  if (!dictPayload || dictPayload.version !== SW_READ_MODEL_VERSION) return null;
+  if (dictPayload.builtAt !== payload.builtAt) return null;
+  var tasksById = dictPayload.tasksById || {};
+  var tasks = [];
+  ids.forEach(function (taskId) {
+    var task = tasksById[taskId];
+    if (task) tasks.push(task);
+  });
+  return tasks;
+}
+
+function swTaskDashboardTaskDictionaryKey_(ss) {
+  return 'sw:taskDashboard:tasks:v1:' + ss.getId();
 }
 
 function swTaskDashboardProjectionCacheGet_(key) {
