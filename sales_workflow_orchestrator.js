@@ -10,7 +10,8 @@ var SW_ORCH_HANDLER = 'sw_backgroundOrchestrator';
 var SW_ORCH_LEASE_KEY = 'SW_ORCH_LEASE_JSON';
 var SW_ORCH_INTAKE_KEY = 'SW_ORCH_INTAKE_JSON';
 var SW_ORCH_STATE_KEY = 'SW_ORCH_STATE_JSON';
-var SW_ORCH_LEASE_MS = 30 * 60 * 1000;
+var SW_ORCH_LEASE_MS = 8 * 60 * 1000;
+var SW_ORCH_STALE_HEARTBEAT_MS = 8 * 60 * 1000;
 var SW_ORCH_INTAKE_DRAIN_MS = 2 * 60 * 1000;
 var SW_ORCH_INTAKE_STALE_MS = 45 * 60 * 1000;
 var SW_ORCH_HOURLY_MS = 60 * 60 * 1000;
@@ -234,10 +235,12 @@ function sw_removeBackgroundOrchestratorTrigger() {
 }
 
 function sw_getBackgroundOrchestratorStatus() {
+  var lease = swOrchReadJsonProperty_(SW_ORCH_LEASE_KEY, null);
   var status = {
     ok: true,
     handler: SW_ORCH_HANDLER,
-    lease: swOrchReadJsonProperty_(SW_ORCH_LEASE_KEY, null),
+    lease: lease,
+    leaseStale: swOrchLeaseStale_(lease),
     intake: swOrchReadJsonProperty_(SW_ORCH_INTAKE_KEY, {}),
     state: swOrchReadState_(),
     triggers: swOrchListRelevantTriggers_()
@@ -246,6 +249,23 @@ function sw_getBackgroundOrchestratorStatus() {
     Logger.log('SW_ORCH_STATUS ' + JSON.stringify(status));
   } catch (_) {}
   return status;
+}
+
+function sw_clearBackgroundOrchestratorLease() {
+  return swOrchWithScriptLock_(5000, function () {
+    var props = PropertiesService.getScriptProperties();
+    var prior = swOrchReadJsonProperty_(SW_ORCH_LEASE_KEY, null);
+    props.deleteProperty(SW_ORCH_LEASE_KEY);
+    var result = {
+      ok: true,
+      cleared: !!prior,
+      priorLease: prior
+    };
+    try {
+      Logger.log('SW_ORCH_LEASE_CLEARED ' + JSON.stringify(result));
+    } catch (_) {}
+    return result;
+  });
 }
 
 function swOrchRedirectLegacyTrigger_(handler, e) {
@@ -348,7 +368,7 @@ function swOrchAcquireLease_(runId, sourceEvent) {
     var now = new Date();
     var nowMs = now.getTime();
     var existing = swOrchReadJsonProperty_(SW_ORCH_LEASE_KEY, null);
-    if (existing && existing.runId && swOrchDateMs_(existing.expiresAt) > nowMs) {
+    if (existing && existing.runId && !swOrchLeaseStale_(existing) && swOrchDateMs_(existing.expiresAt) > nowMs) {
       return { ok: false, reason: 'LEASE_ACTIVE', lease: existing };
     }
     var lease = {
@@ -361,6 +381,16 @@ function swOrchAcquireLease_(runId, sourceEvent) {
     PropertiesService.getScriptProperties().setProperty(SW_ORCH_LEASE_KEY, JSON.stringify(lease));
     return { ok: true, lease: lease };
   });
+}
+
+function swOrchLeaseStale_(lease) {
+  if (!lease || !lease.runId) return false;
+  var nowMs = new Date().getTime();
+  var expiresMs = swOrchDateMs_(lease.expiresAt || '');
+  if (expiresMs && expiresMs <= nowMs) return true;
+  var heartbeatMs = swOrchDateMs_(lease.heartbeatAt || lease.startedAt || '');
+  if (!heartbeatMs) return true;
+  return nowMs - heartbeatMs > SW_ORCH_STALE_HEARTBEAT_MS;
 }
 
 function swOrchHeartbeat_(runId, currentJob) {
