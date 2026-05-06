@@ -117,6 +117,7 @@ function swReadEmployeeScheduleAdminData_(ss) {
     roleOptions: [SW_OWNER_ROLES.SALES_REP, SW_OWNER_ROLES.JOC],
     labOptions: ['None', 'Primary', 'Backup'],
     naturalOptions: ['None', 'Primary', 'Backup'],
+    generalOptions: ['None', 'Primary', 'Backup'],
     settings: {
       clientAdvisorRoundRobin: swTruthy_(swConfigValue_(config, 'SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN', 'N'))
     },
@@ -222,7 +223,7 @@ function swReadEmployeeRosterRows_(ss) {
       skills: {
         labDiamond: C.lab >= 0 ? swNormalizeLabSkill_(values[i][C.lab]) : 'None',
         naturalDiamond: C.natural >= 0 ? swNormalizeNaturalSkill_(values[i][C.natural]) : 'None',
-        generalAppointment: C.general < 0 || !swTrim_(values[i][C.general]) || swTruthy_(values[i][C.general])
+        generalAppointment: C.general >= 0 ? swNormalizeGeneralSkill_(values[i][C.general]) : 'Primary'
       },
       skillNotes: C.skillNotes >= 0 ? swTrim_(values[i][C.skillNotes]) : '',
       days: {}
@@ -316,7 +317,7 @@ function swDefaultEmployeeScheduleDays_() {
 }
 
 function swDefaultRepSkills_() {
-  return { labDiamond: 'None', naturalDiamond: 'None', generalAppointment: true };
+  return { labDiamond: 'None', naturalDiamond: 'None', generalAppointment: 'None' };
 }
 
 function swNormalizeEmployeeRoleList_(value) {
@@ -353,6 +354,10 @@ function swNormalizeNaturalSkill_(value) {
 }
 
 function swNormalizeLabSkill_(value) {
+  return swNormalizeDiamondSkill_(value);
+}
+
+function swNormalizeGeneralSkill_(value) {
   return swNormalizeDiamondSkill_(value);
 }
 
@@ -474,7 +479,7 @@ function swNormalizeRepSkills_(skills) {
   return {
     labDiamond: swNormalizeLabSkill_(skills.labDiamond),
     naturalDiamond: swNormalizeNaturalSkill_(skills.naturalDiamond),
-    generalAppointment: skills.generalAppointment == null ? true : swTruthy_(skills.generalAppointment)
+    generalAppointment: skills.generalAppointment == null ? 'None' : swNormalizeGeneralSkill_(skills.generalAppointment)
   };
 }
 
@@ -744,6 +749,7 @@ function swAppointmentColumnIndex_(headers) {
     visitDate: swPickIndex_(H, ['Visit Date', 'Appointment Date', 'Date']),
     visitTime: swPickIndex_(H, ['Visit Time', 'Appointment Time', 'Time']),
     visitType: swPickIndex_(H, ['Visit Type', 'Appointment Type']),
+    visitNumber: swPickIndex_(H, ['Visit #', 'Visit Number', 'Visit No']),
     diamondType: swPickIndex_(H, ['Diamond Type', 'Stone Type', 'Center Stone Type']),
     status: swPickIndex_(H, ['Status']),
     active: swPickIndex_(H, ['Active?', 'Active', 'Is Active']),
@@ -807,6 +813,7 @@ function swAppointmentRecordFromRows_(drow, vrow, idx, rowNumber) {
     visitDate: swTrim_(swCell_(drow, idx.visitDate)),
     visitTime: swFormatAppointmentTime_(swCell_(drow, idx.visitTime), swCell_(vrow, idx.visitTime)),
     visitType: swTrim_(swCell_(drow, idx.visitType)),
+    visitNumber: swTrim_(swCell_(drow, idx.visitNumber)),
     diamondType: swTrim_(swCell_(drow, idx.diamondType)),
     visitDateRaw: swCell_(vrow, idx.visitDate),
     visitTimeRaw: swCell_(vrow, idx.visitTime),

@@ -149,11 +149,12 @@ function swGenerateSalesWorkflowTasksUnlocked_() {
       paused: true
     };
   }
+  var now = new Date();
+  ctx.now = now;
   var masterRows = swReadAppointments_(ss);
   swPrepareClientAdvisorRoundRobin_(ss, ctx, masterRows);
   var taskState = swReadTaskState_(ss);
   swBeginDeferredTaskWrites_(ss, taskState);
-  var now = new Date();
   var summary = {
     ok: true,
     generatedAt: swIso_(now),
@@ -2620,8 +2621,8 @@ function swWriteEmployeeRosterRows_(ss, people, actor) {
       lab: swNormalizeLabSkill_(skills.labDiamond || 'None'),
       naturaldiamond: swNormalizeNaturalSkill_(skills.naturalDiamond || 'None'),
       natural: swNormalizeNaturalSkill_(skills.naturalDiamond || 'None'),
-      generalappointment: swTruthy_(skills.generalAppointment) ? 'Y' : 'N',
-      general: swTruthy_(skills.generalAppointment) ? 'Y' : 'N',
+      generalappointment: swNormalizeGeneralSkill_(skills.generalAppointment || 'None'),
+      general: swNormalizeGeneralSkill_(skills.generalAppointment || 'None'),
       skillnotes: swTrim_(person.skillNotes || ''),
       updatedat: now,
       updatedby: actorLabel

@@ -4172,7 +4172,7 @@
       return [
         '<div class="schedule-pill-row">',
           '<label class="schedule-natural-control"><span>Lab</span><select class="schedule-skill-lab">' + optionTags(['None', 'Primary', 'Backup'], skills.labDiamond || 'None') + '</select></label>',
-          '<label class="schedule-pill-control"><input class="schedule-chip-input schedule-skill-general" type="checkbox"' + (skills.generalAppointment !== false ? ' checked' : '') + '><span>General</span></label>',
+          '<label class="schedule-natural-control"><span>General</span><select class="schedule-skill-general">' + optionTags(['None', 'Primary', 'Backup'], skills.generalAppointment || 'None') + '</select></label>',
           '<label class="schedule-natural-control"><span>Natural</span><select class="schedule-skill-natural">' + optionTags(['None', 'Primary', 'Backup'], skills.naturalDiamond || 'None') + '</select></label>',
         '</div>'
       ].join('');
@@ -4363,7 +4363,7 @@
           skills: {
             labDiamond: (row.querySelector('.schedule-skill-lab') || {}).value || 'None',
             naturalDiamond: (row.querySelector('.schedule-skill-natural') || {}).value || 'None',
-            generalAppointment: !!((row.querySelector('.schedule-skill-general') || {}).checked)
+            generalAppointment: (row.querySelector('.schedule-skill-general') || {}).value || 'None'
           },
           coveragePartner: (row.querySelector('.schedule-coverage-partner') || {}).value || ''
         };

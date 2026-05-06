@@ -595,6 +595,7 @@ function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
   ctx.employeeSchedulePeople = people;
   var state = {
     enabled: enabled,
+    appointments: appointments || [],
     countsByDate: {},
     busyBySlotOwner: {},
     assignedByRoot: {},
@@ -616,6 +617,7 @@ function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
     if (!rec || (!rec.assignedRep && !rec.assignedRepEmail)) return;
     var visitAt = swVisitDateTime_(rec, ctx.tz);
     if (!visitAt) return;
+    if (!swIsAppointmentActive_(rec)) return;
     var existingOwner = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assignedRep, rec.assignedRepEmail, SW_OWNER_ROLES.SALES_REP);
     if (!existingOwner) return;
     var dateKey = swDateKey_(visitAt);
@@ -640,47 +642,185 @@ function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
   if (!visitAt) return false;
   var root = rec.root || rec.appt || '';
 
+  var currentOwner = (rec.assignedRep || rec.assignedRepEmail)
+    ? swCanonicalClientAdvisorOwner_(ss, ctx, rec.assignedRep, rec.assignedRepEmail)
+    : null;
+  var preferredPrevious = swPickPreviousClientAdvisorForAppointment_(ss, ctx, rr, visitAt, rec);
+  var currentIsPreferredPrevious = preferredPrevious && currentOwner &&
+    swNorm_(preferredPrevious.name) === swNorm_(currentOwner.name);
+  if (preferredPrevious && !currentIsPreferredPrevious) {
+    return swApplyClientAdvisorAssignment_(ss, ctx, rr, rec, visitAt, preferredPrevious, summary, 'autoReassignedClientAdvisors');
+  }
+
   var currentUnavailable = false;
+  var currentUnqualified = false;
+  var currentBackupShouldYield = false;
   if (rec.assignedRep || rec.assignedRepEmail) {
-    var currentOwner = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assignedRep, rec.assignedRepEmail, SW_OWNER_ROLES.SALES_REP);
     var currentAvail = currentOwner ? swAvailabilityFor_(ss, currentOwner.name, visitAt, ctx) : null;
     currentUnavailable = !currentOwner || (currentAvail.known && !currentAvail.available) ||
       (currentOwner && swClientAdvisorHasAppointmentConflict_(rr, currentOwner.name, visitAt, rec));
-    if (!currentUnavailable) {
-      var existingAdvisor = swRoundRobinAdvisorByName_(rr, currentOwner.name);
-      if (existingAdvisor && existingAdvisor.defaultJoc && !rec.assistedRep) {
-        var existingLinkedJoc = swCanonicalWorkflowOwnerForRole_(ss, ctx, existingAdvisor.defaultJoc, '', SW_OWNER_ROLES.JOC);
-        if (existingLinkedJoc && swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, existingAdvisor, existingLinkedJoc.name, existingLinkedJoc.email)) {
-          rec.assistedRep = existingLinkedJoc.name;
-          rec.assistedRepEmail = existingLinkedJoc.email;
-          summary.autoLinkedJocFromAdvisor = (summary.autoLinkedJocFromAdvisor || 0) + 1;
-          return true;
-        }
+    var existingAdvisor = currentOwner ? swRoundRobinAdvisorByName_(rr, currentOwner.name) : null;
+    currentUnqualified = !existingAdvisor || !swAdvisorQualifiedForAppointment_(existingAdvisor, rec);
+    currentBackupShouldYield = !currentIsPreferredPrevious && !currentUnavailable && !currentUnqualified &&
+      swClientAdvisorBackupShouldYield_(ss, ctx, rr, existingAdvisor, visitAt, rec);
+    if (!currentUnavailable && !currentUnqualified && !currentBackupShouldYield) {
+      if (swCurrentClientAdvisorNeedsLinkedJoc_(ss, ctx, existingAdvisor, rec)) {
+        return swApplyClientAdvisorAssignment_(ss, ctx, rr, rec, visitAt, existingAdvisor, summary, 'autoLinkedJocFromAdvisor');
       }
       return false;
     }
   }
 
-  var existingRootAssignment = !rec.assignedRep && root ? rr.assignedByRoot[root] : null;
+  var existingRootAssignment = !rec.assignedRep && root ? swExistingRootClientAdvisorAssignment_(ss, ctx, rr, visitAt, rec, root) : null;
   var chosen = existingRootAssignment || swPickClientAdvisorRoundRobin_(ss, ctx, rr, visitAt, rec, rec.assignedRep || '');
   if (!chosen || !chosen.name) {
     summary.clientAdvisorRoundRobinNoOwner = (summary.clientAdvisorRoundRobinNoOwner || 0) + 1;
     return false;
   }
 
-  var linkedJoc = swTrim_(chosen.defaultJoc || '');
+  return swApplyClientAdvisorAssignment_(ss, ctx, rr, rec, visitAt, chosen, summary,
+    (currentUnavailable || currentUnqualified || currentBackupShouldYield) ? 'autoReassignedClientAdvisors' : 'autoAssignedClientAdvisors');
+}
+
+function swApplyClientAdvisorAssignment_(ss, ctx, rr, rec, visitAt, advisor, summary, summaryKey) {
+  if (!advisor || !advisor.name) return false;
+  var previousName = swNorm_(rec.assignedRep || '');
+  var previousEmail = swNormEmail_(rec.assignedRepEmail || '');
+  var nextName = swNorm_(advisor.name || '');
+  var nextEmail = swNormEmail_(advisor.email || '');
+  var ownerChanged = previousName !== nextName && (!previousEmail || !nextEmail || previousEmail !== nextEmail);
+  var linkedJoc = swTrim_(advisor.defaultJoc || '');
   var linkedJocUser = linkedJoc ? swCanonicalWorkflowOwnerForRole_(ss, ctx, linkedJoc, '', SW_OWNER_ROLES.JOC) : null;
-  if (!swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, chosen, linkedJocUser ? linkedJocUser.name : '', linkedJocUser ? linkedJocUser.email : '')) return false;
-  rec.assignedRep = chosen.name;
-  rec.assignedRepEmail = chosen.email || '';
-  rec.assistedRep = linkedJocUser ? linkedJocUser.name : rec.assistedRep || '';
-  rec.assistedRepEmail = linkedJocUser ? linkedJocUser.email : rec.assistedRepEmail;
-  if (root) rr.assignedByRoot[root] = chosen;
-  swCountClientAdvisorAssignment_(rr, chosen.name, visitAt);
-  swTrackClientAdvisorBusySlot_(rr, chosen.name, visitAt, rec);
-  if (currentUnavailable) summary.autoReassignedClientAdvisors = (summary.autoReassignedClientAdvisors || 0) + 1;
-  else summary.autoAssignedClientAdvisors = (summary.autoAssignedClientAdvisors || 0) + 1;
+  var linkedJocName = linkedJocUser ? linkedJocUser.name : linkedJoc;
+  var linkedJocEmail = linkedJocUser ? linkedJocUser.email : '';
+
+  if (!swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, advisor, linkedJocName, linkedJocEmail)) return false;
+  rec.assignedRep = advisor.name;
+  rec.assignedRepEmail = advisor.email || '';
+  rec.assistedRep = linkedJocName || '';
+  rec.assistedRepEmail = linkedJocEmail || '';
+  if (rec.root || rec.appt) rr.assignedByRoot[rec.root || rec.appt] = advisor;
+  if (ownerChanged) {
+    swCountClientAdvisorAssignment_(rr, advisor.name, visitAt);
+    swTrackClientAdvisorBusySlot_(rr, advisor.name, visitAt, rec);
+  }
+  summary = summary || {};
+  if (summaryKey) summary[summaryKey] = (summary[summaryKey] || 0) + 1;
   return true;
+}
+
+function swCurrentClientAdvisorNeedsLinkedJoc_(ss, ctx, advisor, rec) {
+  if (!advisor || !advisor.defaultJoc) return false;
+  var linkedJoc = swCanonicalWorkflowOwnerForRole_(ss, ctx, advisor.defaultJoc, '', SW_OWNER_ROLES.JOC);
+  if (!linkedJoc) return false;
+  if (!rec.assistedRep && !rec.assistedRepEmail) return true;
+  var currentJoc = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assistedRep, rec.assistedRepEmail, SW_OWNER_ROLES.JOC);
+  if (currentJoc) {
+    if (linkedJoc.email && currentJoc.email && linkedJoc.email === currentJoc.email) return false;
+    return swNorm_(linkedJoc.name) !== swNorm_(currentJoc.name);
+  }
+  return swNorm_(rec.assistedRep) !== swNorm_(linkedJoc.name);
+}
+
+function swExistingRootClientAdvisorAssignment_(ss, ctx, rr, visitAt, rec, root) {
+  var existing = root && rr.assignedByRoot ? rr.assignedByRoot[root] : null;
+  if (!existing || !existing.name) return null;
+  var advisor = swRoundRobinAdvisorByName_(rr, existing.name);
+  if (!advisor) return null;
+  if (!swAdvisorQualifiedForAppointment_(advisor, rec)) return null;
+  if (!swAvailabilityFor_(ss, advisor.name, visitAt, ctx).available) return null;
+  if (swClientAdvisorHasAppointmentConflict_(rr, advisor.name, visitAt, rec)) return null;
+  if (swClientAdvisorBackupShouldYield_(ss, ctx, rr, advisor, visitAt, rec)) return null;
+  return advisor;
+}
+
+function swClientAdvisorBackupShouldYield_(ss, ctx, rr, advisor, visitAt, rec) {
+  if (swAdvisorTierForAppointment_(advisor, rec) !== 'Backup') return false;
+  return swHasPrimaryClientAdvisorCandidate_(ss, ctx, rr, visitAt, rec, advisor.name);
+}
+
+function swHasPrimaryClientAdvisorCandidate_(ss, ctx, rr, visitAt, rec, excludeName) {
+  return (rr.advisors || []).some(function (advisor) {
+    if (!advisor || !advisor.name) return false;
+    if (excludeName && swNorm_(advisor.name) === swNorm_(excludeName)) return false;
+    if (swAdvisorTierForAppointment_(advisor, rec) !== 'Primary') return false;
+    if (!swAvailabilityFor_(ss, advisor.name, visitAt, ctx).available) return false;
+    if (swClientAdvisorHasAppointmentConflict_(rr, advisor.name, visitAt, rec)) return false;
+    return true;
+  });
+}
+
+function swPickPreviousClientAdvisorForAppointment_(ss, ctx, rr, visitAt, rec) {
+  if (!swShouldPreferPreviousClientAdvisor_(rec)) return null;
+  var previous = swFindPreviousClientAdvisorForAppointment_(ss, ctx, rr, visitAt, rec);
+  if (!previous || !previous.name) return null;
+  var advisor = swRoundRobinAdvisorByName_(rr, previous.name);
+  if (!advisor) return null;
+  if (!swAdvisorQualifiedForAppointment_(advisor, rec)) return null;
+  if (!swAvailabilityFor_(ss, advisor.name, visitAt, ctx).available) return null;
+  if (swClientAdvisorHasAppointmentConflict_(rr, advisor.name, visitAt, rec)) return null;
+  return advisor;
+}
+
+function swFindPreviousClientAdvisorForAppointment_(ss, ctx, rr, visitAt, rec) {
+  var now = ctx && ctx.now instanceof Date ? ctx.now : new Date();
+  var currentMs = visitAt instanceof Date ? visitAt.getTime() : 0;
+  var nowMs = now.getTime();
+  var candidates = [];
+  (rr.appointments || []).forEach(function (other) {
+    if (!other || !swIsAppointmentActive_(other)) return;
+    if (other.row && rec.row && other.row === rec.row) return;
+    if (other.appt && rec.appt && other.appt === rec.appt) return;
+    if (!swPreviousAppointmentMatches_(rec, other)) return;
+    var otherVisitAt = swVisitDateTime_(other, ctx.tz);
+    if (!otherVisitAt) return;
+    var otherMs = otherVisitAt.getTime();
+    if (!(otherMs < currentMs && otherMs < nowMs)) return;
+    var owner = swCanonicalClientAdvisorOwner_(ss, ctx, other.assignedRep, other.assignedRepEmail);
+    if (!owner) return;
+    candidates.push({ visitAt: otherVisitAt, owner: owner });
+  });
+  if (!candidates.length) return null;
+  candidates.sort(function (a, b) {
+    return b.visitAt.getTime() - a.visitAt.getTime();
+  });
+  return candidates[0].owner;
+}
+
+function swPreviousAppointmentMatches_(rec, other) {
+  var root = swTrim_((rec && rec.root) || (rec && rec.appt) || '');
+  if (root) return swTrim_((other && other.root) || (other && other.appt) || '') === root;
+  var email = swNormEmail_((rec && rec.email) || '');
+  if (email && email === swNormEmail_((other && other.email) || '')) return true;
+  var phone = swNormPhone_((rec && rec.phone) || '');
+  return !!(phone && phone === swNormPhone_((other && other.phone) || ''));
+}
+
+function swShouldPreferPreviousClientAdvisor_(rec) {
+  var visitType = swNorm_((rec && rec.visitType) || '');
+  if (visitType.indexOf('diamond viewing') >= 0) return true;
+  if (/\b(2nd|second|follow up|follow-up|returning)\b/.test(visitType)) return true;
+  var visitNumber = Number(String((rec && rec.visitNumber) || '').replace(/[^0-9.]+/g, ''));
+  return isFinite(visitNumber) && visitNumber > 1;
+}
+
+function swCanonicalClientAdvisorOwner_(ss, ctx, name, email) {
+  var owner = swCanonicalWorkflowOwnerForRole_(ss, ctx, name, email, SW_OWNER_ROLES.SALES_REP);
+  if (owner) return owner;
+  var raw = swTrim_(name || '');
+  if (!raw) return null;
+  var pieces = raw.split(/[,\n;]/);
+  for (var i = 0; i < pieces.length; i++) {
+    var cleaned = swStripWorkflowOwnerQualifier_(pieces[i]);
+    if (!cleaned) continue;
+    owner = swCanonicalWorkflowOwnerForRole_(ss, ctx, cleaned, '', SW_OWNER_ROLES.SALES_REP);
+    if (owner) return owner;
+  }
+  return null;
+}
+
+function swStripWorkflowOwnerQualifier_(value) {
+  return swTrim_(String(value || '').replace(/\s*\([^)]*\)\s*/g, ' '));
 }
 
 function swRoundRobinAdvisorByName_(rr, name) {
@@ -713,22 +853,38 @@ function swPickClientAdvisorRoundRobin_(ss, ctx, rr, visitAt, rec, excludeName) 
 }
 
 function swAdvisorQualifiedForAppointment_(advisor, rec) {
-  var skills = advisor.skills || swDefaultRepSkills_();
-  var kind = swAppointmentDiamondKind_(rec);
-  if (kind === 'natural') return swNormalizeNaturalSkill_(skills.naturalDiamond) !== 'None';
-  if (kind === 'lab') return swNormalizeLabSkill_(skills.labDiamond) !== 'None';
-  return swTruthy_(skills.generalAppointment);
+  return swAdvisorTierForAppointment_(advisor, rec) !== 'None';
+}
+
+function swAdvisorTierForAppointment_(advisor, rec) {
+  var skills = (advisor && advisor.skills) || swDefaultRepSkills_();
+  var kind = swAppointmentAdvisorKind_(rec);
+  if (kind === 'natural') return swNormalizeNaturalSkill_(skills.naturalDiamond);
+  if (kind === 'lab') return swNormalizeLabSkill_(skills.labDiamond);
+  if (kind === 'diamond') {
+    return swBestAdvisorSkillTier_([
+      swNormalizeLabSkill_(skills.labDiamond),
+      swNormalizeNaturalSkill_(skills.naturalDiamond)
+    ]);
+  }
+  return swNormalizeGeneralSkill_(skills.generalAppointment);
+}
+
+function swBestAdvisorSkillTier_(tiers) {
+  tiers = tiers || [];
+  for (var i = 0; i < tiers.length; i++) {
+    if (tiers[i] === 'Primary') return 'Primary';
+  }
+  for (var j = 0; j < tiers.length; j++) {
+    if (tiers[j] === 'Backup') return 'Backup';
+  }
+  return 'None';
 }
 
 function swPrioritizeDiamondAdvisorPool_(candidates, rec) {
-  var kind = swAppointmentDiamondKind_(rec);
-  if (kind === 'lab') return swPrioritizeAdvisorPoolByTier_(candidates, function (advisor) {
-    return swNormalizeLabSkill_((advisor.skills || {}).labDiamond);
+  return swPrioritizeAdvisorPoolByTier_(candidates, function (advisor) {
+    return swAdvisorTierForAppointment_(advisor, rec);
   });
-  if (kind === 'natural') return swPrioritizeAdvisorPoolByTier_(candidates, function (advisor) {
-    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond);
-  });
-  return candidates;
 }
 
 function swPrioritizeNaturalAdvisorPool_(candidates, rec) {
@@ -795,10 +951,21 @@ function swSameAppointmentConflictRef_(a, b) {
 }
 
 function swAppointmentDiamondKind_(rec) {
-  var s = swNorm_((rec && rec.diamondType) || (rec && rec.dvCustomerRequirementsJson) || (rec && rec.dvCustomerLookingFor) || '');
+  var kind = swAppointmentAdvisorKind_(rec);
+  return kind === 'natural' || kind === 'lab' ? kind : '';
+}
+
+function swAppointmentAdvisorKind_(rec) {
+  var s = swNorm_([
+    rec && rec.diamondType,
+    rec && rec.dvCustomerRequirementsJson,
+    rec && rec.dvCustomerLookingFor,
+    rec && rec.visitType
+  ].join(' '));
   if (s.indexOf('natural') >= 0) return 'natural';
   if (s.indexOf('lab') >= 0) return 'lab';
-  return '';
+  if (swNorm_((rec && rec.visitType) || '').indexOf('diamond viewing') >= 0) return 'diamond';
+  return 'general';
 }
 
 function swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, advisor, linkedJoc, linkedJocEmail) {
@@ -809,11 +976,9 @@ function swWriteAppointmentOwnerAssignmentToMaster_(ss, rec, advisor, linkedJoc,
   var headers = swEnsureMasterOwnerHeaders_(master);
   master.getRange(row, headers.assignedRep).setValue(advisor.name || '');
   master.getRange(row, headers.assignedRepEmail).setValue(advisor.email || '');
-  if (linkedJoc) {
-    var canonicalJoc = linkedJocEmail ? null : swCanonicalWorkflowOwnerForRole_(ss, {}, linkedJoc, '', SW_OWNER_ROLES.JOC);
-    master.getRange(row, headers.assistedRep).setValue(linkedJoc);
-    master.getRange(row, headers.assistedRepEmail).setValue(linkedJocEmail || (canonicalJoc ? canonicalJoc.email : ''));
-  }
+  var canonicalJoc = linkedJoc && !linkedJocEmail ? swCanonicalWorkflowOwnerForRole_(ss, {}, linkedJoc, '', SW_OWNER_ROLES.JOC) : null;
+  master.getRange(row, headers.assistedRep).setValue(linkedJoc || '');
+  master.getRange(row, headers.assistedRepEmail).setValue(linkedJocEmail || (canonicalJoc ? canonicalJoc.email : ''));
   return true;
 }
 
