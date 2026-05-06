@@ -165,13 +165,9 @@ function SW_NORMALIZE_WEBAPP_EXEC_URL_(candidate) {
   if (!candidate) return '';
   var v = String(candidate).trim();
   v = v.replace(/\/dev(\b|$)/, '/exec');
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(v)) {
-    v = v.replace(
-      /^https:\/\/script\.google\.com\/a\/[^/]+\/macros\/s\//i,
-      'https://script.google.com/macros/s/'
-    );
-  }
-  return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(v) ? v : '';
+  var globalPattern = /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/i;
+  var domainPattern = /^https:\/\/script\.google\.com\/a\/macros\/[^/]+\/s\/[^/]+\/exec(?:\?.*)?$/i;
+  return (globalPattern.test(v) || domainPattern.test(v)) ? v : '';
 }
 
 /** Return the deployed /exec URL for the payment app launch flow.

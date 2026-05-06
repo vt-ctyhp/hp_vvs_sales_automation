@@ -3175,6 +3175,9 @@ const CS_TZ = 'America/Los_Angeles';
 
 const CS_REPORT_URL_COL = 'Client Status Report URL';
 const CS_PROSPECT_URL_COL = 'Prospect Folder URL';
+const CS_PROSPECT_ID_COL = 'ProspectFolderID';
+const CS_CLIENT_FOLDER_URL_COL = 'Client Folder';
+const CS_CLIENT_FOLDER_ID_COL = 'ClientFolderID';
 const CS_REPORT_NAME_FMT = '{Brand} – {APPT_ID} – Client Status Report';
 
 // Color column names in "Dropdown"
@@ -3209,6 +3212,13 @@ function findHeaderIndexByRegex_(headerRow, regex) {
 function extractIdFromUrl_(url) {
   const m = String(url).match(/[-\w]{25,}/);
   return m ? m[0] : '';
+}
+
+function openFolderByIdOrUrl_(value) {
+  const id = extractIdFromUrl_(String(value || ''));
+  if (!id) return null;
+  try { return DriveApp.getFolderById(id); } catch (_) {}
+  return null;
 }
 
 // FIX 10: Validate spreadsheet URL format
@@ -3356,7 +3366,20 @@ function cs_ensureReportUrl_(masterSheet, row, H, getVal) {
           .replace('{Brand}', brand || 'VVS')
           .replace('{APPT_ID}', apptId);
 
-        const parent = pickParentFolder_(getVal(CS_PROSPECT_URL_COL), client);
+        const parentInfo = pickParentFolder_({
+          prospectFolderId: getVal(CS_PROSPECT_ID_COL),
+          prospectFolderUrl: getVal(CS_PROSPECT_URL_COL),
+          clientFolderId: getVal(CS_CLIENT_FOLDER_ID_COL),
+          clientFolderUrl: getVal(CS_CLIENT_FOLDER_URL_COL),
+          clientName: client
+        });
+        const parent = parentInfo && parentInfo.folder;
+        if (!parent) {
+          return { ok: false, error: 'Could not resolve report parent folder from prospect/client folder metadata.' };
+        }
+        if (parentInfo.source === 'rootFallback') {
+          Logger.log('cs_ensureReportUrl_: WARNING using root fallback parent for row=' + row);
+        }
         
         // FIX 11: Check for existing file by token BEFORE creating
         const existingId = findExistingReportByToken_(parent, apptId, name);
@@ -3907,16 +3930,27 @@ function cs_createOrGetReportForSelection_(opts) {
   }
 }
 
-function pickParentFolder_(prospectUrl, clientName) {
-  if (prospectUrl) {
-    const id = extractIdFromUrl_(String(prospectUrl));
-    try { return DriveApp.getFolderById(id); } catch (e) {}
+function pickParentFolder_(opts) {
+  opts = opts || {};
+  const candidates = [
+    { source: 'prospectFolderId', value: opts.prospectFolderId },
+    { source: 'prospectFolderUrl', value: opts.prospectFolderUrl },
+    { source: 'clientFolderId', value: opts.clientFolderId },
+    { source: 'clientFolderUrl', value: opts.clientFolderUrl }
+  ];
+  for (let i = 0; i < candidates.length; i++) {
+    const item = candidates[i];
+    const folder = openFolderByIdOrUrl_(item.value);
+    if (folder) return { folder: folder, source: item.source };
   }
   try {
-    const it = DriveApp.getFoldersByName(clientName || 'Clients');
-    if (it.hasNext()) return it.next();
-  } catch (e) {}
-  return DriveApp.getRootFolder();
+    const name = String(opts.clientName || '').trim();
+    if (name) {
+      const it = DriveApp.getFoldersByName(name);
+      if (it.hasNext()) return { folder: it.next(), source: 'clientNameMatch' };
+    }
+  } catch (_) {}
+  return { folder: DriveApp.getRootFolder(), source: 'rootFallback' };
 }
 
 // FIX 11: Add apptId parameter for idempotency token
@@ -3924,7 +3958,9 @@ function createClientReport_(name, parentFolder, apptId) {
   const templateId = getTemplateId_();
   if (!templateId) throw new Error('Client Status: CS_REPORT_TEMPLATE_ID not set in Project Properties.');
   const tmplFile = DriveApp.getFileById(templateId);
-  const copy = tmplFile.makeCopy(name, parentFolder || DriveApp.getRootFolder());
+  const rootFolder = DriveApp.getRootFolder();
+  const targetFolder = parentFolder || rootFolder;
+  const copy = tmplFile.makeCopy(name, targetFolder);
   const fileId = copy.getId();
   
   // FIX 11: Set idempotency token in file description
@@ -3936,7 +3972,12 @@ function createClientReport_(name, parentFolder, apptId) {
     }
   }
   
-  try { if (parentFolder) DriveApp.getRootFolder().removeFile(copy); } catch (e) {}
+  // Keep the file attached to root only when root is intentionally the target parent.
+  try {
+    if (targetFolder.getId() !== rootFolder.getId()) {
+      rootFolder.removeFile(copy);
+    }
+  } catch (e) {}
   return fileId;
 }
 

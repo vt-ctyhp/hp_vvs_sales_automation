@@ -750,7 +750,18 @@ function swPaymentAppUrl_(token) {
     }
   }
   if (!base) throw new Error('Payment web app URL is unavailable. Set PAYMENT_WEBAPP_EXEC_URL (or WEBAPP_EXEC_URL) in Script Properties or deploy the script.');
+  base = swPaymentDomainScopedUrl_(base);
   return swUrlWithParams_(base, { app: 'ipad', launch: token });
+}
+
+function swPaymentDomainScopedUrl_(url) {
+  var raw = swTrim_(url || '');
+  if (!raw) return raw;
+  // Force domain-scoped Apps Script URL for ctyhp.us because global /macros/s/... returns 404 in this tenant context.
+  return raw.replace(
+    /^https:\/\/script\.google\.com\/macros\/s\//i,
+    'https://script.google.com/a/macros/ctyhp.us/s/'
+  );
 }
 
 function swUrlWithParams_(base, params) {
