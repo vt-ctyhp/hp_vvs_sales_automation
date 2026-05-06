@@ -442,15 +442,161 @@ function nextApptId_(iso){
 }
 
 /********** DRIVE HELPERS **********/
+function isDriveTransientExhausted_(err){
+  return !!(err && err.isDriveTransientExhausted === true);
+}
+
+function isTransientDriveError_(err){
+  if (!err || isDriveTransientExhausted_(err)) return false;
+  const msg = String((err && err.message) || err || '').toLowerCase();
+  if (!msg) return false;
+
+  if (/(no item with the given id|could not be found|cannot find|not found|does not exist|invalid (argument|id)|missing (id|file|folder)|permission|access denied|forbidden|not authorized|authorization|authorize|auth|insufficient permissions?|login required|daily|one day|per day|for the day|quota.*(daily|day)|exceeded.*daily)/i.test(msg)) {
+    return false;
+  }
+
+  return /(internal error|server error|service error|backend error|temporar(?:y|ily)|try again|timeout|timed out|deadline exceeded|rate limit|limit exceeded|too many requests|too many times|short time|429|500|502|503|504|unavailable|connection reset|network error|socket|broken pipe)/i.test(msg);
+}
+
+function isMissingOrInvalidDriveIdError_(err){
+  if (!err || isDriveTransientExhausted_(err)) return false;
+  const msg = String((err && err.message) || err || '').toLowerCase();
+  if (!msg) return false;
+
+  if (/(permission|access denied|forbidden|not authorized|authorization|authorize|auth|insufficient permissions?|login required|quota|daily|per day|for the day)/i.test(msg)) {
+    return false;
+  }
+
+  return /(no item with the given id|could not be found|cannot find|not found|does not exist|invalid id|invalid drive id|invalid file id|invalid folder id|invalid argument.*\b(id|file|folder|drive)\b|\b(id|file|folder|drive)\b.*invalid argument)/i.test(msg);
+}
+
+function withDriveRetry_(label, fn, opts){
+  const options = opts || {};
+  const attempts = Math.min(3, Math.max(1, Number(options.attempts || 3)));
+  const baseMs = Math.max(0, Number(options.baseMs || options.backoffMs || 250));
+  let lastErr = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return fn(attempt);
+    } catch (err) {
+      lastErr = err;
+      if (isDriveTransientExhausted_(err)) throw err;
+      if (!isTransientDriveError_(err)) throw err;
+
+      const msg = String((err && err.message) || err || '');
+      if (attempt >= attempts) {
+        const exhausted = new Error('Transient Drive error exhausted for ' + label + ' after ' + attempt + ' attempt(s): ' + msg);
+        exhausted.name = 'DriveTransientExhaustedError';
+        exhausted.isDriveTransientExhausted = true;
+        exhausted.operation = label;
+        exhausted.attempts = attempt;
+        exhausted.cause = err;
+        throw exhausted;
+      }
+
+      const waitMs = Math.min(1500, baseMs * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 75);
+      Logger.log('[DriveRetry] ' + label + ' attempt ' + attempt + '/' + attempts + ' transient: ' + msg + '; retrying in ' + waitMs + 'ms');
+      Utilities.sleep(waitMs);
+    }
+  }
+
+  throw lastErr;
+}
+
+function _firstFolderByExactName_(parent, name){
+  const expected = String(name);
+  const it = parent.getFoldersByName(expected);
+  while (it.hasNext()) {
+    const f = it.next();
+    if (String(f.getName()) === expected) return f;
+  }
+  return null;
+}
+
+function _firstFileByExactName_(folder, name){
+  const expected = String(name);
+  const it = folder.getFilesByName(expected);
+  while (it.hasNext()) {
+    const f = it.next();
+    if (String(f.getName()) === expected) return f;
+  }
+  return null;
+}
+
+function getDriveFolderByIdWithRetry_(id, label){
+  return withDriveRetry_(label || 'DriveApp.getFolderById', () => DriveApp.getFolderById(id));
+}
+
+function getOrCreateFolderByNameWithRetry_(parent, name, label){
+  const op = label || ('getOrCreateFolderByName:' + name);
+  return withDriveRetry_(op, () => {
+    const existing = _firstFolderByExactName_(parent, name);
+    if (existing) return existing;
+
+    try {
+      return parent.createFolder(name);
+    } catch (err) {
+      if (isTransientDriveError_(err)) {
+        const after = _firstFolderByExactName_(parent, name);
+        if (after) return after;
+      }
+      throw err;
+    }
+  });
+}
+
+function getOrCreateRootFolderByNameWithRetry_(name, label){
+  const op = label || ('getOrCreateRootFolderByName:' + name);
+  return withDriveRetry_(op, () => {
+    const expected = String(name);
+    const it = DriveApp.getFoldersByName(expected);
+    while (it.hasNext()) {
+      const f = it.next();
+      if (String(f.getName()) === expected) return f;
+    }
+
+    try {
+      return DriveApp.createFolder(expected);
+    } catch (err) {
+      if (isTransientDriveError_(err)) {
+        const after = DriveApp.getFoldersByName(expected);
+        while (after.hasNext()) {
+          const f = after.next();
+          if (String(f.getName()) === expected) return f;
+        }
+      }
+      throw err;
+    }
+  });
+}
+
+function copyFileByNameWithRetry_(tplId, expectedName, folder, label){
+  const op = label || ('copyFileByName:' + expectedName);
+  return withDriveRetry_(op, () => {
+    const existing = _firstFileByExactName_(folder, expectedName);
+    if (existing) return existing;
+
+    try {
+      return DriveApp.getFileById(tplId).makeCopy(expectedName, folder);
+    } catch (err) {
+      if (isTransientDriveError_(err)) {
+        const after = _firstFileByExactName_(folder, expectedName);
+        if (after) return after;
+      }
+      throw err;
+    }
+  });
+}
+
 function brandRoot_(brand){
-  if(brand==='HPUSA' && CFG.HP_ROOT) return DriveApp.getFolderById(CFG.HP_ROOT);
-  if(brand==='VVS'   && CFG.VVS_ROOT) return DriveApp.getFolderById(CFG.VVS_ROOT);
+  if(brand==='HPUSA' && CFG.HP_ROOT) return getDriveFolderByIdWithRetry_(CFG.HP_ROOT, 'brandRoot.HPUSA');
+  if(brand==='VVS'   && CFG.VVS_ROOT) return getDriveFolderByIdWithRetry_(CFG.VVS_ROOT, 'brandRoot.VVS');
   throw new Error(`No brand root configured for ${brand}`);
 }
 
 function getOrCreate_(parent, name){
-  const it=parent.getFoldersByName(name);
-  return it.hasNext()? it.next() : parent.createFolder(name);
+  return getOrCreateFolderByNameWithRetry_(parent, name, 'getOrCreate_');
 }
 
 function ensureClientFolder_(brand, customerName, phoneNorm, emailLower){
@@ -458,15 +604,13 @@ function ensureClientFolder_(brand, customerName, phoneNorm, emailLower){
   const safe = String(customerName || emailLower || phoneNorm || 'Unknown')
               .trim()
               .replace(/[\\/:*?"<>|]/g, '-');
-  const it = root.getFoldersByName(safe);
-  return it.hasNext() ? it.next() : root.createFolder(safe);
+  return getOrCreateFolderByNameWithRetry_(root, safe, 'ensureClientFolder');
 }
 
 function ensureProspectFolder_(clientFolder, apptId){
-  const prospects = getOrCreate_(clientFolder, 'Prospects');
+  const prospects = getOrCreateFolderByNameWithRetry_(clientFolder, 'Prospects', 'ensureProspectFolder.Prospects');
   const name = `${apptId} (NO-SO-YET)`;
-  const it = prospects.getFoldersByName(name);
-  return it.hasNext()? it.next() : prospects.createFolder(name);
+  return getOrCreateFolderByNameWithRetry_(prospects, name, 'ensureProspectFolder.' + apptId);
 }
 
 function cloneIntakeDoc_(destFolder, brand, apptId){
@@ -500,16 +644,14 @@ const APPT_ROOT_SUBFOLDERS_ = [
 
 function ensureApptSubfolders_(rootApptId, apFolder) {
   APPT_ROOT_SUBFOLDERS_.forEach(name => {
-    const it = apFolder.getFoldersByName(name);
-    if (!it.hasNext()) apFolder.createFolder(name);
+    getOrCreateFolderByNameWithRetry_(apFolder, name, 'ensureApptSubfolders.' + name);
   });
 }
 
 function _ensureApSubfoldersByFolderId_(apFolderId) {
-  const apFolder = DriveApp.getFolderById(apFolderId);
+  const apFolder = getDriveFolderByIdWithRetry_(apFolderId, 'ensureApSubfolders.folderId');
   APPT_ROOT_SUBFOLDERS_.forEach(name => {
-    const it = apFolder.getFoldersByName(name);
-    if (!it.hasNext()) apFolder.createFolder(name);
+    getOrCreateFolderByNameWithRetry_(apFolder, name, 'ensureApSubfolders.' + name);
   });
   return apFolder;
 }
@@ -518,12 +660,15 @@ function bootstrapApptFolder_(rowIdx) {
   try {
     return bootstrapApFolderForRow_(rowIdx);
   } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (!isMissingOrInvalidDriveIdError_(e) && !/missing "rootapptid"|invalid or empty rootapptid/i.test(msg)) throw e;
+
     const apId = getCell_(SHT.MASTER,rowIdx,'APPT_ID');
     if (!apId) return;
     const pfId = getCell_(SHT.MASTER,rowIdx,'ProspectFolderID');
     if (!pfId) return;
 
-    const apFolder = DriveApp.getFolderById(pfId);
+    const apFolder = getDriveFolderByIdWithRetry_(pfId, 'bootstrapApptFolder.prospectFolderId');
     ensureApptSubfolders_(apId, apFolder);
     setCell_(SHT.MASTER,rowIdx,'RootAppt Folder ID', apFolder.getId());
     return apFolder.getId();
@@ -548,16 +693,15 @@ function _headers_(sh) {
 
 function _getAppointmentsHome_() {
   const homeId = _SP.getProperty('APPOINTMENTS_FOLDER_ID');
-  if (homeId) return DriveApp.getFolderById(homeId);
-  const created = DriveApp.createFolder('[SYS] Appointments');
+  if (homeId) return getDriveFolderByIdWithRetry_(homeId, 'getAppointmentsHome.configuredHome');
+  const created = getOrCreateRootFolderByNameWithRetry_('[SYS] Appointments', 'getAppointmentsHome.createRoot');
   _SP.setProperty('APPOINTMENTS_FOLDER_ID', created.getId());
   return created;
 }
 
 function _ensureApFolderUnderHome_(apId) {
   const home = _getAppointmentsHome_();
-  const it = home.getFoldersByName(apId);
-  return it.hasNext() ? it.next() : home.createFolder(apId);
+  return getOrCreateFolderByNameWithRetry_(home, apId, 'ensureApFolderUnderHome.' + apId);
 }
 
 function _writeApFolderIdToMasterRow_(row, apFolderId) {
@@ -599,8 +743,10 @@ function bootstrapApFolderForRow_(row) {
     const existing = String(sh.getRange(row, colExistingId).getValue() || '').trim();
     if (existing) {
       try {
-        apFolder = DriveApp.getFolderById(existing);
-      } catch(_) {}
+        apFolder = getDriveFolderByIdWithRetry_(existing, 'bootstrapApFolder.existingId');
+      } catch(e) {
+        if (!isMissingOrInvalidDriveIdError_(e)) throw e;
+      }
     }
   }
 
@@ -1266,10 +1412,11 @@ function _resolveProspectFolder_(row, clientFolder, apptId, emailLower, phoneNor
   const existingPfId = String(getCell_(SHT.MASTER, row, 'ProspectFolderID') || '').trim();
   if (existingPfId) {
     try {
-      const f = DriveApp.getFolderById(existingPfId);
+      const f = getDriveFolderByIdWithRetry_(existingPfId, 'resolveProspectFolder.existingPfId');
       Logger.log(`[prospectFolder] row ${row} → using existing pfId on this row: ${existingPfId}`);
       return { folder: f, pfId: existingPfId, isReused: false };
-    } catch (_) {
+    } catch (e) {
+      if (!isMissingOrInvalidDriveIdError_(e)) throw e;
       Logger.log(`[prospectFolder] row ${row} → existing pfId invalid, will search prior`);
     }
   }
@@ -1284,10 +1431,11 @@ function _resolveProspectFolder_(row, clientFolder, apptId, emailLower, phoneNor
 
   if (prior && prior.ProspectFolderID) {
     try {
-      const f = DriveApp.getFolderById(prior.ProspectFolderID);
+      const f = getDriveFolderByIdWithRetry_(prior.ProspectFolderID, 'resolveProspectFolder.priorPfId');
       Logger.log(`[prospectFolder] row ${row} → REUSING prior ProspectFolderID ${prior.ProspectFolderID} from row ${prior.rowIndex}`);
       return { folder: f, pfId: prior.ProspectFolderID, isReused: true, priorRow: prior.rowIndex };
-    } catch (_) {
+    } catch (e) {
+      if (!isMissingOrInvalidDriveIdError_(e)) throw e;
       Logger.log(`[prospectFolder] row ${row} → prior pfId invalid, will create new`);
     }
   }
@@ -1346,7 +1494,12 @@ function _ensureArtifactsForRowImpl_(row) {
   // Priority: (1) cfId on this row → (2) cfId from prior row same contact → (3) create new
   let clientFolder = null;
   if (cfId) {
-    try { clientFolder = DriveApp.getFolderById(cfId); } catch (_) {}
+    try {
+      clientFolder = getDriveFolderByIdWithRetry_(cfId, 'ensureArtifacts.existingCfId');
+    } catch (e) {
+      if (!isMissingOrInvalidDriveIdError_(e)) throw e;
+      Logger.log('[clientFolder] existing cfId invalid: ' + cfId);
+    }
   }
 
   // Check prior row for same customer (catches name changes like "babyboo" vs "test2704")
@@ -1362,16 +1515,19 @@ function _ensureArtifactsForRowImpl_(row) {
         const priorCfId = String(getCell_(SHT.MASTER, prior.rowIndex, 'ClientFolderID') || '').trim();
         if (priorCfId) {
           try {
-            clientFolder = DriveApp.getFolderById(priorCfId);
+            clientFolder = getDriveFolderByIdWithRetry_(priorCfId, 'ensureArtifacts.priorCfId');
             cfId = priorCfId;
             pending['ClientFolderID'] = cfId;
             Logger.log('[clientFolder] REUSED from prior row ' + prior.rowIndex + ': ' + priorCfId);
-          } catch(_) {
+          } catch(e) {
+            if (!isMissingOrInvalidDriveIdError_(e)) throw e;
             Logger.log('[clientFolder] prior cfId invalid: ' + priorCfId);
           }
         }
       }
-    } catch(_) {}
+    } catch(e) {
+      if (!isMissingOrInvalidDriveIdError_(e)) throw e;
+    }
   }
 
   // Create new only if truly first-time customer
@@ -1436,7 +1592,7 @@ function _ensureArtifactsForRowImpl_(row) {
 
   // ── 3. SCAN FOLDER 1 LẦN ────────────────────────────────────
   // Chỉ scan nếu còn thiếu URLs sau khi kế thừa từ prior row
-  const folder = DriveApp.getFolderById(pfId);
+  const folder = prospectFolder;
   const existingFiles = {};
   if (!intakeUrl || !chkUrl || !quoUrl) {
     const fileIter = folder.getFiles();
@@ -1465,13 +1621,14 @@ function _ensureArtifactsForRowImpl_(row) {
     if (!tplId) return '';
 
     try {
-      const copy = DriveApp.getFileById(tplId).makeCopy(expectedName, folder);
+      const copy = copyFileByNameWithRetry_(tplId, expectedName, folder, 'recoverOrCreate.' + pendingKey);
       const url = copy.getUrl();
       pending[pendingKey] = url;
       existingFiles[expectedName] = url; // update cache
       Logger.log('Created: ' + expectedName);
       return url;
     } catch (e) {
+      if (isDriveTransientExhausted_(e)) throw e;
       Logger.log('ERROR creating ' + expectedName + ': ' + e.message);
       return '';
     }
@@ -1996,7 +2153,17 @@ function onFormSubmit(e){
       Logger.log('DV_onCreate skipped: ' + e.message);
     }
 
-    ensureArtifactsForRow_(row);
+    try {
+      ensureArtifactsForRow_(row);
+    } catch (artifactErr) {
+      const artifactMsg = artifactErr && artifactErr.message ? artifactErr.message : String(artifactErr);
+      err_('onFormSubmit.ensureArtifactsForRow_', artifactMsg, { row, stack: artifactErr && artifactErr.stack });
+      try {
+        _appendNote_(row, 'Artifacts pending; repair worker will retry @ ' + new Date().toISOString());
+      } catch (noteErr) {
+        Logger.log('onFormSubmit.ensureArtifactsForRow_ note append failed: ' + (noteErr && noteErr.message || noteErr));
+      }
+    }
 
     try {
       const debug = /true/i.test(PropertiesService.getScriptProperties().getProperty('DEBUG') || 'false');
@@ -2538,6 +2705,29 @@ function repairMissingUrls_(e) {
   const REPAIR_WINDOW_HOURS  = 48;
   const isTriggerRun = !!(e && e.triggerUid);
   const forceRun = !!(e && e.force);
+  const result = {
+    ok: true,
+    processed: 0,
+    attempted: 0,
+    repaired: 0,
+    partialProgress: 0,
+    deferred: 0,
+    errors: [],
+    message: ''
+  };
+  const finish = (message) => {
+    result.ok = result.errors.length === 0;
+    result.message = message || (
+      'processed=' + result.processed +
+      ' attempted=' + result.attempted +
+      ' repaired=' + result.repaired +
+      ' partialProgress=' + result.partialProgress +
+      ' deferred=' + result.deferred +
+      ' errors=' + result.errors.length
+    );
+    return result;
+  };
+
   if (isTriggerRun && typeof swOrchRedirectLegacyTrigger_ === 'function') {
     const redirected = swOrchRedirectLegacyTrigger_('repairMissingUrls_', e);
     if (redirected) return redirected;
@@ -2551,7 +2741,7 @@ function repairMissingUrls_(e) {
     const throttleCache = CacheService.getScriptCache();
     if (!forceRun && throttleCache.get(throttleKey)) {
       Logger.log('repairMissingUrls_: skipped by hourly throttle.');
-      return { ok: true, skipped: true, reason: 'hourlyThrottle' };
+      return finish('skipped by hourly throttle');
     }
     throttleCache.put(throttleKey, '1', 55 * 60);
   }
@@ -2562,7 +2752,7 @@ function repairMissingUrls_(e) {
 
   Logger.log('Last data row = ' + last);
 
-  if (last < 2) { Logger.log('No data rows'); return; }
+  if (last < 2) { Logger.log('No data rows'); return finish('No data rows'); }
 
   const cAppt    = H['APPT_ID']       || 0;
   const cRoot    = H['RootApptID']    || 0;
@@ -2573,7 +2763,10 @@ function repairMissingUrls_(e) {
   const cQuo     = H['Quotation URL'] || 0;
   const cTs      = H['Timestamp']     || 0;
 
-  if (!cAppt || !cBrand) { Logger.log('Missing APPT_ID or Brand column → abort'); return; }
+  if (!cAppt || !cBrand) {
+    Logger.log('Missing APPT_ID or Brand column → abort');
+    return finish('Missing APPT_ID or Brand column; no repair attempted');
+  }
 
   const startRow = Math.max(2, last - REPAIR_LOOKBACK_ROWS + 1);
   const numRows  = last - startRow + 1;
@@ -2586,8 +2779,6 @@ function repairMissingUrls_(e) {
 
   const now = Date.now();
   const windowMs = REPAIR_WINDOW_HOURS * 3600 * 1000;
-
-  let repaired = 0;
 
   for (let i = 0; i < block.length; i++) {
     const sheetRow = startRow + i;
@@ -2614,55 +2805,128 @@ function repairMissingUrls_(e) {
 
     if (!missingUrls && !missingRootFolder) continue;
 
-    // ✅ Fix: kiểm tra repair lock riêng để tránh chạy lại liên tục
+    result.processed++;
+
     const repairLockKey = `repair_lock_${sheetRow}`;
     const repairCache = CacheService.getScriptCache();
-    if (repairCache.get(repairLockKey)) {
-      Logger.log('[row ' + sheetRow + '] repair already attempted recently - skipping');
-      continue;
-    }
-    repairCache.put(repairLockKey, '1', 300); // ✅ không retry trong 5 phút
-
     Logger.log('[row ' + sheetRow + '] missing appointment artifacts/root folder -> healing');
 
-    try {
-      if (missingUrls) {
+    const beforeMissingArtifacts = [];
+    if (!intakeVal) beforeMissingArtifacts.push('IntakeDocURL');
+    if (!chkVal) beforeMissingArtifacts.push('Checklist URL');
+    if (!quoVal) beforeMissingArtifacts.push('Quotation URL');
+
+    let artifactAttempted = false;
+    let rootAttempted = false;
+    let rowDeferred = false;
+    const repairErrors = [];
+
+    if (missingUrls) {
+      const activeArtifactLockKey = `artifact_lock_${sheetRow}`;
+      if (repairCache.get(repairLockKey) || repairCache.get(activeArtifactLockKey)) {
+        rowDeferred = true;
+        Logger.log('[repair] row ' + sheetRow + ' artifact repair deferred by active/recent lock');
+      } else {
         const repairLock = LockService.getUserLock();
         const gotRepairLock = repairLock.tryLock(3000);
         if (gotRepairLock) {
-          try { ensureArtifactsForRow_(sheetRow); }
-          finally { repairLock.releaseLock(); }
+          try {
+            repairCache.put(repairLockKey, '1', 300);
+            artifactAttempted = true;
+            ensureArtifactsForRow_(sheetRow);
+          } catch (artifactErr) {
+            const msg = artifactErr && artifactErr.message ? artifactErr.message : String(artifactErr);
+            repairErrors.push({ type: 'artifactUrls', message: msg, transientExhausted: isDriveTransientExhausted_(artifactErr) });
+            Logger.log('[row ' + sheetRow + '] artifact URL repair failed: ' + msg);
+          } finally {
+            repairLock.releaseLock();
+          }
         } else {
+          rowDeferred = true;
           Logger.log('[repair] row ' + sheetRow + ' lock busy - will retry next run');
         }
       }
+    }
 
-      if (missingRootFolder) {
-        try {
-          const folderId = bootstrapApFolderForRow_(sheetRow);
-          Logger.log('[row ' + sheetRow + '] RootAppt folder repaired: ' + folderId);
-        } catch (folderErr) {
-          Logger.log('[row ' + sheetRow + '] RootAppt folder repair failed: ' + (folderErr && folderErr.message || folderErr));
-        }
+    if (missingRootFolder) {
+      try {
+        rootAttempted = true;
+        const folderId = bootstrapApFolderForRow_(sheetRow);
+        Logger.log('[row ' + sheetRow + '] RootAppt folder repaired: ' + folderId);
+      } catch (folderErr) {
+        const msg = folderErr && folderErr.message ? folderErr.message : String(folderErr);
+        repairErrors.push({ type: 'rootApptFolder', message: msg });
+        Logger.log('[row ' + sheetRow + '] RootAppt folder repair failed: ' + msg);
+      }
+    }
+
+    if (rowDeferred) result.deferred++;
+    const rowAttempted = artifactAttempted || rootAttempted;
+    if (rowAttempted) result.attempted++;
+
+    const afterIntake = getCell_(SHT.MASTER, sheetRow, 'IntakeDocURL');
+    const afterChk    = getCell_(SHT.MASTER, sheetRow, 'Checklist URL');
+    const afterQuo    = getCell_(SHT.MASTER, sheetRow, 'Quotation URL');
+    const afterRoot   = cRootFld ? getCell_(SHT.MASTER, sheetRow, 'RootAppt Folder ID') : '';
+
+    Logger.log('[row ' + sheetRow + '] AFTER repair: intake=' + !!afterIntake + ' chk=' + !!afterChk + ' quo=' + !!afterQuo + ' rootFolder=' + !!afterRoot);
+
+    const afterMissingArtifacts = [];
+    if (missingUrls) {
+      if (!afterIntake) afterMissingArtifacts.push('IntakeDocURL');
+      if (!afterChk) afterMissingArtifacts.push('Checklist URL');
+      if (!afterQuo) afterMissingArtifacts.push('Quotation URL');
+    }
+
+    const restoredArtifacts = beforeMissingArtifacts.filter(k => {
+      if (k === 'IntakeDocURL') return !!afterIntake;
+      if (k === 'Checklist URL') return !!afterChk;
+      if (k === 'Quotation URL') return !!afterQuo;
+      return false;
+    });
+    const rootRestored = !!(missingRootFolder && afterRoot);
+    const rowFullyComplete = (!missingUrls || afterMissingArtifacts.length === 0) &&
+                             (!missingRootFolder || !!afterRoot);
+
+    if (rowFullyComplete) {
+      result.repaired++;
+      continue;
+    }
+
+    const artifactFailed = !!(missingUrls && artifactAttempted && afterMissingArtifacts.length);
+    const rootFailed = !!(missingRootFolder && rootAttempted && !afterRoot);
+
+    if (artifactFailed || rootFailed) {
+      if (artifactFailed && restoredArtifacts.length > 0 && afterMissingArtifacts.length > 0) {
+        result.partialProgress++;
+      } else if ((artifactFailed || rootFailed) && (restoredArtifacts.length > 0 || rootRestored)) {
+        result.partialProgress++;
       }
 
-      // ✅ Re-read từ sheet sau khi chạy xong (không dùng cache cũ)
-      const afterIntake = getCell_(SHT.MASTER, sheetRow, 'IntakeDocURL');
-      const afterChk    = getCell_(SHT.MASTER, sheetRow, 'Checklist URL');
-      const afterQuo    = getCell_(SHT.MASTER, sheetRow, 'Quotation URL');
-      const afterRoot   = cRootFld ? getCell_(SHT.MASTER, sheetRow, 'RootAppt Folder ID') : '';
-
-      Logger.log('[row ' + sheetRow + '] AFTER repair: intake=' + !!afterIntake + ' chk=' + !!afterChk + ' quo=' + !!afterQuo + ' rootFolder=' + !!afterRoot);
-
-      // ✅ Chỉ tính là repaired nếu thực sự có URL sau khi chạy
-      if (afterIntake || afterChk || afterQuo || afterRoot) repaired++;
-
-    } catch (e) {
-      Logger.log('[row ' + sheetRow + '] ERROR: ' + (e && e.message));
+      result.errors.push({
+        row: sheetRow,
+        appt,
+        brand,
+        missingBefore: {
+          artifactUrls: beforeMissingArtifacts,
+          rootFolder: !!missingRootFolder
+        },
+        missingAfter: {
+          artifactUrls: afterMissingArtifacts,
+          rootFolder: !!(missingRootFolder && !afterRoot)
+        },
+        restored: {
+          artifactUrls: restoredArtifacts,
+          rootFolder: rootRestored
+        },
+        errors: repairErrors.length ? repairErrors : [{ type: 'repair', message: 'Required fields still missing after repair attempt' }]
+      });
     }
   }
 
-  Logger.log('===== REPAIR DONE | repaired ' + repaired + ' row(s) =====');
+  const done = finish();
+  Logger.log('===== REPAIR DONE | ' + done.message + ' =====');
+  return done;
 }
 
 function repairMissingUrlsNormalizeTriggerSchedule_() {
