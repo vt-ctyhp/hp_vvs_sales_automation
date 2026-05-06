@@ -13,6 +13,14 @@ var SW_DATA_CLEANUP_STATUS = {
   APPLIED: 'Applied'
 };
 
+function sw_dryRunCleanupTestCustomerRows(options) {
+  return sw_previewTestDataCleanupOnce(options || {});
+}
+
+function sw_applyCleanupTestCustomerRows(options) {
+  return sw_applyTestDataCleanupOnce(options || {});
+}
+
 function swIsDataCleanupTaskType_(taskType) {
   return [
     SW_TASKS.DATA_CLEANUP_REVIEW,
