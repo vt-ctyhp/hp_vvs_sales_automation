@@ -596,6 +596,7 @@ function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
   var state = {
     enabled: enabled,
     countsByDate: {},
+    busyBySlotOwner: {},
     assignedByRoot: {},
     advisors: people.filter(function (person) {
       return person && person.active !== false && swEmployeeHasRole_(person, SW_OWNER_ROLES.SALES_REP);
@@ -627,6 +628,7 @@ function swPrepareClientAdvisorRoundRobin_(ss, ctx, appointments) {
       email: existingOwner.email,
       defaultJoc: existingJoc ? existingJoc.name : ''
     };
+    if (swIsAppointmentActive_(rec)) swTrackClientAdvisorBusySlot_(state, existingOwner.name, visitAt, rec);
   });
   return state;
 }
@@ -636,12 +638,14 @@ function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
   if (!rr || !rr.enabled || !rec) return false;
   var visitAt = swVisitDateTime_(rec, ctx.tz);
   if (!visitAt) return false;
+  var root = rec.root || rec.appt || '';
 
   var currentUnavailable = false;
   if (rec.assignedRep || rec.assignedRepEmail) {
     var currentOwner = swCanonicalWorkflowOwnerForRole_(ss, ctx, rec.assignedRep, rec.assignedRepEmail, SW_OWNER_ROLES.SALES_REP);
     var currentAvail = currentOwner ? swAvailabilityFor_(ss, currentOwner.name, visitAt, ctx) : null;
-    currentUnavailable = !currentOwner || (currentAvail.known && !currentAvail.available);
+    currentUnavailable = !currentOwner || (currentAvail.known && !currentAvail.available) ||
+      (currentOwner && swClientAdvisorHasAppointmentConflict_(rr, currentOwner.name, visitAt, rec));
     if (!currentUnavailable) {
       var existingAdvisor = swRoundRobinAdvisorByName_(rr, currentOwner.name);
       if (existingAdvisor && existingAdvisor.defaultJoc && !rec.assistedRep) {
@@ -657,7 +661,6 @@ function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
     }
   }
 
-  var root = rec.root || rec.appt || '';
   var existingRootAssignment = !rec.assignedRep && root ? rr.assignedByRoot[root] : null;
   var chosen = existingRootAssignment || swPickClientAdvisorRoundRobin_(ss, ctx, rr, visitAt, rec, rec.assignedRep || '');
   if (!chosen || !chosen.name) {
@@ -673,10 +676,8 @@ function swMaybeAutoAssignClientAdvisor_(ss, ctx, rec, summary) {
   rec.assistedRep = linkedJocUser ? linkedJocUser.name : rec.assistedRep || '';
   rec.assistedRepEmail = linkedJocUser ? linkedJocUser.email : rec.assistedRepEmail;
   if (root) rr.assignedByRoot[root] = chosen;
-  var dateKey = swDateKey_(visitAt);
-  if (!rr.countsByDate[dateKey]) rr.countsByDate[dateKey] = {};
-  var ownerKey = swNorm_(chosen.name);
-  rr.countsByDate[dateKey][ownerKey] = (rr.countsByDate[dateKey][ownerKey] || 0) + 1;
+  swCountClientAdvisorAssignment_(rr, chosen.name, visitAt);
+  swTrackClientAdvisorBusySlot_(rr, chosen.name, visitAt, rec);
   if (currentUnavailable) summary.autoReassignedClientAdvisors = (summary.autoReassignedClientAdvisors || 0) + 1;
   else summary.autoAssignedClientAdvisors = (summary.autoAssignedClientAdvisors || 0) + 1;
   return true;
@@ -697,9 +698,10 @@ function swPickClientAdvisorRoundRobin_(ss, ctx, rr, visitAt, rec, excludeName) 
     if (!advisor || !advisor.name) return false;
     if (excludeName && swNorm_(advisor.name) === swNorm_(excludeName)) return false;
     if (!swAvailabilityFor_(ss, advisor.name, visitAt, ctx).available) return false;
+    if (swClientAdvisorHasAppointmentConflict_(rr, advisor.name, visitAt, rec)) return false;
     return swAdvisorQualifiedForAppointment_(advisor, rec);
   });
-  candidates = swPrioritizeNaturalAdvisorPool_(candidates, rec);
+  candidates = swPrioritizeDiamondAdvisorPool_(candidates, rec);
   if (!candidates.length) return null;
   candidates.sort(function (a, b) {
     var ac = counts[swNorm_(a.name)] || 0;
@@ -714,18 +716,82 @@ function swAdvisorQualifiedForAppointment_(advisor, rec) {
   var skills = advisor.skills || swDefaultRepSkills_();
   var kind = swAppointmentDiamondKind_(rec);
   if (kind === 'natural') return swNormalizeNaturalSkill_(skills.naturalDiamond) !== 'None';
-  if (kind === 'lab') return swTruthy_(skills.labDiamond);
+  if (kind === 'lab') return swNormalizeLabSkill_(skills.labDiamond) !== 'None';
   return swTruthy_(skills.generalAppointment);
+}
+
+function swPrioritizeDiamondAdvisorPool_(candidates, rec) {
+  var kind = swAppointmentDiamondKind_(rec);
+  if (kind === 'lab') return swPrioritizeAdvisorPoolByTier_(candidates, function (advisor) {
+    return swNormalizeLabSkill_((advisor.skills || {}).labDiamond);
+  });
+  if (kind === 'natural') return swPrioritizeAdvisorPoolByTier_(candidates, function (advisor) {
+    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond);
+  });
+  return candidates;
 }
 
 function swPrioritizeNaturalAdvisorPool_(candidates, rec) {
   if (swAppointmentDiamondKind_(rec) !== 'natural') return candidates;
+  return swPrioritizeAdvisorPoolByTier_(candidates, function (advisor) {
+    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond);
+  });
+}
+
+function swPrioritizeAdvisorPoolByTier_(candidates, tierFn) {
   var primary = candidates.filter(function (advisor) {
-    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond) === 'Primary';
+    return tierFn(advisor) === 'Primary';
   });
   return primary.length ? primary : candidates.filter(function (advisor) {
-    return swNormalizeNaturalSkill_((advisor.skills || {}).naturalDiamond) === 'Backup';
+    return tierFn(advisor) === 'Backup';
   });
+}
+
+function swCountClientAdvisorAssignment_(rr, advisorName, visitAt) {
+  var dateKey = swDateKey_(visitAt);
+  if (!rr.countsByDate[dateKey]) rr.countsByDate[dateKey] = {};
+  var ownerKey = swNorm_(advisorName);
+  rr.countsByDate[dateKey][ownerKey] = (rr.countsByDate[dateKey][ownerKey] || 0) + 1;
+}
+
+function swTrackClientAdvisorBusySlot_(rr, advisorName, visitAt, rec) {
+  var slotKey = swAppointmentSlotKey_(visitAt);
+  var ownerKey = swNorm_(advisorName);
+  if (!slotKey || !ownerKey) return;
+  if (!rr.busyBySlotOwner) rr.busyBySlotOwner = {};
+  if (!rr.busyBySlotOwner[slotKey]) rr.busyBySlotOwner[slotKey] = {};
+  if (!rr.busyBySlotOwner[slotKey][ownerKey]) rr.busyBySlotOwner[slotKey][ownerKey] = [];
+  rr.busyBySlotOwner[slotKey][ownerKey].push(swAppointmentConflictRef_(rec));
+}
+
+function swClientAdvisorHasAppointmentConflict_(rr, advisorName, visitAt, rec) {
+  var slotKey = swAppointmentSlotKey_(visitAt);
+  var ownerKey = swNorm_(advisorName);
+  var rows = rr && rr.busyBySlotOwner && rr.busyBySlotOwner[slotKey] && rr.busyBySlotOwner[slotKey][ownerKey];
+  if (!rows || !rows.length) return false;
+  var current = swAppointmentConflictRef_(rec);
+  return rows.some(function (item) {
+    return !swSameAppointmentConflictRef_(item, current);
+  });
+}
+
+function swAppointmentSlotKey_(visitAt) {
+  if (!(visitAt instanceof Date) || isNaN(visitAt.getTime())) return '';
+  return swDateKey_(visitAt) + '|' + swPad2_(visitAt.getHours()) + ':' + swPad2_(visitAt.getMinutes());
+}
+
+function swAppointmentConflictRef_(rec) {
+  return {
+    row: Number(rec && rec.row) || 0,
+    root: swTrim_((rec && rec.root) || ''),
+    appt: swTrim_((rec && rec.appt) || '')
+  };
+}
+
+function swSameAppointmentConflictRef_(a, b) {
+  if (a.row && b.row && a.row === b.row) return true;
+  if (a.appt && b.appt && a.appt === b.appt) return true;
+  return !!(a.root && b.root && a.root === b.root);
 }
 
 function swAppointmentDiamondKind_(rec) {

@@ -115,6 +115,7 @@ function swReadEmployeeScheduleAdminData_(ss) {
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     changeTypes: ['Working', 'Full-day off', 'Late / partial day', 'PTO', 'Sick', 'Vacation'],
     roleOptions: [SW_OWNER_ROLES.SALES_REP, SW_OWNER_ROLES.JOC],
+    labOptions: ['None', 'Primary', 'Backup'],
     naturalOptions: ['None', 'Primary', 'Backup'],
     settings: {
       clientAdvisorRoundRobin: swTruthy_(swConfigValue_(config, 'SYSTEM', 'CLIENT_ADVISOR_ROUND_ROBIN', 'N'))
@@ -219,7 +220,7 @@ function swReadEmployeeRosterRows_(ss) {
       coverageEnabled: C.coverageEnabled < 0 || !swTrim_(values[i][C.coverageEnabled]) || swTruthy_(values[i][C.coverageEnabled]),
       coveragePartner: C.coveragePartner >= 0 ? swTrim_(values[i][C.coveragePartner]) : '',
       skills: {
-        labDiamond: C.lab >= 0 ? swTruthy_(values[i][C.lab]) : false,
+        labDiamond: C.lab >= 0 ? swNormalizeLabSkill_(values[i][C.lab]) : 'None',
         naturalDiamond: C.natural >= 0 ? swNormalizeNaturalSkill_(values[i][C.natural]) : 'None',
         generalAppointment: C.general < 0 || !swTrim_(values[i][C.general]) || swTruthy_(values[i][C.general])
       },
@@ -315,7 +316,7 @@ function swDefaultEmployeeScheduleDays_() {
 }
 
 function swDefaultRepSkills_() {
-  return { labDiamond: false, naturalDiamond: 'None', generalAppointment: true };
+  return { labDiamond: 'None', naturalDiamond: 'None', generalAppointment: true };
 }
 
 function swNormalizeEmployeeRoleList_(value) {
@@ -348,6 +349,14 @@ function swEmployeePrimaryRoleRank_(role) {
 }
 
 function swNormalizeNaturalSkill_(value) {
+  return swNormalizeDiamondSkill_(value);
+}
+
+function swNormalizeLabSkill_(value) {
+  return swNormalizeDiamondSkill_(value);
+}
+
+function swNormalizeDiamondSkill_(value) {
   var s = swNorm_(value);
   if (s === 'primary') return 'Primary';
   if (s === 'backup') return 'Backup';
@@ -453,11 +462,20 @@ function swCanonicalizeEmployeeScheduleRowsForWrite_(ss, people) {
       defaultJoc: defaultJoc,
       coverageEnabled: person.coverageEnabled == null ? true : swTruthy_(person.coverageEnabled),
       coveragePartner: coveragePartner,
-      skills: person.skills || swDefaultRepSkills_(),
+      skills: swNormalizeRepSkills_(person.skills || swDefaultRepSkills_()),
       skillNotes: person.skillNotes || ''
     });
   });
   return out;
+}
+
+function swNormalizeRepSkills_(skills) {
+  skills = skills || {};
+  return {
+    labDiamond: swNormalizeLabSkill_(skills.labDiamond),
+    naturalDiamond: swNormalizeNaturalSkill_(skills.naturalDiamond),
+    generalAppointment: skills.generalAppointment == null ? true : swTruthy_(skills.generalAppointment)
+  };
 }
 
 function swCanonicalJocNameForScheduleWrite_(index, value, owner) {

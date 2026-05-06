@@ -186,6 +186,15 @@ function swGenerateSalesWorkflowTasksUnlocked_() {
   }
 
   swFlushDeferredTaskWrites_(ss, taskState);
+  if ((summary.autoAssignedClientAdvisors || 0) ||
+      (summary.autoReassignedClientAdvisors || 0) ||
+      (summary.autoLinkedJocFromAdvisor || 0)) {
+    try {
+      if (typeof swInvalidateAppointmentReadModelsAfterWrite_ === 'function') {
+        swInvalidateAppointmentReadModelsAfterWrite_(ss, 'Sales workflow auto-assignment updated appointment owners');
+      }
+    } catch (_) {}
+  }
   return summary;
 }
 
