@@ -3647,10 +3647,10 @@ function cs_submitFromDialog(payload) {
   const sh = ss.getSheetByName(CS_MASTER_SHEET_NAME);
   const r = sh.getActiveRange();
   if (!r || r.getNumRows() !== 1 || r.getRow() === 1) throw new Error('Select exactly one row.');
-  return cs_submitFromDialogForRow_(r.getRow(), payload);
+  return cs_submitFromDialogForRow_(r.getRow(), payload, ss);
 }
 
-function cs_submitFromDialogForRow_(rowNum, payload) {
+function cs_submitFromDialogForRow_(rowNum, payload, ssOpt) {
 
   function _centerStoneRequired(stage, conv) {
     if (/^Lost Lead/i.test(String(stage || ''))) return false;
@@ -3695,7 +3695,7 @@ function cs_submitFromDialogForRow_(rowNum, payload) {
     throw new Error('Center Stone Order Status is required for Viewing Scheduled or Deposit/Confirmed/Order In Progress.');
   }
 
-  const ss = SpreadsheetApp.getActive();
+  const ss = ssOpt || SpreadsheetApp.getActive();
   const sh = ss.getSheetByName(CS_MASTER_SHEET_NAME);
   const row = cs_resolveRow_(sh, rowNum);
 
@@ -3864,6 +3864,7 @@ function cs_submitFromDialogForRow_(rowNum, payload) {
   // OPTIMIZATION: Pass reportId/URL/SS to avoid re-calling ensure
   // ═══════════════════════════════════════════════════════════
   return cs_submitClientStatusUpdate_({
+    ss:              ss,
     rowNum:          row,
     assistedRep:     assistedJoined,
     prevCenterStone: __prevCenterStone,
@@ -3986,7 +3987,7 @@ function ensureReportConfig_(reportSS, opts) {
 // ============================================================
 function cs_submitClientStatusUpdate_(opts) {
   try {
-    const ss = SpreadsheetApp.getActive();
+    const ss = (opts && opts.ss) || SpreadsheetApp.getActive();
     const master = ss.getSheetByName(CS_MASTER_SHEET_NAME);
     const row = cs_resolveRow_(master, opts && opts.rowNum);
 

@@ -740,7 +740,7 @@ function swPaymentLaunchCacheKey_(token) {
 function swPaymentAppUrl_(token) {
   var base = '';
   try {
-    base = WEBAPP_EXEC_URL_();
+    base = PAYMENT_WEBAPP_EXEC_URL_();
   } catch (err) {
     try {
       base = (ScriptApp.getService().getUrl && ScriptApp.getService().getUrl()) || '';
@@ -749,7 +749,7 @@ function swPaymentAppUrl_(token) {
       base = '';
     }
   }
-  if (!base) throw new Error('Web app URL is unavailable. Set WEBAPP_EXEC_URL in Script Properties or deploy the web app.');
+  if (!base) throw new Error('Payment web app URL is unavailable. Set PAYMENT_WEBAPP_EXEC_URL (or WEBAPP_EXEC_URL) in Script Properties or deploy the script.');
   return swUrlWithParams_(base, { app: 'ipad', launch: token });
 }
 

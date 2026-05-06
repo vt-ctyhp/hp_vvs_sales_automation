@@ -158,8 +158,8 @@ function swHandlePostConsultTaskCompletion_(ss, task, data, user) {
 function swCompleteClientStatusTask_(ss, task, data, user) {
   var payload = swParseJson_(task.payloadJson, {});
   var appt = payload.appointment || {};
-  swSetMasterActiveRowForTask_(ss, task);
-  var result = cs_submitFromDialog({
+  var rowNum = swSetMasterActiveRowForTask_(ss, task);
+  var result = cs_submitFromDialogForRow_(rowNum, {
     assignedRep: appt.assignedRep || '',
     assistedRep: appt.assistedRep || '',
     salesStage: swTrim_(data.salesStage),
@@ -175,7 +175,7 @@ function swCompleteClientStatusTask_(ss, task, data, user) {
     wax: null,
     waxSummary: '',
     notebookLMLink: swTrim_(data.notebookLMLink)
-  });
+  }, ss);
   if (result && result.ok === false) throw new Error(result.error || 'Client Status update failed.');
   return { action: 'CLIENT_STATUS_SUBMITTED', result: result && result.summary ? result.summary : result };
 }

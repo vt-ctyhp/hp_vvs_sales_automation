@@ -324,8 +324,9 @@ function sw_customerSearchUpdateStatus(authToken, rootApptId, payload) {
     var lock = LockService.getDocumentLock() || LockService.getScriptLock();
     lock.waitLock(28000);
     try {
-      var target = swCustomerSearchActivateRoot_(ss, rootApptId);
-      var result = cs_submitFromDialog({
+      var target = swCustomerSearchResolveRoot_(ss, rootApptId);
+      var rowNum = swCustomerSearchValidateResolvedRow_(ss, target, rootApptId);
+      var result = cs_submitFromDialogForRow_(rowNum, {
         assignedRep: target.rec.assignedRep || '',
         assistedRep: target.rec.assistedRep || '',
         salesStage: swTrim_(payload.salesStage),
@@ -341,7 +342,7 @@ function sw_customerSearchUpdateStatus(authToken, rootApptId, payload) {
         wax: null,
         waxSummary: '',
         notebookLMLink: swTrim_(payload.notebookLMLink)
-      });
+      }, ss);
       if (result && result.ok === false) throw new Error(result.error || 'Client status update failed.');
       swCustomerSearchLog_(ss, 'CUSTOMER_SEARCH_STATUS_UPDATE', target.rec, user, payload, result);
       swCustomerSearchInvalidateReadModel_(ss, 'Customer Search status update changed appointment data.');
@@ -1970,6 +1971,28 @@ function swCustomerSearchActivateRoot_(ss, rootApptId) {
   ss.setActiveSheet(sh);
   ss.setActiveRange(sh.getRange(target.rec.row, 1));
   return target;
+}
+
+function swCustomerSearchValidateResolvedRow_(ss, target, rootApptId) {
+  var row = Number(target && target.rec && target.rec.row || 0);
+  var sh = ss.getSheetByName(SW_SHEETS.MASTER);
+  if (!sh || row <= 1) throw new Error('Could not resolve Master row for this customer.');
+
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  var H = swHeaderMapFromArray_(headers);
+  var cRoot = swPickIndex_(H, ['RootApptID', 'Root Appt ID', 'ROOT', 'Root_ID']);
+  var cAppt = swPickIndex_(H, ['APPT_ID', 'Appt ID', 'APPTID', 'Appointment ID']);
+  var values = sh.getRange(row, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+
+  var wantRoot = swTrim_(target.root || rootApptId);
+  var wantAppt = swTrim_((target.rec && target.rec.appt) || rootApptId);
+  var rowRoot = cRoot >= 0 ? swTrim_(values[cRoot]) : '';
+  var rowAppt = cAppt >= 0 ? swTrim_(values[cAppt]) : '';
+  var matches = (rowRoot && (rowRoot === wantRoot || rowRoot === rootApptId)) ||
+    (rowAppt && (rowAppt === wantRoot || rowAppt === wantAppt || rowAppt === rootApptId));
+
+  if (!matches) throw new Error('Resolved Master row no longer matches this customer. Refresh customer detail and try again.');
+  return row;
 }
 
 function swCustomerSearchLog_(ss, eventType, rec, user, payload, result) {

@@ -153,10 +153,35 @@ function doPost(e) {
 /** Return the deployed /exec URL for this web app. */
 function WEBAPP_EXEC_URL_(){
   // Prefer an explicit Script Property if you pasted the exec URL there
-  var prop = PropertiesService.getScriptProperties().getProperty('WEBAPP_EXEC_URL');
-  if (prop && /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(prop)) return prop.trim();
+  var prop = SW_NORMALIZE_WEBAPP_EXEC_URL_(
+    PropertiesService.getScriptProperties().getProperty('WEBAPP_EXEC_URL')
+  );
+  if (prop) return prop;
   // Fallback: try Deployment API (Apps Script) else last-resort to ScriptApp.getService().getUrl()
   return ScriptApp.getService().getUrl().replace(/\/dev(\b|$)/,'/exec');
+}
+
+function SW_NORMALIZE_WEBAPP_EXEC_URL_(candidate) {
+  if (!candidate) return '';
+  var v = String(candidate).trim();
+  v = v.replace(/\/dev(\b|$)/, '/exec');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(v)) {
+    v = v.replace(
+      /^https:\/\/script\.google\.com\/a\/[^/]+\/macros\/s\//i,
+      'https://script.google.com/macros/s/'
+    );
+  }
+  return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(v) ? v : '';
+}
+
+/** Return the deployed /exec URL for the payment app launch flow.
+ *  Falls back to the dashboard URL when no separate payment URL is configured.
+ */
+function PAYMENT_WEBAPP_EXEC_URL_() {
+  var prop = SW_NORMALIZE_WEBAPP_EXEC_URL_(
+    PropertiesService.getScriptProperties().getProperty('PAYMENT_WEBAPP_EXEC_URL')
+  );
+  return prop || WEBAPP_EXEC_URL_();
 }
 
 
@@ -190,4 +215,3 @@ if (typeof coerceSOTextColumn_ !== 'function') {
 if (typeof existsSOInMaster_ !== 'function') {
   function existsSOInMaster_(sh, brand, so, skipRow){ return existsSOInMaster__canon(sh, brand, so, skipRow); }
 }
-
