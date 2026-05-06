@@ -1189,6 +1189,7 @@ function sw_processAppointmentAutomation(e) {
     ? swOrchRedirectLegacyTrigger_('sw_processAppointmentAutomation', e)
     : null;
   if (redirected) return redirected;
+  var options = e || {};
 
   return swTimed_('sw_processAppointmentAutomation', function () {
     var lock = LockService.getScriptLock();
@@ -1219,12 +1220,16 @@ function sw_processAppointmentAutomation(e) {
         }
       }
       if (refreshTasks) {
-        try {
-          sw_generateSalesWorkflowTasks();
-          summary.generatedTasks = true;
-        } catch (genErr) {
-          summary.errors++;
-          summary.generationError = swTrim_(genErr && genErr.message || genErr);
+        if (options.deferTaskGeneration) {
+          summary.taskGenerationDeferred = true;
+        } else {
+          try {
+            sw_generateSalesWorkflowTasks();
+            summary.generatedTasks = true;
+          } catch (genErr) {
+            summary.errors++;
+            summary.generationError = swTrim_(genErr && genErr.message || genErr);
+          }
         }
       }
       return summary;

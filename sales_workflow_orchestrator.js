@@ -15,6 +15,7 @@ var SW_ORCH_STALE_HEARTBEAT_MS = 8 * 60 * 1000;
 var SW_ORCH_INTAKE_DRAIN_MS = 2 * 60 * 1000;
 var SW_ORCH_INTAKE_STALE_MS = 45 * 60 * 1000;
 var SW_ORCH_HOURLY_MS = 60 * 60 * 1000;
+var SW_ORCH_HEAVY_MAINTENANCE_PROP = 'SW_ORCH_ENABLE_HEAVY_MAINTENANCE';
 
 function sw_backgroundOrchestrator(e) {
   return swOrchTimed_('sw_backgroundOrchestrator', function () {
@@ -29,7 +30,7 @@ function sw_backgroundOrchestrator(e) {
         reason: lease.reason || 'LEASE_ACTIVE',
         activeLease: lease.lease || null,
         startedAt: swOrchIso_(startedAt),
-        source: e && e.legacyHandler ? ('legacy:' + e.legacyHandler) : 'timeBased',
+        source: swOrchSource_(e),
         jobs: []
       };
       try {
@@ -43,7 +44,7 @@ function sw_backgroundOrchestrator(e) {
       ok: true,
       runId: runId,
       startedAt: swOrchIso_(startedAt),
-      source: e && e.legacyHandler ? ('legacy:' + e.legacyHandler) : 'timeBased',
+      source: swOrchSource_(e),
       jobs: []
     };
 
@@ -93,7 +94,10 @@ function sw_backgroundOrchestrator(e) {
       }
       var automationJob = swOrchRunJob_(summary, runId, 'sw_processAppointmentAutomation', function () {
         return typeof sw_processAppointmentAutomation === 'function'
-          ? sw_processAppointmentAutomation()
+          ? sw_processAppointmentAutomation({
+              source: 'orchestrator',
+              deferTaskGeneration: !swOrchHeavyMaintenanceEnabled_(e)
+            })
           : { ok: true, skipped: true, reason: 'sw_processAppointmentAutomation unavailable' };
       });
       if (automationJob.ok) {
@@ -107,7 +111,10 @@ function sw_backgroundOrchestrator(e) {
         swOrchSaveState_(state);
         return summary;
       }
-      if (!automationJob.result || !automationJob.result.generatedTasks) {
+      var heavyMaintenanceEnabled = swOrchHeavyMaintenanceEnabled_(e);
+      if (!heavyMaintenanceEnabled) {
+        swOrchRecordSkip_(summary, 'sw_generateSalesWorkflowTasks', 'heavyMaintenanceDisabledForIntakeSafety');
+      } else if (!automationJob.result || !automationJob.result.generatedTasks) {
         var taskDue = swOrchIntervalDue_(state.lastTaskGenerationAt, SW_ORCH_HOURLY_MS);
         if (taskDue.due) {
           var taskJob = swOrchRunJob_(summary, runId, 'sw_generateSalesWorkflowTasks', function () {
@@ -144,7 +151,9 @@ function sw_backgroundOrchestrator(e) {
         return summary;
       }
       var readModelDue = swOrchReadModelsDue_();
-      if (readModelDue.due) {
+      if (!heavyMaintenanceEnabled) {
+        swOrchRecordSkip_(summary, 'sw_rebuildWorkflowReadModels', 'heavyMaintenanceDisabledForIntakeSafety');
+      } else if (readModelDue.due) {
         var readModelJob = swOrchRunJob_(summary, runId, 'sw_rebuildWorkflowReadModels', function () {
           return typeof sw_rebuildWorkflowReadModels === 'function'
             ? sw_rebuildWorkflowReadModels({ reason: 'orchestrator' })
@@ -165,6 +174,13 @@ function sw_backgroundOrchestrator(e) {
         Logger.log('SW_ORCH_SUMMARY ' + JSON.stringify(swOrchSummaryForLog_(summary)));
       } catch (_) {}
     }
+  });
+}
+
+function sw_runBackgroundMaintenanceOnce() {
+  return sw_backgroundOrchestrator({
+    source: 'manualMaintenance',
+    forceMaintenance: true
   });
 }
 
@@ -241,6 +257,7 @@ function sw_getBackgroundOrchestratorStatus() {
     handler: SW_ORCH_HANDLER,
     lease: lease,
     leaseStale: swOrchLeaseStale_(lease),
+    heavyMaintenanceEnabled: swOrchHeavyMaintenanceEnabled_({}),
     intake: swOrchReadJsonProperty_(SW_ORCH_INTAKE_KEY, {}),
     state: swOrchReadState_(),
     triggers: swOrchListRelevantTriggers_()
@@ -376,7 +393,7 @@ function swOrchAcquireLease_(runId, sourceEvent) {
       startedAt: swOrchIso_(now),
       heartbeatAt: swOrchIso_(now),
       expiresAt: swOrchIso_(new Date(nowMs + SW_ORCH_LEASE_MS)),
-      source: sourceEvent && sourceEvent.legacyHandler ? ('legacy:' + sourceEvent.legacyHandler) : 'timeBased'
+      source: swOrchSource_(sourceEvent)
     };
     PropertiesService.getScriptProperties().setProperty(SW_ORCH_LEASE_KEY, JSON.stringify(lease));
     return { ok: true, lease: lease };
@@ -457,6 +474,22 @@ function swOrchRecordSkip_(summary, name, reason) {
 function swOrchAcuitySubmitted_(result) {
   if (!result) return false;
   return Number(result.submitted || 0) > 0 || Number(result.rescheduled || 0) > 0 || Number(result.formSubmitted || 0) > 0;
+}
+
+function swOrchHeavyMaintenanceEnabled_(e) {
+  if (e && e.forceMaintenance) return true;
+  try {
+    return /^true$/i.test(String(PropertiesService.getScriptProperties().getProperty(SW_ORCH_HEAVY_MAINTENANCE_PROP) || ''));
+  } catch (_) {
+    return false;
+  }
+}
+
+function swOrchSource_(e) {
+  if (e && e.legacyHandler) return 'legacy:' + e.legacyHandler;
+  if (e && e.source) return String(e.source);
+  if (e && e.forceMaintenance) return 'manualMaintenance';
+  return 'timeBased';
 }
 
 function swOrchIntervalDue_(lastIso, intervalMs) {
@@ -599,6 +632,7 @@ function swOrchResultSummary_(result) {
     'submitted', 'rescheduled', 'edited', 'canceled', 'updated',
     'checkedExisting', 'existingCandidates', 'checkedCanceled', 'canceledCandidates',
     'deferredExisting', 'deferredCanceled',
+    'taskGenerationDeferred',
     'processed', 'errors', 'generatedTasks', 'created', 'repaired',
     'allFresh', 'totalMs'
   ];
