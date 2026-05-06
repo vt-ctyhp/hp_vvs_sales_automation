@@ -299,6 +299,7 @@ function swHandleDataCleanupTaskCompletion_(ss, task, data, user) {
 }
 
 function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
+  var timingStep = typeof swStepTimer_ === 'function' ? swStepTimer_('swCompleteDataCleanupProposal_') : null;
   var now = new Date();
   var proposal = swDataCleanupProposalFromData_(data);
   var proposerRole = task.ownerRole || SW_OWNER_ROLES.SALES_REP;
@@ -312,20 +313,27 @@ function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
   cleanupCase.returnedBy = '';
   cleanupCase.returnedAt = '';
   cleanupCase.updatedAt = cleanupCase.proposedAt;
+  if (timingStep) timingStep('prepare_case_update', { caseId: cleanupCase.caseId });
   swWriteDataCleanupCase_(ss, cleanupCase);
+  if (timingStep) timingStep('swWriteDataCleanupCase_', { caseId: cleanupCase.caseId });
 
   swDataCleanupBlockTasksForCase_(ss, cleanupCase.caseId, task.taskId, user, 'SUPERSEDED_BY_PROPOSAL', function (candidate) {
     return candidate.taskType === SW_TASKS.DATA_CLEANUP_REVIEW || candidate.taskType === SW_TASKS.DATA_CLEANUP_REVISE;
   });
+  if (timingStep) timingStep('swDataCleanupBlockTasksForCase_', { caseId: cleanupCase.caseId });
 
   var payload = swParseJson_(task.payloadJson, {});
   var rec = swDataCleanupRecFromTask_(task, payload, cleanupCase);
   var confirmRole = swDataCleanupOppositeRole_(proposerRole);
-  var confirmTask = swBuildDataCleanupTask_(ss, null, swBuildContext_(ss, true), rec, cleanupCase, SW_TASKS.DATA_CLEANUP_CONFIRM, confirmRole, now, task.taskId, now, {
+  var ctx = swBuildDataCleanupImmediateContext_(ss);
+  if (timingStep) timingStep('swBuildDataCleanupImmediateContext_', { caseId: cleanupCase.caseId });
+  var confirmTask = swBuildDataCleanupTask_(ss, null, ctx, rec, cleanupCase, SW_TASKS.DATA_CLEANUP_CONFIRM, confirmRole, now, task.taskId, now, {
     phase: 'confirm',
     taskId: swDataCleanupTaskId_(cleanupCase.caseId, 'CONFIRM', swDataCleanupRoleKey_(confirmRole), Number(cleanupCase.revisionCount) || 0)
   });
+  if (timingStep) timingStep('swBuildDataCleanupTask_', { taskId: confirmTask.taskId });
   swDataCleanupUpsertImmediateTask_(ss, confirmTask, user, 'CREATE');
+  if (timingStep) timingStep('swDataCleanupUpsertImmediateTask_', { taskId: confirmTask.taskId });
   return {
     action: 'DATA_CLEANUP_PROPOSED',
     caseId: cleanupCase.caseId,
@@ -335,6 +343,7 @@ function swCompleteDataCleanupProposal_(ss, task, cleanupCase, data, user) {
 }
 
 function swCompleteDataCleanupConfirmation_(ss, task, cleanupCase, data, user) {
+  var timingStep = typeof swStepTimer_ === 'function' ? swStepTimer_('swCompleteDataCleanupConfirmation_') : null;
   var decision = swNorm_(data.cleanupDecision);
   var now = new Date();
   if (decision === 'return') {
@@ -344,18 +353,24 @@ function swCompleteDataCleanupConfirmation_(ss, task, cleanupCase, data, user) {
     cleanupCase.returnedAt = swIso_(now);
     cleanupCase.revisionCount = (Number(cleanupCase.revisionCount) || 0) + 1;
     cleanupCase.updatedAt = cleanupCase.returnedAt;
+    if (timingStep) timingStep('prepare_return_case_update', { caseId: cleanupCase.caseId });
     swWriteDataCleanupCase_(ss, cleanupCase);
+    if (timingStep) timingStep('swWriteDataCleanupCase_', { caseId: cleanupCase.caseId });
 
     var payload = swParseJson_(task.payloadJson, {});
     var rec = swDataCleanupRecFromTask_(task, payload, cleanupCase);
     var reviseRole = cleanupCase.proposedRole || SW_OWNER_ROLES.SALES_REP;
-    var reviseTask = swBuildDataCleanupTask_(ss, null, swBuildContext_(ss, true), rec, cleanupCase, SW_TASKS.DATA_CLEANUP_REVISE, reviseRole, now, task.taskId, now, {
+    var ctx = swBuildDataCleanupImmediateContext_(ss);
+    if (timingStep) timingStep('swBuildDataCleanupImmediateContext_', { caseId: cleanupCase.caseId });
+    var reviseTask = swBuildDataCleanupTask_(ss, null, ctx, rec, cleanupCase, SW_TASKS.DATA_CLEANUP_REVISE, reviseRole, now, task.taskId, now, {
       phase: 'revise',
       ownerName: cleanupCase.proposedBy,
       ownerEmail: cleanupCase.proposedByEmail,
       taskId: swDataCleanupTaskId_(cleanupCase.caseId, 'REVISE', swDataCleanupRoleKey_(reviseRole), Number(cleanupCase.revisionCount) || 0)
     });
+    if (timingStep) timingStep('swBuildDataCleanupTask_', { taskId: reviseTask.taskId });
     swDataCleanupUpsertImmediateTask_(ss, reviseTask, user, 'CREATE');
+    if (timingStep) timingStep('swDataCleanupUpsertImmediateTask_', { taskId: reviseTask.taskId });
     return {
       action: 'DATA_CLEANUP_RETURNED',
       caseId: cleanupCase.caseId,
@@ -366,6 +381,7 @@ function swCompleteDataCleanupConfirmation_(ss, task, cleanupCase, data, user) {
 
   var proposal = swParseJson_(cleanupCase.proposalJson, {});
   var result = swApplyDataCleanupProposal_(ss, task, cleanupCase, proposal, user, now);
+  if (timingStep) timingStep('swApplyDataCleanupProposal_', { caseId: cleanupCase.caseId });
   cleanupCase.status = SW_DATA_CLEANUP_STATUS.APPLIED;
   cleanupCase.confirmationBy = user.name || user.email || '';
   cleanupCase.confirmationEmail = user.email || '';
@@ -374,12 +390,23 @@ function swCompleteDataCleanupConfirmation_(ss, task, cleanupCase, data, user) {
   cleanupCase.appliedResultJson = swStringify_(result);
   cleanupCase.updatedAt = cleanupCase.confirmedAt;
   swWriteDataCleanupCase_(ss, cleanupCase);
+  if (timingStep) timingStep('swWriteDataCleanupCase_', { caseId: cleanupCase.caseId });
   swDataCleanupBlockTasksForCase_(ss, cleanupCase.caseId, task.taskId, user, 'CLEANUP_APPLIED');
+  if (timingStep) timingStep('swDataCleanupBlockTasksForCase_', { caseId: cleanupCase.caseId });
   return {
     action: 'DATA_CLEANUP_APPLIED',
     caseId: cleanupCase.caseId,
     result: result
   };
+}
+
+function swBuildDataCleanupImmediateContext_(ss) {
+  var ctx = typeof swBuildTaskDetailContext_ === 'function'
+    ? swBuildTaskDetailContext_(ss, true)
+    : {};
+  ctx.rosterIndex = swReadRosterAvailabilityIndex_(ss);
+  ctx.scheduleChangesIndex = swReadScheduleChangesIndex_(ss);
+  return ctx;
 }
 
 function swApplyDataCleanupProposal_(ss, task, cleanupCase, proposal, user, now) {

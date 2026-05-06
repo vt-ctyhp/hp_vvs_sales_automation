@@ -44,6 +44,72 @@ function sw_setupSalesWorkflow() {
   };
 }
 
+function sw_prepareSalesWorkflowRuntimeForTaskCompletion_(ss) {
+  if (swCompleteTaskFullSetupOnEachCompletion_()) {
+    var setup = sw_setupSalesWorkflow();
+    setup.mode = 'full_forced';
+    return setup;
+  }
+
+  var cacheKey = 'SW_COMPLETE_TASK_RUNTIME_READY_V1';
+  try {
+    if (CacheService.getScriptCache().get(cacheKey) === 'Y') {
+      return {
+        ok: true,
+        mode: 'cache',
+        message: 'Sales workflow runtime sheets were recently verified.'
+      };
+    }
+  } catch (_) {}
+
+  var missing = swMissingSalesWorkflowRuntimeSheets_(ss);
+  if (missing.length) {
+    var repaired = sw_setupSalesWorkflow();
+    repaired.mode = 'full_missing_sheets';
+    repaired.missingSheets = missing;
+    try { CacheService.getScriptCache().put(cacheKey, 'Y', 6 * 60 * 60); } catch (_) {}
+    return repaired;
+  }
+
+  try { CacheService.getScriptCache().put(cacheKey, 'Y', 6 * 60 * 60); } catch (_) {}
+  return {
+    ok: true,
+    mode: 'verified',
+    checkedSheets: swSalesWorkflowRuntimeSheetNames_().length
+  };
+}
+
+function swCompleteTaskFullSetupOnEachCompletion_() {
+  try {
+    var raw = swTrim_(PropertiesService.getScriptProperties().getProperty('SW_COMPLETE_TASK_FULL_SETUP_ON_EACH_COMPLETION') || '');
+    return /^(y|yes|true|1|on)$/i.test(raw);
+  } catch (_) {
+    return false;
+  }
+}
+
+function swMissingSalesWorkflowRuntimeSheets_(ss) {
+  var missing = [];
+  swSalesWorkflowRuntimeSheetNames_().forEach(function (name) {
+    if (name && !ss.getSheetByName(name)) missing.push(name);
+  });
+  return missing;
+}
+
+function swSalesWorkflowRuntimeSheetNames_() {
+  return [
+    SW_SHEETS.TASKS,
+    SW_SHEETS.LOG,
+    SW_SHEETS.CONFIG,
+    SW_SHEETS.TEMPLATES,
+    SW_SHEETS.USERS,
+    SW_SHEETS.DATA_CLEANUP,
+    SW_SHEETS.APPOINTMENT_ARTIFACTS,
+    SW_SHEETS.ROSTER,
+    SW_SHEETS.SCHEDULE_CHANGES
+  ];
+}
+
 /**
  * Mutating generation: creates or updates workflow tasks from master appointments.
  */
@@ -1727,8 +1793,14 @@ function sw_completeTask(authToken, taskId, data) {
     var ss = swCompleteTaskTimed_(timing, 'swSpreadsheet_', function () {
       return swSpreadsheet_();
     });
-    swCompleteTaskTimed_(timing, 'sw_setupSalesWorkflow', function () {
-      sw_setupSalesWorkflow();
+    swCompleteTaskTimed_(timing, 'sw_prepareSalesWorkflowRuntimeForTaskCompletion_', function () {
+      return sw_prepareSalesWorkflowRuntimeForTaskCompletion_(ss);
+    }, function (result) {
+      return {
+        mode: result && result.mode || '',
+        missingSheets: result && result.missingSheets ? result.missingSheets.join(',') : '',
+        checkedSheets: result && result.checkedSheets || ''
+      };
     });
     var user = swCompleteTaskTimed_(timing, 'swAuthUserForApi_', function () {
       return swAuthUserForApi_(ss, authToken);
