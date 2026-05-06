@@ -1514,28 +1514,7 @@ function swAdminDashboardRowSortValue_(rec, tz) {
 }
 
 function swAdminDashboardPipelineStage_(rec, rootRows) {
-  var sales = swNorm_(rec.salesStage);
-  var conv = swNorm_(rec.convStatus);
-  var custom = swNorm_(rec.customOrder);
-  var inProd = swNorm_(rec.inProduction);
-  var combined = [sales, conv, custom, inProd].join(' ');
-
-  if (/lost/.test(combined)) return { key: 'lost', label: 'Lost Lead' };
-  if (/won/.test(combined) || /order completed/.test(custom) || /production completed/.test(inProd)) {
-    return { key: 'won', label: 'Won / Completed' };
-  }
-  if (custom === 'in production' || (inProd && !/none|n\/a|na/.test(inProd))) {
-    return { key: 'inProduction', label: 'In Production' };
-  }
-  if (/deposit|confirmed order|order in progress|approved for production|waiting production|3d requested|3d revision|3d received/.test(combined)) {
-    return { key: 'deposit', label: 'Deposit / Order In Progress' };
-  }
-  if (/appointment|viewing scheduled|scheduled/.test(combined) || swAdminDashboardHasFutureVisit_(rootRows)) {
-    return { key: 'appointment', label: 'Appointment / Viewing Scheduled' };
-  }
-  if (/follow/.test(combined)) return { key: 'followUp', label: 'Follow-Up' };
-  if (/hot/.test(combined)) return { key: 'hotLead', label: 'Hot Lead' };
-  return { key: 'lead', label: 'Lead' };
+  return swCustomerPipelineStage_(rec, swAdminDashboardHasFutureVisit_(rootRows));
 }
 
 function swAdminDashboardHasFutureVisit_(rows) {

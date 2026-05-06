@@ -202,6 +202,142 @@ function swNorm_(value) {
   return swTrim_(value).toLowerCase().replace(/\s+/g, ' ');
 }
 
+var SW_CUSTOMER_PIPELINE_STAGE_LABELS = {
+  lead: 'Lead',
+  hotLead: 'Hot Lead',
+  followUp: 'Follow-Up',
+  appointment: 'Appointment / Viewing Scheduled',
+  deposit: 'Deposit / Order In Progress',
+  inProduction: 'In Production',
+  won: 'Won / Completed',
+  lost: 'Lost Lead'
+};
+
+var SW_CUSTOMER_PIPELINE_SALES_STAGE_MAP = {
+  'appointment': 'appointment',
+  'viewing scheduled': 'appointment',
+  'lead': 'lead',
+  'hot lead': 'hotLead',
+  'follow up required': 'followUp',
+  'deposit': 'deposit',
+  'order in progress': 'deposit',
+  'won': 'won',
+  'lost lead': 'lost'
+};
+
+var SW_CUSTOMER_PIPELINE_CONVERSION_STAGE_MAP = {
+  'booked': 'appointment',
+  'rescheduled': 'appointment',
+  'viewing scheduled': 'appointment',
+  'quotation requested': 'hotLead',
+  'quotation sent': 'hotLead',
+  'cancelled': 'followUp',
+  'canceled': 'followUp',
+  'no show': 'followUp',
+  'follow up attempting contact': 'followUp',
+  'follow up after cancelled appt': 'followUp',
+  'follow up delayed decision': 'followUp',
+  'follow up design pending': 'followUp',
+  'follow up price sent waiting': 'followUp',
+  'follow up requote requested': 'followUp',
+  'deposit paid': 'deposit',
+  'confirmed order': 'deposit',
+  'order in progress': 'deposit',
+  'order completed': 'won',
+  'lost lead': 'lost',
+  'lost lead no response': 'lost',
+  'lost lead price concerns': 'lost',
+  'lost lead bought elsewhere': 'lost',
+  'lost lead timeline': 'lost',
+  'lost lead other': 'lost'
+};
+
+var SW_CUSTOMER_PIPELINE_CUSTOM_ORDER_STAGE_MAP = {
+  'approved for production': 'deposit',
+  'waiting production timeline': 'deposit',
+  'in production': 'inProduction',
+  'final photos waiting approval': 'inProduction',
+  'warehouse': 'inProduction',
+  'ship to us': 'inProduction',
+  'in us store': 'inProduction',
+  'ship to customer': 'inProduction',
+  'order completed': 'won'
+};
+
+var SW_CUSTOMER_PIPELINE_CENTER_STONE_STAGE_MAP = {
+  'no center stone': '',
+  'need to propose diamonds for viewing': 'hotLead',
+  'diamond memo proposed': 'hotLead',
+  'diamond memo some on the way': 'hotLead',
+  'diamond memo on the way': 'hotLead',
+  'diamond memo some delivered': 'hotLead',
+  'diamond memo delivered': 'hotLead',
+  'diamond viewing ready': 'hotLead',
+  'diamond memo none approved': 'followUp',
+  'diamond deposit confirmed order': 'deposit'
+};
+
+function swCustomerPipelineStatusToken_(value) {
+  return swNorm_(value)
+    .replace(/[\u2010-\u2015]+/g, '-')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function swCustomerPipelineStageLabel_(key) {
+  return SW_CUSTOMER_PIPELINE_STAGE_LABELS[key] || SW_CUSTOMER_PIPELINE_STAGE_LABELS.lead;
+}
+
+function swCustomerPipelineCustomOrderStage_(value) {
+  var token = swCustomerPipelineStatusToken_(value);
+  if (!token || token === 'not started') return '';
+  if (token === 'order completed') return 'won';
+  if (SW_CUSTOMER_PIPELINE_CUSTOM_ORDER_STAGE_MAP[token]) {
+    return SW_CUSTOMER_PIPELINE_CUSTOM_ORDER_STAGE_MAP[token];
+  }
+  if (/^3d\b/.test(token)) return 'hotLead';
+  return '';
+}
+
+function swCustomerPipelineInProductionStage_(value) {
+  var token = swCustomerPipelineStatusToken_(value);
+  if (!token || token === 'not started' || token === 'none' || token === 'na' || token === 'n a') return '';
+  if (token === 'production completed') return 'won';
+  return 'inProduction';
+}
+
+function swCustomerPipelineStage_(rec, hasFutureVisit) {
+  rec = rec || {};
+  var salesStage = SW_CUSTOMER_PIPELINE_SALES_STAGE_MAP[swCustomerPipelineStatusToken_(rec.salesStage)] || '';
+  var conversionStage = SW_CUSTOMER_PIPELINE_CONVERSION_STAGE_MAP[swCustomerPipelineStatusToken_(rec.convStatus)] || '';
+  var customOrderStage = swCustomerPipelineCustomOrderStage_(rec.customOrder);
+  var inProductionStage = swCustomerPipelineInProductionStage_(rec.inProduction);
+  var centerStoneStage = SW_CUSTOMER_PIPELINE_CENTER_STONE_STAGE_MAP[swCustomerPipelineStatusToken_(rec.centerStoneStatus)] || '';
+
+  if (salesStage === 'lost' || conversionStage === 'lost') {
+    return { key: 'lost', label: swCustomerPipelineStageLabel_('lost') };
+  }
+  if (salesStage === 'won' || conversionStage === 'won' || customOrderStage === 'won' || inProductionStage === 'won') {
+    return { key: 'won', label: swCustomerPipelineStageLabel_('won') };
+  }
+  if (customOrderStage === 'inProduction' || inProductionStage === 'inProduction') {
+    return { key: 'inProduction', label: swCustomerPipelineStageLabel_('inProduction') };
+  }
+  if (salesStage === 'deposit' || conversionStage === 'deposit' || customOrderStage === 'deposit' || centerStoneStage === 'deposit') {
+    return { key: 'deposit', label: swCustomerPipelineStageLabel_('deposit') };
+  }
+  if (salesStage === 'appointment' || conversionStage === 'appointment' || !!hasFutureVisit) {
+    return { key: 'appointment', label: swCustomerPipelineStageLabel_('appointment') };
+  }
+  if (salesStage === 'followUp' || conversionStage === 'followUp' || centerStoneStage === 'followUp') {
+    return { key: 'followUp', label: swCustomerPipelineStageLabel_('followUp') };
+  }
+  if (salesStage === 'hotLead' || conversionStage === 'hotLead' || customOrderStage === 'hotLead' || centerStoneStage === 'hotLead') {
+    return { key: 'hotLead', label: swCustomerPipelineStageLabel_('hotLead') };
+  }
+  return { key: 'lead', label: swCustomerPipelineStageLabel_('lead') };
+}
+
 function swNormEmail_(value) {
   return swTrim_(value).toLowerCase();
 }
