@@ -6,13 +6,11 @@ const LABEL_STATUS_MAP_ = {
 };
 
 function installLabelSyncTrigger() {
-  const FN = 'acuityLabelSync';
-  // Xóa trigger cũ nếu có
-  ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === FN)
-    .forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger(FN).timeBased().everyMinutes(1).create();
-  Logger.log('✅ Label sync trigger installed: every 5 minutes');
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    return sw_installBackgroundOrchestratorTrigger();
+  }
+  Logger.log('Background orchestrator unavailable; label sync trigger not installed.');
+  return { ok: false, error: 'sw_installBackgroundOrchestratorTrigger unavailable' };
 }
 
 function uninstallLabelSyncTrigger() {
@@ -22,11 +20,16 @@ function uninstallLabelSyncTrigger() {
   Logger.log('🗑️ Label sync trigger removed');
 }
 
-function acuityLabelSync() {
+function acuityLabelSync(e) {
+  const redirected = typeof swOrchRedirectLegacyTrigger_ === 'function'
+    ? swOrchRedirectLegacyTrigger_('acuityLabelSync', e)
+    : null;
+  if (redirected) return redirected;
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     Logger.log('acuityLabelSync: locked, skipping');
-    return;
+    return { ok: true, skipped: true, reason: 'LOCK_BUSY' };
   }
 
   try {
@@ -52,24 +55,24 @@ function acuityLabelSync() {
     });
     if (resp.getResponseCode() !== 200) {
       Logger.log('❌ API error: ' + resp.getResponseCode());
-      return;
+      return { ok: false, error: 'Acuity API error ' + resp.getResponseCode() };
     }
 
     const appointments = JSON.parse(resp.getContentText());
     Logger.log('Fetched ' + appointments.length + ' appointments');
-    if (!appointments.length) return;
+    if (!appointments.length) return { ok: true, checked: 0, updated: 0 };
 
     const ss  = SpreadsheetApp.getActive();
     const sh  = ss.getSheetByName('00_Master Appointments');
-    if (!sh) { Logger.log('❌ Sheet not found'); return; }
+    if (!sh) { Logger.log('❌ Sheet not found'); return { ok: false, error: 'Sheet not found' }; }
 
     const hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     const H   = {};
     hdr.forEach((h, i) => { if (h) H[String(h).trim()] = i + 1; });
-    if (!H['CalendlyEventUID'] || !H['Status']) { Logger.log('❌ Missing columns'); return; }
+    if (!H['CalendlyEventUID'] || !H['Status']) { Logger.log('❌ Missing columns'); return { ok: false, error: 'Missing CalendlyEventUID or Status column' }; }
 
     const lastRow = sh.getLastRow();
-    if (lastRow < 2) return;
+    if (lastRow < 2) return { ok: true, checked: appointments.length, updated: 0 };
 
     // Batch read toàn bộ UID + Status
     const uidCol    = sh.getRange(2, H['CalendlyEventUID'], lastRow - 1, 1).getValues();
@@ -130,6 +133,7 @@ function acuityLabelSync() {
 
     if (updated > 0) CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
     Logger.log('✅ Done — checked=' + appointments.length + ' updated=' + updated);
+    return { ok: true, checked: appointments.length, updated: updated };
 
   } finally {
     try { lock.releaseLock(); } catch (_) {}

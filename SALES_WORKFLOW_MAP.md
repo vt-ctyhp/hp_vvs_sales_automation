@@ -31,6 +31,7 @@ Setup and generation:
 - `sw_setupSalesWorkflow`
 - `sw_generateSalesWorkflowTasks`
 - `sw_installSalesWorkflowTriggers`
+- `sw_backgroundOrchestrator`
 
 ## UI Layer
 
@@ -47,7 +48,9 @@ relationships, due-date decisions, owner resolution, appointment relevance, and
 appointment active/current checks.
 
 Do not change task IDs, lifecycle rules, owner rules, dependency rules, or due
-date rules in readability-only refactors.
+date rules in readability-only refactors. Background time-based work should run
+through `sw_backgroundOrchestrator` so Acuity, appointment automation, repair,
+task generation, and read-model rebuilds do not compete for locks.
 
 ## Repository And Sheet IO Layer
 

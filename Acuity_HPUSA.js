@@ -63,15 +63,11 @@ const ACUITY_CFG = {
 // ─── TRIGGER MANAGEMENT ───────────────────────────────────────────────────────
 
 function installAcuityTrigger() {
-  const FN = 'acuityPollAndSubmit';
-  const exists = ScriptApp.getProjectTriggers()
-    .some(t => t.getHandlerFunction() === FN);
-  if (!exists) {
-    ScriptApp.newTrigger(FN).timeBased().everyMinutes(1).create();
-    Logger.log('✅ Trigger installed: every 1 minute');
-  } else {
-    Logger.log('Trigger already exists');
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    return sw_installBackgroundOrchestratorTrigger();
   }
+  Logger.log('Background orchestrator unavailable; Acuity trigger not installed.');
+  return { ok: false, error: 'sw_installBackgroundOrchestratorTrigger unavailable' };
 }
 
 function uninstallAcuityTrigger() {
@@ -83,12 +79,17 @@ function uninstallAcuityTrigger() {
 
 // ─── MAIN POLLER ──────────────────────────────────────────────────────────────
 
-function acuityPollAndSubmit() {
+function acuityPollAndSubmit(e) {
+  const redirected = typeof swOrchRedirectLegacyTrigger_ === 'function'
+    ? swOrchRedirectLegacyTrigger_('acuityPollAndSubmit', e)
+    : null;
+  if (redirected) return redirected;
+
   const SP   = PropertiesService.getScriptProperties();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
     Logger.log('acuityPollAndSubmit: locked by another run, skipping');
-    return;
+    return { ok: true, skipped: true, reason: 'LOCK_BUSY' };
   }
 
   try {
@@ -106,7 +107,7 @@ function acuityPollAndSubmit() {
     const appointments = acuityFetchAppointments_(userId, apiKey);
     Logger.log('Fetched: ' + appointments.length);
 
-    let submitted = 0, skipped = 0, errors = 0;
+    let submitted = 0, rescheduled = 0, edited = 0, canceled = 0, skipped = 0, errors = 0;
 
     for (const appt of appointments) {
       try {
@@ -117,6 +118,7 @@ function acuityPollAndSubmit() {
           if (existingUIDs.has(uid)) {
             acuityCancelOnMaster_(uid);
             CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+            canceled++;
           }
           skipped++;
           continue;
@@ -128,6 +130,8 @@ function acuityPollAndSubmit() {
           if (result === 'rescheduled' || result === 'edited') {
             CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
           }
+          if (result === 'rescheduled') rescheduled++;
+          if (result === 'edited') edited++;
           skipped++;
           continue;
         }
@@ -154,7 +158,18 @@ function acuityPollAndSubmit() {
     }
 
     SP.setProperty('ACUITY_LAST_FETCH', new Date().toISOString());
-    Logger.log('Done — submitted=' + submitted + ' skipped=' + skipped + ' errors=' + errors);
+    Logger.log('Done — submitted=' + submitted + ' rescheduled=' + rescheduled + ' edited=' + edited + ' canceled=' + canceled + ' skipped=' + skipped + ' errors=' + errors);
+    return {
+      ok: errors === 0,
+      submitted: submitted,
+      rescheduled: rescheduled,
+      edited: edited,
+      canceled: canceled,
+      skipped: skipped,
+      errors: errors,
+      formSubmitted: submitted + rescheduled,
+      checkedAt: new Date().toISOString()
+    };
 
   } finally {
     try { lock.releaseLock(); } catch(_) {}

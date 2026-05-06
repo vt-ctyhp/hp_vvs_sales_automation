@@ -1184,7 +1184,12 @@ function swMarkAppointmentJocHandoff_(ss, rootApptId, user) {
   return { artifactId: row['ArtifactID'], stage: SW_ARTIFACT_STAGES.JOC_HANDOFF };
 }
 
-function sw_processAppointmentAutomation() {
+function sw_processAppointmentAutomation(e) {
+  var redirected = typeof swOrchRedirectLegacyTrigger_ === 'function'
+    ? swOrchRedirectLegacyTrigger_('sw_processAppointmentAutomation', e)
+    : null;
+  if (redirected) return redirected;
+
   return swTimed_('sw_processAppointmentAutomation', function () {
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
@@ -1808,21 +1813,12 @@ function swHandleArtifactWorkerError_(ss, row, err) {
 }
 
 function sw_installAppointmentAutomationTriggers() {
-  var remove = {
-    processUploadQueue: true,
-    processSummariesWorker: true,
-    processIntakeQueue: true,
-    ensureBootstrapForRecentRows_: true,
-    sw_processAppointmentAutomation: true
-  };
-  ScriptApp.getProjectTriggers().forEach(function (trigger) {
-    if (remove[trigger.getHandlerFunction()]) ScriptApp.deleteTrigger(trigger);
-  });
-  ScriptApp.newTrigger('sw_processAppointmentAutomation').timeBased().everyMinutes(5).create();
-  return {
-    ok: true,
-    message: 'Installed 5-minute appointment automation worker and removed retired appointment background workers.'
-  };
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    var result = sw_installBackgroundOrchestratorTrigger();
+    result.message = 'Installed 5-minute background orchestrator and removed retired appointment background workers.';
+    return result;
+  }
+  return { ok: false, error: 'sw_installBackgroundOrchestratorTrigger unavailable' };
 }
 
 function sw_setAppointmentAutomationScriptProperties(assemblyAiApiKey, openAiApiKey, options) {

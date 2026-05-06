@@ -26,7 +26,7 @@ Review the deployed Apps Script project directly:
 - Top-level callable functions exposed to the web app.
 - Functions selected in the Apps Script editor dropdown.
 - Installed triggers.
-- Time-driven triggers for queue refreshes, appointment automation, read-model rebuilds, and cleanup jobs.
+- The single `sw_backgroundOrchestrator` time-driven trigger that serializes queue refreshes, appointment automation, read-model rebuilds, and cleanup jobs.
 - Web app deployment version and whether the tested URL points to the latest deployment.
 - Apps Script quotas, execution limits, and logs.
 
@@ -397,6 +397,7 @@ Important trigger risks:
 - stale read models immediately after a workflow write;
 - long-running rebuilds overlapping with benchmarks;
 - multiple installed copies of the same trigger;
+- background worker triggers that bypass `sw_backgroundOrchestrator`;
 - trigger running under an account with different permissions;
 - rebuild cadence shorter than realistic TTL need;
 - rebuild cadence longer than user tolerance for stale data.

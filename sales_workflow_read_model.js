@@ -13,6 +13,11 @@ var SW_TASK_DASHBOARD_CACHE_SECONDS = 10 * 60;
 var SW_TASK_DASHBOARD_MEMORY_CACHE_ = {};
 
 function sw_rebuildWorkflowReadModels(options) {
+  var redirected = typeof swOrchRedirectLegacyTrigger_ === 'function'
+    ? swOrchRedirectLegacyTrigger_('sw_rebuildWorkflowReadModels', options)
+    : null;
+  if (redirected) return redirected;
+
   options = options || {};
   var ss = swSpreadsheet_();
   var lock = LockService.getDocumentLock() || LockService.getScriptLock();
@@ -141,13 +146,12 @@ function swMarkWorkflowReadModelsStale_(ss, reason, modelName) {
 }
 
 function sw_installWorkflowReadModelRefreshTrigger() {
-  sw_removeWorkflowReadModelRefreshTriggers();
-  ScriptApp.newTrigger(SW_READ_MODEL_REFRESH_HANDLER).timeBased().everyMinutes(5).create();
-  return {
-    ok: true,
-    handler: SW_READ_MODEL_REFRESH_HANDLER,
-    cadence: 'every 5 minutes'
-  };
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    var result = sw_installBackgroundOrchestratorTrigger();
+    result.message = 'Installed 5-minute background orchestrator for read-model refresh and related background jobs.';
+    return result;
+  }
+  return { ok: false, error: 'sw_installBackgroundOrchestratorTrigger unavailable' };
 }
 
 function sw_removeWorkflowReadModelRefreshTriggers() {
@@ -532,17 +536,23 @@ function swWorkflowReadModelStatus_(ss) {
     };
   });
   var triggers = 0;
+  var orchestratorTriggers = 0;
+  var orchestratorHandler = typeof SW_ORCH_HANDLER !== 'undefined' ? SW_ORCH_HANDLER : 'sw_backgroundOrchestrator';
   try {
-    triggers = ScriptApp.getProjectTriggers().filter(function (trigger) {
-      return trigger.getHandlerFunction() === SW_READ_MODEL_REFRESH_HANDLER;
-    }).length;
+    ScriptApp.getProjectTriggers().forEach(function (trigger) {
+      var handler = trigger.getHandlerFunction();
+      if (handler === SW_READ_MODEL_REFRESH_HANDLER) triggers++;
+      if (handler === orchestratorHandler) orchestratorTriggers++;
+    });
   } catch (_) {}
   return {
     ok: true,
     generatedAt: swIso_(new Date()),
     version: SW_READ_MODEL_VERSION,
-    refreshHandler: SW_READ_MODEL_REFRESH_HANDLER,
-    refreshTriggers: triggers,
+    refreshHandler: orchestratorHandler,
+    refreshTriggers: triggers + orchestratorTriggers,
+    directRefreshTriggers: triggers,
+    orchestratorTriggers: orchestratorTriggers,
     models: models,
     allFresh: models.every(function (model) { return model.fresh; })
   };

@@ -164,9 +164,7 @@ All requests must return HTTP 200 or a structured error body. Auth failures (401
 
 ### B. Task Generation and Queue Refresh
 - `sw_generateSalesWorkflowTasks` is the central queue builder. It reads appointments from `00_Master Appointments`, supporting config/template sheets, canonical workflow users, roster/schedule extension data, wax state, and diamond tracker data.
-- `sw_installSalesWorkflowTriggers` installs:
-  - hourly queue refresh;
-  - 5-minute appointment automation.
+- `sw_installSalesWorkflowTriggers` installs the 5-minute `sw_backgroundOrchestrator`, which serializes Acuity polling, label sync, appointment automation, hourly queue refresh, URL repair, and read-model rebuilds.
 - Admins can also manually refresh the queue from the dashboard.
 - Task generation is idempotent by `TaskID`. Existing pending tasks are updated in place; completed tasks and claimed tasks are not reassigned by normal generation.
 - Every create, assignment, completion, snooze, claim, block, unblock, and bulk return action is logged to `_SalesTaskLog`.

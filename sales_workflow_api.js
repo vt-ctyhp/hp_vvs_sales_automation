@@ -47,7 +47,12 @@ function sw_setupSalesWorkflow() {
 /**
  * Mutating generation: creates or updates workflow tasks from master appointments.
  */
-function sw_generateSalesWorkflowTasks() {
+function sw_generateSalesWorkflowTasks(e) {
+  var redirected = typeof swOrchRedirectLegacyTrigger_ === 'function'
+    ? swOrchRedirectLegacyTrigger_('sw_generateSalesWorkflowTasks', e)
+    : null;
+  if (redirected) return redirected;
+
   return swTimed_('sw_generateSalesWorkflowTasks', function () {
     var lock = LockService.getDocumentLock() || LockService.getScriptLock();
     lock.waitLock(30000);
@@ -185,21 +190,12 @@ function sw_cleanupDuplicateTasksApply() {
  * Mutating setup: replaces Sales Workflow generation and appointment automation triggers.
  */
 function sw_installSalesWorkflowTriggers() {
-  ScriptApp.getProjectTriggers().forEach(function (trigger) {
-    var fn = trigger.getHandlerFunction();
-    if (fn === 'sw_generateSalesWorkflowTasks' ||
-        fn === 'processUploadQueue' || fn === 'processSummariesWorker' ||
-        fn === 'processIntakeQueue' || fn === 'ensureBootstrapForRecentRows_' ||
-        fn === 'sw_processAppointmentAutomation') {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  });
-  ScriptApp.newTrigger('sw_generateSalesWorkflowTasks').timeBased().everyHours(1).create();
-  ScriptApp.newTrigger('sw_processAppointmentAutomation').timeBased().everyMinutes(5).create();
-  return {
-    ok: true,
-    message: 'Installed hourly queue refresh and 5-minute appointment automation.'
-  };
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    var result = sw_installBackgroundOrchestratorTrigger();
+    result.message = 'Installed 5-minute background orchestrator for queue refresh, appointment automation, Acuity sync, repair, and read models.';
+    return result;
+  }
+  return { ok: false, error: 'sw_installBackgroundOrchestratorTrigger unavailable' };
 }
 
 // Read-only UI calls.

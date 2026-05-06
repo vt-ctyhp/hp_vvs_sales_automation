@@ -13,6 +13,11 @@ function tmp_uninstallAcuityTrigger() {
 }
 
 function tmp_installAcuityTrigger() {
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    var orchestrator = sw_installBackgroundOrchestratorTrigger();
+    Logger.log('TMP_ACUITY_INSTALL_TRIGGER_ORCHESTRATED ' + JSON.stringify(orchestrator));
+    return orchestrator;
+  }
   var removed = tmp_deleteOwnedTriggersForHandler_(TMP_ACUITY_POLL_HANDLER_);
   var trigger = ScriptApp.newTrigger(TMP_ACUITY_POLL_HANDLER_)
     .timeBased()
@@ -38,6 +43,11 @@ function tmp_uninstallAcuityLabelSyncTrigger() {
 }
 
 function tmp_installAcuityLabelSyncTrigger() {
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    var orchestrator = sw_installBackgroundOrchestratorTrigger();
+    Logger.log('TMP_ACUITY_INSTALL_LABEL_TRIGGER_ORCHESTRATED ' + JSON.stringify(orchestrator));
+    return orchestrator;
+  }
   var removed = tmp_deleteOwnedTriggersForHandler_(TMP_ACUITY_LABEL_HANDLER_);
   var trigger = ScriptApp.newTrigger(TMP_ACUITY_LABEL_HANDLER_)
     .timeBased()
@@ -62,6 +72,7 @@ function tmp_listMyAcuityTriggers() {
   var handlers = {};
   handlers[TMP_ACUITY_POLL_HANDLER_] = true;
   handlers[TMP_ACUITY_LABEL_HANDLER_] = true;
+  if (typeof SW_ORCH_HANDLER !== 'undefined') handlers[SW_ORCH_HANDLER] = true;
 
   var triggers = ScriptApp.getProjectTriggers()
     .filter(function(trigger) {

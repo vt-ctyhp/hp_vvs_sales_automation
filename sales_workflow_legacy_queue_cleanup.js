@@ -210,11 +210,8 @@ function sw_cleanupLegacyAppointmentAutomation(options) {
 
     if (installHourlyRepair && typeof repairMissingUrls_ === 'function') {
       try {
-        var hasRepair = ScriptApp.getProjectTriggers().some(function(trigger) {
-          return trigger.getHandlerFunction() === 'repairMissingUrls_';
-        });
-        if (!hasRepair) {
-          ScriptApp.newTrigger('repairMissingUrls_').timeBased().everyHours(1).create();
+        if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+          sw_installBackgroundOrchestratorTrigger();
           result.installedRepairTrigger = true;
         }
       } catch (err) {

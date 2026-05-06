@@ -1636,6 +1636,13 @@ function keep_(rawVal, col, row) {
 // MAIN RESOLVER - FORM SUBMIT HANDLER
 // ====================================================================
 function onFormSubmit(e){
+  var __swOrchIntakeMarked = false;
+  try {
+    if (typeof swOrchMarkIntakeStart_ === 'function') {
+      var __swOrchMarkResult = swOrchMarkIntakeStart_('onFormSubmit');
+      __swOrchIntakeMarked = !(__swOrchMarkResult && __swOrchMarkResult.ok === false);
+    }
+  } catch (_) {}
   __mark('onFormSubmit: START');
   try{
     const nv = e && e.namedValues ? e.namedValues : {};
@@ -2019,6 +2026,10 @@ function onFormSubmit(e){
   }catch(ex){
     err_('onFormSubmit', ex.message, {stack: ex.stack});
     throw ex;
+  } finally {
+    if (__swOrchIntakeMarked && typeof swOrchMarkIntakeFinish_ === 'function') {
+      try { swOrchMarkIntakeFinish_('onFormSubmit'); } catch (_) {}
+    }
   }
 }
 
@@ -2527,6 +2538,10 @@ function repairMissingUrls_(e) {
   const REPAIR_WINDOW_HOURS  = 48;
   const isTriggerRun = !!(e && e.triggerUid);
   const forceRun = !!(e && e.force);
+  if (isTriggerRun && typeof swOrchRedirectLegacyTrigger_ === 'function') {
+    const redirected = swOrchRedirectLegacyTrigger_('repairMissingUrls_', e);
+    if (redirected) return redirected;
+  }
 
   Logger.log('===== REPAIR START =====');
 
@@ -2652,10 +2667,10 @@ function repairMissingUrls_(e) {
 
 function repairMissingUrlsNormalizeTriggerSchedule_() {
   const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('REPAIR_MISSING_URLS_TRIGGER_MODE') === 'hourly') return;
+  if (props.getProperty('REPAIR_MISSING_URLS_TRIGGER_MODE') === 'orchestrated') return;
   try {
     installUrlRepairHourlyWorker();
-    props.setProperty('REPAIR_MISSING_URLS_TRIGGER_MODE', 'hourly');
+    props.setProperty('REPAIR_MISSING_URLS_TRIGGER_MODE', 'orchestrated');
   } catch (err) {
     Logger.log('[repairWorker] trigger normalization failed: ' + (err && err.message || err));
   }
@@ -2666,13 +2681,14 @@ function installUrlRepairWorker() {
 }
 
 function installUrlRepairHourlyWorker() {
-  const FN = 'repairMissingUrls_';
-  ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === FN)
-    .forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger(FN).timeBased().everyHours(1).create();
-  PropertiesService.getScriptProperties().setProperty('REPAIR_MISSING_URLS_TRIGGER_MODE', 'hourly');
-  Logger.log('[repairWorker] trigger installed: every 1 hour');
+  if (typeof sw_installBackgroundOrchestratorTrigger === 'function') {
+    const result = sw_installBackgroundOrchestratorTrigger();
+    PropertiesService.getScriptProperties().setProperty('REPAIR_MISSING_URLS_TRIGGER_MODE', 'orchestrated');
+    Logger.log('[repairWorker] orchestrated by sw_backgroundOrchestrator');
+    return result;
+  }
+  Logger.log('[repairWorker] background orchestrator unavailable; repair trigger not installed.');
+  return { ok: false, error: 'sw_installBackgroundOrchestratorTrigger unavailable' };
 }
 
 function uninstallUrlRepairWorker() {

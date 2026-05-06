@@ -20,3 +20,7 @@ function timedRefreshHandler() {
 function refreshClientStageRollup() {
   Logger.log('SW_RETIRED_TRIGGER_NOOP refreshClientStageRollup');
 }
+
+function cs_onOpenTrigger_(e) {
+  Logger.log('SW_RETIRED_TRIGGER_NOOP cs_onOpenTrigger_');
+}
