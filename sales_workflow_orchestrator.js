@@ -96,6 +96,7 @@ function sw_backgroundOrchestrator(e) {
         return typeof sw_processAppointmentAutomation === 'function'
           ? sw_processAppointmentAutomation({
               source: 'orchestrator',
+              lockWaitMs: 1500,
               deferTaskGeneration: !swOrchHeavyMaintenanceEnabled_(e)
             })
           : { ok: true, skipped: true, reason: 'sw_processAppointmentAutomation unavailable' };

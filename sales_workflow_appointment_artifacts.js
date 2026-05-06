@@ -1193,7 +1193,25 @@ function sw_processAppointmentAutomation(e) {
 
   return swTimed_('sw_processAppointmentAutomation', function () {
     var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
+    var lockWaitMs = Math.max(0, Number(options.lockWaitMs || 30000) || 0);
+    var locked = false;
+    try {
+      locked = lock.tryLock(lockWaitMs);
+    } catch (_) {
+      locked = false;
+    }
+    if (!locked) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'LOCK_BUSY',
+        lockWaitMs: lockWaitMs,
+        processed: 0,
+        errors: 0,
+        generatedTasks: false,
+        at: swIso_(new Date())
+      };
+    }
     var refreshTasks = false;
     var summary = {
       ok: true,
@@ -1234,7 +1252,9 @@ function sw_processAppointmentAutomation(e) {
       }
       return summary;
     } finally {
-      try { lock.releaseLock(); } catch (_) {}
+      if (locked) {
+        try { lock.releaseLock(); } catch (_) {}
+      }
     }
   });
 }
