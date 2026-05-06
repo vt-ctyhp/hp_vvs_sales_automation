@@ -2700,6 +2700,58 @@ function backfillAllRootApptFolders() {
 // ====================================================================
 // FIX #4: URL REPAIR WORKER
 // ====================================================================
+function sw_repairArtifactsForMasterRow(rowIdx) {
+  const row = Number(rowIdx || 0);
+  if (!row || row < 2) throw new Error('Valid Master row number is required');
+
+  const required = [
+    'ClientFolderID',
+    'Client Folder',
+    'RootAppt Folder ID',
+    'ProspectFolderID',
+    'IntakeDocURL',
+    'Checklist URL',
+    'Quotation URL'
+  ];
+  const before = {};
+  const after = {};
+  const errors = [];
+
+  required.forEach(h => before[h] = getCell_(SHT.MASTER, row, h) || '');
+
+  try {
+    ensureArtifactsForRow_(row);
+  } catch (artifactErr) {
+    errors.push({
+      step: 'ensureArtifactsForRow_',
+      message: artifactErr && artifactErr.message ? artifactErr.message : String(artifactErr)
+    });
+  }
+
+  try {
+    if (!getCell_(SHT.MASTER, row, 'RootAppt Folder ID')) {
+      bootstrapApFolderForRow_(row);
+    }
+  } catch (rootErr) {
+    errors.push({
+      step: 'bootstrapApFolderForRow_',
+      message: rootErr && rootErr.message ? rootErr.message : String(rootErr)
+    });
+  }
+
+  required.forEach(h => after[h] = getCell_(SHT.MASTER, row, h) || '');
+  const missing = required.filter(h => !String(after[h] || '').trim());
+
+  return {
+    ok: missing.length === 0 && errors.length === 0,
+    row,
+    missing,
+    before,
+    after,
+    errors
+  };
+}
+
 function repairMissingUrls_(e) {
   const REPAIR_LOOKBACK_ROWS = 50;
   const REPAIR_WINDOW_HOURS  = 48;
