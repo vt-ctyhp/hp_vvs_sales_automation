@@ -16,12 +16,30 @@ function sw_rebuildWorkflowReadModels(options) {
   options = options || {};
   var ss = swSpreadsheet_();
   var lock = LockService.getDocumentLock() || LockService.getScriptLock();
-  lock.waitLock(28000);
+  var lockWaitMs = swReadModelLockWaitMs_(options);
+  if (!lock.tryLock(lockWaitMs)) {
+    var busy = {
+      ok: false,
+      skipped: true,
+      reason: 'lockBusy',
+      lockWaitMs: lockWaitMs,
+      message: 'Another workflow read-model rebuild is already running.'
+    };
+    Logger.log('SW_READ_MODEL_REBUILD_SKIPPED ' + JSON.stringify(busy));
+    return busy;
+  }
   try {
     return swRebuildWorkflowReadModelsUnlocked_(ss, options);
   } finally {
     try { lock.releaseLock(); } catch (_) {}
   }
+}
+
+function swReadModelLockWaitMs_(options) {
+  options = options || {};
+  var value = Number(options.lockWaitMs || options.lockWaitMillis || 28000);
+  if (!isFinite(value) || value < 0) value = 28000;
+  return Math.min(Math.round(value), 5 * 60 * 1000);
 }
 
 function sw_getWorkflowReadModelStatus() {
