@@ -238,9 +238,12 @@ function swTaskListCacheGet_(key) {
     var metaText = cache.get(key + ':meta');
     var meta = metaText ? swParseJson_(metaText, null) : null;
     if (!meta || !meta.chunks) return null;
+    var keys = [];
+    for (var k = 0; k < meta.chunks; k++) keys.push(key + ':' + k);
+    var chunks = cache.getAll(keys);
     var text = '';
-    for (var i = 0; i < meta.chunks; i++) {
-      var chunk = cache.get(key + ':' + i);
+    for (var i = 0; i < keys.length; i++) {
+      var chunk = chunks[keys[i]];
       if (chunk == null) return null;
       text += chunk;
     }

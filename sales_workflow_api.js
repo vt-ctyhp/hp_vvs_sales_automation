@@ -1259,8 +1259,11 @@ function sw_getTaskDetail(authToken, taskId) {
     mark('detailContext', { mode: authToken ? 'passwordSession' : 'appsScriptIdentity' });
     var user = swAuthUserForApi_(ss, authToken);
     mark('currentUser', { isAdmin: user.isAdmin, isJoc: user.isJoc });
-    var task = swReadTaskRowById_(ss, taskId, true);
-    if (task && typeof swIsCleanupCampaignTask_ === 'function' && swIsCleanupCampaignTask_(task)) {
+    var cleanupTaskId = /^SWC\|DC\|/.test(String(taskId || ''));
+    var task = cleanupTaskId && typeof swReadFreshTaskRowByIdFast_ === 'function'
+      ? swReadFreshTaskRowByIdFast_(ss, taskId)
+      : swReadTaskRowById_(ss, taskId, true);
+    if (!cleanupTaskId && task && typeof swIsCleanupCampaignTask_ === 'function' && swIsCleanupCampaignTask_(task)) {
       task = (typeof swReadFreshTaskRowByIdFast_ === 'function'
         ? swReadFreshTaskRowByIdFast_(ss, taskId)
         : swReadTaskRowById_(ss, taskId, false)) || task;
