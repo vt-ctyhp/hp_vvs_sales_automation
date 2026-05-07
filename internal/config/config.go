@@ -48,11 +48,20 @@ type SeedConfig struct {
 
 // ExternalBookingConfig controls verified third-party booking relay behavior.
 type ExternalBookingConfig struct {
-	AcuityWebhookSecret      string `yaml:"acuity_webhook_secret"`
+	HPAppAcuityWebhookSecret string `yaml:"hpapp_acuity_webhook_secret"`
+	AcuityWebhookSecret      string `yaml:"acuity_webhook_secret"` // legacy fallback
 	SpreadsheetID            string `yaml:"spreadsheet_id"`
 	QueueRange               string `yaml:"queue_range"`
 	GoogleServiceAccountJSON string `yaml:"google_service_account_json"`
 	GoogleServiceAccountFile string `yaml:"google_service_account_file"`
+}
+
+// WebhookSecret returns the preferred HP Acuity webhook secret with legacy fallbacks.
+func (c ExternalBookingConfig) WebhookSecret() string {
+	if c.HPAppAcuityWebhookSecret != "" {
+		return c.HPAppAcuityWebhookSecret
+	}
+	return c.AcuityWebhookSecret
 }
 
 // Load reads configuration from disk and applies environment overrides.
@@ -125,16 +134,25 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("VVSAPP_ADMIN_ROLE"); v != "" {
 		c.Seed.AdminRole = v
 	}
-	if v := os.Getenv("VVSAPP_ACUITY_WEBHOOK_SECRET"); v != "" {
+	if v := os.Getenv("HPAPP_ACUITY_WEBHOOK_SECRET"); v != "" {
+		c.ExternalBooking.HPAppAcuityWebhookSecret = v
+	}
+	if v := os.Getenv("VVSAPP_ACUITY_WEBHOOK_SECRET"); v != "" && c.ExternalBooking.HPAppAcuityWebhookSecret == "" {
 		c.ExternalBooking.AcuityWebhookSecret = v
 	}
-	if v := os.Getenv("VVSAPP_ACUITY_API_KEY"); v != "" && c.ExternalBooking.AcuityWebhookSecret == "" {
+	if v := os.Getenv("VVSAPP_ACUITY_API_KEY"); v != "" && c.ExternalBooking.WebhookSecret() == "" {
 		c.ExternalBooking.AcuityWebhookSecret = v
 	}
-	if v := os.Getenv("VVSAPP_BOOKING_SPREADSHEET_ID"); v != "" {
+	if v := os.Getenv("HPAPP_ACUITY_QUEUE_SPREADSHEET_ID"); v != "" {
 		c.ExternalBooking.SpreadsheetID = v
 	}
-	if v := os.Getenv("VVSAPP_EXTERNAL_BOOKING_QUEUE_RANGE"); v != "" {
+	if v := os.Getenv("VVSAPP_BOOKING_SPREADSHEET_ID"); v != "" && c.ExternalBooking.SpreadsheetID == "" {
+		c.ExternalBooking.SpreadsheetID = v
+	}
+	if v := os.Getenv("HPAPP_EXTERNAL_BOOKING_QUEUE_RANGE"); v != "" {
+		c.ExternalBooking.QueueRange = v
+	}
+	if v := os.Getenv("VVSAPP_EXTERNAL_BOOKING_QUEUE_RANGE"); v != "" && c.ExternalBooking.QueueRange == "" {
 		c.ExternalBooking.QueueRange = v
 	}
 	if v := os.Getenv("VVSAPP_GOOGLE_SERVICE_ACCOUNT_JSON"); v != "" {
@@ -171,10 +189,10 @@ func (c *Config) Summary() map[string]any {
 			"admin_role":  c.Seed.AdminRole,
 		},
 		"external_booking": map[string]any{
-			"acuity_webhook_secret_set": c.ExternalBooking.AcuityWebhookSecret != "",
-			"spreadsheet_id_set":        c.ExternalBooking.SpreadsheetID != "",
-			"queue_range":               c.ExternalBooking.QueueRange,
-			"service_account_set":       c.ExternalBooking.GoogleServiceAccountJSON != "" || c.ExternalBooking.GoogleServiceAccountFile != "",
+			"hpapp_acuity_webhook_secret_set": c.ExternalBooking.WebhookSecret() != "",
+			"spreadsheet_id_set":              c.ExternalBooking.SpreadsheetID != "",
+			"queue_range":                     c.ExternalBooking.QueueRange,
+			"service_account_set":             c.ExternalBooking.GoogleServiceAccountJSON != "" || c.ExternalBooking.GoogleServiceAccountFile != "",
 		},
 	}
 }

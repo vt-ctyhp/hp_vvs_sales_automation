@@ -91,7 +91,7 @@ func TestAcuityWebhookIgnoresChangedAction(t *testing.T) {
 
 func testAcuityWebhookServer(secret string, appender externalEventAppender) *Server {
 	cfg := &config.Config{}
-	cfg.ExternalBooking.AcuityWebhookSecret = secret
+	cfg.ExternalBooking.HPAppAcuityWebhookSecret = secret
 	srv := &Server{cfg: cfg, events: appender}
 	srv.router = srv.routes()
 	return srv

@@ -17,8 +17,8 @@ seed:
   admin_role: "admin"
 
 external_booking:
-  acuity_webhook_secret: ""
-  spreadsheet_id: ""
+  hpapp_acuity_webhook_secret: ""
+  spreadsheet_id: "1gWXpPXkuoNdK9I5KyPqDYD3Re0Mbn3ouDxpCjxJ_5MA"
   queue_range: "'_ExternalBookingEvents'!A:P"
   google_service_account_json: ""
   google_service_account_file: ""

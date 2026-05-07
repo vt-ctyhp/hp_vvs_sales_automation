@@ -48,12 +48,12 @@ The VVS Local App is a self-hosted, single-binary application that mirrors the e
 
 ## Acuity Webhook Relay
 
-The app exposes `POST /api/webhooks/acuity` as a public verified relay. It verifies `x-acuity-signature` with the Acuity API key/webhook secret, ignores `changed`, and appends `scheduled`, `rescheduled`, and `canceled` appointment events into `_ExternalBookingEvents` in the main Google Sheet.
+The app exposes `POST /api/webhooks/acuity` as a public verified relay. It verifies `x-acuity-signature` with the HP Acuity API key/webhook secret, ignores `changed`, and appends `scheduled`, `rescheduled`, and `canceled` appointment events into `_ExternalBookingEvents`.
 
 Required env/config for the relay:
 
-* `VVSAPP_ACUITY_WEBHOOK_SECRET`
-* `VVSAPP_BOOKING_SPREADSHEET_ID`
+* `HPAPP_ACUITY_WEBHOOK_SECRET`
+* `HPAPP_ACUITY_QUEUE_SPREADSHEET_ID`
 * `VVSAPP_GOOGLE_SERVICE_ACCOUNT_JSON` or `VVSAPP_GOOGLE_SERVICE_ACCOUNT_FILE`
 
 The Apps Script orchestrator processes that queue through `sw_processExternalBookingEvents`; Calendly remains on its separate live webhook flow.

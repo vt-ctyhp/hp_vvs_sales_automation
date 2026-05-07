@@ -96,7 +96,7 @@ func (s *Server) handleAcuityWebhook(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return
 	}
-	secret := strings.TrimSpace(s.cfg.ExternalBooking.AcuityWebhookSecret)
+	secret := strings.TrimSpace(s.cfg.ExternalBooking.WebhookSecret())
 	if secret == "" {
 		s.writeError(w, http.StatusServiceUnavailable, errors.New("acuity webhook secret is not configured"))
 		return

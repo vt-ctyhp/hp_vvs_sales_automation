@@ -7,6 +7,8 @@
 
 var SW_EXTERNAL_BOOKING_EVENT_BATCH_SIZE_ = 20;
 var SW_EXTERNAL_BOOKING_EVENT_LOCK_WAIT_MS_ = 30000;
+var SW_HPAPP_ACUITY_QUEUE_SPREADSHEET_ID_PROP_ = 'HPAPP_ACUITY_QUEUE_SPREADSHEET_ID';
+var SW_EXTERNAL_BOOKING_QUEUE_SPREADSHEET_ID_PROP_ = 'EXTERNAL_BOOKING_QUEUE_SPREADSHEET_ID';
 var SW_EXTERNAL_BOOKING_EVENT_DONE_STATUSES_ = {
   DONE: true,
   SKIPPED_DUP: true,
@@ -31,8 +33,7 @@ function sw_processExternalBookingEvents(options) {
   }
 
   try {
-    var ss = swSpreadsheet_();
-    var sh = swEnsureExternalBookingEventsSheet_(ss);
+    var sh = swEnsureExternalBookingEventsSheet_();
     var pending = swExternalBookingPendingRows_(sh, options);
     var result = {
       ok: true,
@@ -103,7 +104,23 @@ function sw_processExternalBookingEvents(options) {
 }
 
 function swEnsureExternalBookingEventsSheet_(ss) {
-  return swEnsureSheet_(ss, SW_SHEETS.EXTERNAL_BOOKING_EVENTS, SW_EXTERNAL_BOOKING_EVENT_HEADERS);
+  var queueSs = swExternalBookingQueueSpreadsheet_(ss);
+  return swEnsureSheet_(queueSs, SW_SHEETS.EXTERNAL_BOOKING_EVENTS, SW_EXTERNAL_BOOKING_EVENT_HEADERS);
+}
+
+function swExternalBookingQueueSpreadsheet_(fallbackSs) {
+  var id = '';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    id = swExternalBookingTrim_(props.getProperty(SW_HPAPP_ACUITY_QUEUE_SPREADSHEET_ID_PROP_) ||
+      props.getProperty(SW_EXTERNAL_BOOKING_QUEUE_SPREADSHEET_ID_PROP_) || '');
+  } catch (_) {}
+  if (id) {
+    try { return SpreadsheetApp.openById(id); } catch (err) {
+      throw new Error('Unable to open HPAPP Acuity queue spreadsheet: ' + swExternalBookingError_(err));
+    }
+  }
+  return fallbackSs || swSpreadsheet_();
 }
 
 function swExternalBookingPendingRows_(sh, options) {
@@ -468,8 +485,7 @@ function swExternalBookingError_(err) {
 
 function sw_testInjectExternalBookingEvent(options) {
   options = options || {};
-  var ss = swSpreadsheet_();
-  var sh = swEnsureExternalBookingEventsSheet_(ss);
+  var sh = swEnsureExternalBookingEventsSheet_();
   var now = new Date();
   var action = swExternalBookingNormalizeAction_(options.action || 'scheduled');
   var id = swExternalBookingTrim_(options.providerAppointmentId || options.id || ('TEST' + now.getTime()));
@@ -499,6 +515,42 @@ function sw_testInjectExternalBookingEvent(options) {
   ];
   sh.appendRow(row);
   return { ok: true, sheet: SW_SHEETS.EXTERNAL_BOOKING_EVENTS, row: sh.getLastRow(), testRunId: testRunId, id: id, action: action };
+}
+
+function sw_configureHpAppAcuityQueue(options) {
+  options = options || {};
+  var spreadsheetId = swExternalBookingTrim_(options.spreadsheetId || options.queueSpreadsheetId || '');
+  if (!spreadsheetId) throw new Error('Missing spreadsheetId.');
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty(SW_HPAPP_ACUITY_QUEUE_SPREADSHEET_ID_PROP_, spreadsheetId);
+  props.setProperty(SW_EXTERNAL_BOOKING_QUEUE_SPREADSHEET_ID_PROP_, spreadsheetId);
+  if (options.acuityUserId) props.setProperty('ACUITY_USER_ID', swExternalBookingTrim_(options.acuityUserId));
+  if (options.acuityApiKey) props.setProperty('ACUITY_API_KEY', swExternalBookingTrim_(options.acuityApiKey));
+  var sh = swEnsureExternalBookingEventsSheet_();
+  swStyleSheet_(sh);
+  return {
+    ok: true,
+    spreadsheetId: spreadsheetId,
+    sheetName: sh.getName(),
+    headers: sh.getRange(1, 1, 1, SW_EXTERNAL_BOOKING_EVENT_HEADERS.length).getDisplayValues()[0]
+  };
+}
+
+function sw_getHpAppAcuityQueueConfig() {
+  var props = PropertiesService.getScriptProperties();
+  var spreadsheetId = swExternalBookingTrim_(props.getProperty(SW_HPAPP_ACUITY_QUEUE_SPREADSHEET_ID_PROP_) ||
+    props.getProperty(SW_EXTERNAL_BOOKING_QUEUE_SPREADSHEET_ID_PROP_) || '');
+  var ss = spreadsheetId ? SpreadsheetApp.openById(spreadsheetId) : swSpreadsheet_();
+  var sh = swEnsureExternalBookingEventsSheet_(ss);
+  return {
+    ok: true,
+    spreadsheetId: ss.getId(),
+    spreadsheetName: ss.getName(),
+    sheetName: sh.getName(),
+    rows: Math.max(0, sh.getLastRow() - 1),
+    headers: sh.getRange(1, 1, 1, SW_EXTERNAL_BOOKING_EVENT_HEADERS.length).getDisplayValues()[0],
+    usingExternalSpreadsheet: !!spreadsheetId
+  };
 }
 
 function sw_clearExternalBookingTestFlags(options) {

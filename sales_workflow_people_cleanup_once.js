@@ -124,6 +124,7 @@ function swBuildTestDataCleanupPlan_(options) {
   swAddTestDataCleanupWarning_(plan, 'Drive files and folders referenced by artifact rows are not trashed by this function.');
 
   swScanWorkflowTestDataCleanupSources_(ss, plan, options);
+  swScanExternalBookingQueueForTestDataCleanup_(ss, plan, options);
   swScanPaymentLedgerForTestDataCleanup_(plan, options);
   swScanDiamond200ForTestDataCleanup_(plan, options);
 
@@ -133,6 +134,46 @@ function swBuildTestDataCleanupPlan_(options) {
   plan.confirmationToken = 'DELETE_TEST_DATA_' + plan.fingerprint.slice(0, 10).toUpperCase();
   plan.summary = swTestDataCleanupSummary_(plan);
   return plan;
+}
+
+function swScanExternalBookingQueueForTestDataCleanup_(workflowSs, plan, options) {
+  options = options || {};
+  if (options.externalBookingQueue === false) return;
+  var id = '';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    id = swTestDataCleanupTrim_(props.getProperty('HPAPP_ACUITY_QUEUE_SPREADSHEET_ID') ||
+      props.getProperty('EXTERNAL_BOOKING_QUEUE_SPREADSHEET_ID') || '');
+  } catch (_) {}
+  if (!id) return;
+  if (workflowSs && id === swTestDataCleanupSpreadsheetId_(workflowSs)) return;
+
+  var ss = null;
+  try { ss = SpreadsheetApp.openById(id); } catch (err) {
+    plan.skippedSources.push({
+      workbookKey: 'hpappAcuityQueue',
+      sheetName: '_ExternalBookingEvents',
+      reason: 'open failed: ' + (err && err.message ? err.message : String(err))
+    });
+    return;
+  }
+  var sh = ss.getSheetByName('_ExternalBookingEvents');
+  if (!sh) {
+    plan.skippedSources.push({ workbookKey: 'hpappAcuityQueue', sheetName: '_ExternalBookingEvents', reason: 'missing sheet' });
+    return;
+  }
+  swScanSheetForTestDataCleanup_({
+    workbookKey: 'hpappAcuityQueue',
+    workbookLabel: 'HPAPP Acuity queue',
+    spreadsheet: ss,
+    sheet: sh,
+    sheetName: sh.getName(),
+    headerRows: 1,
+    dataStartRow: 2,
+    allowDirectTestMatch: true,
+    exactKeyOnly: false,
+    deleteOrder: swTestDataCleanupDeleteOrder_('_ExternalBookingEvents', 'workflow')
+  }, plan, options);
 }
 
 function swRequireTestDataCleanupAdmin_(options) {
