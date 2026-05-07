@@ -37,6 +37,7 @@ function swSeedConfig_(sh) {
     ['SYSTEM', 'READ_MODEL_SERVE_APPOINTMENTS', 'Y', '', '', '', 'Y', '', 'Use fresh _SW_AppointmentReadModel and _SW_CalendarMonthReadModel rows for appointment/calendar reads. Falls back to 00_Master Appointments when stale or missing.'],
     ['SYSTEM', 'READ_MODEL_SERVE_PAYMENTS', 'Y', '', '', '', 'Y', '', 'Use fresh _SW_PaymentReadModel rows for dashboard payment reads. Falls back to the payment ledger when stale or missing.'],
     ['SYSTEM', 'READ_MODEL_SERVE_ADMIN', 'Y', '', '', '', 'Y', '', 'Use precomputed _SW_AdminDashboardReadModel payloads for standard unfiltered admin dashboard windows. Falls back to live aggregation when stale or filtered.'],
+    ['SYSTEM', 'READ_MODEL_SERVE_INBOX', 'Y', '', '', '', 'Y', '', 'Use fresh _SW_InboxReadModel rows for dashboard inbox reads. Falls back to _SalesInboxLog when stale or missing.'],
     ['SYSTEM', 'READ_MODEL_TTL_SECONDS', '600', '', '', '', 'Y', '', 'Freshness window for generated workflow read models. The refresh trigger still targets every 5 minutes.'],
     ['USER', 'ADMIN_1', '', 'Admin', '', '', 'Y', '1', 'Optional admin row.'],
     ['USER', 'DIAMOND_ORDER_ADMIN_1', '', 'DIAMOND_ORDER_ADMIN', '', '', 'Y', '1', 'Legacy config row only; dashboard access now comes from _SalesWorkflowUsers role DIAMOND_ORDER_ADMIN.'],

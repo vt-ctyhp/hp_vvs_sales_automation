@@ -98,6 +98,13 @@ function swMarkWorkflowReadModelsStale_(ss, reason, modelName) {
       }
     } catch (_) {}
   }
+  if (!modelName || modelName === 'inbox') {
+    try {
+      if (typeof swInvalidateInboxReadModelCache_ === 'function') {
+        swInvalidateInboxReadModelCache_(ss);
+      }
+    } catch (_) {}
+  }
   var key = ss.getId() + ':' + (modelName || 'all');
   if (SW_READ_MODEL_INVALIDATED_THIS_EXECUTION_[key]) {
     return {
@@ -240,6 +247,13 @@ function swRebuildWorkflowReadModelsUnlocked_(ss, options) {
   meta.push(swReadModelMetaRow_('adminDashboard', 'dashboard projections', adminResult, builtAtIso, expiresAtIso));
   out.models.adminDashboard = adminResult;
   if (!adminResult.ok) out.ok = false;
+
+  var inboxResult = typeof swBuildInboxReadModel_ === 'function'
+    ? swBuildInboxReadModel_(ss, builtAt)
+    : swReadModelErrorResult_(new Error('swBuildInboxReadModel_ unavailable'), started, SW_SHEETS.READ_MODEL_INBOX);
+  meta.push(swReadModelMetaRow_('inbox', SW_SHEETS.INBOX_LOG, inboxResult, builtAtIso, expiresAtIso));
+  out.models.inbox = inboxResult;
+  if (!inboxResult.ok) out.ok = false;
 
   var metaResult = swWriteReadModelSheet_(ss, SW_SHEETS.READ_MODEL_META, SW_READ_MODEL_META_HEADERS, meta);
   out.models.meta = metaResult;
@@ -567,7 +581,8 @@ function swReadModelDefinitions_() {
     { model: 'appointments', sheet: SW_SHEETS.READ_MODEL_APPOINTMENTS },
     { model: 'calendarMonths', sheet: SW_SHEETS.READ_MODEL_CALENDAR_MONTHS },
     { model: 'payments', sheet: SW_SHEETS.READ_MODEL_PAYMENTS },
-    { model: 'adminDashboard', sheet: SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD }
+    { model: 'adminDashboard', sheet: SW_SHEETS.READ_MODEL_ADMIN_DASHBOARD },
+    { model: 'inbox', sheet: SW_SHEETS.READ_MODEL_INBOX }
   ];
 }
 

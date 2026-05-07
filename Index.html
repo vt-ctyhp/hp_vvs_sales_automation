@@ -1504,6 +1504,142 @@
       color: var(--ink-primary);
     }
 
+    .inbox-wide .layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .inbox-wide #detailPanel {
+      display: none;
+    }
+
+    .inbox-shell,
+    .inbox-list,
+    .inbox-composer {
+      display: grid;
+      gap: 14px;
+    }
+
+    .inbox-toolbar,
+    .inbox-filter-group,
+    .inbox-recipient-mode {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .inbox-toolbar {
+      border-bottom: 1px solid var(--rule);
+      justify-content: space-between;
+      padding-bottom: 16px;
+    }
+
+    button.inbox-filter-button.active {
+      background: var(--ink-primary);
+      border-color: var(--ink-primary);
+      color: var(--bg-foundation);
+    }
+
+    .inbox-summary-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .inbox-composer {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      padding: 20px;
+    }
+
+    .inbox-target-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      max-height: 240px;
+      overflow: auto;
+    }
+
+    .inbox-target-option {
+      align-items: flex-start;
+      background: var(--surface-inset);
+      border: 1px solid var(--rule);
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .inbox-target-option input {
+      margin-top: 3px;
+      width: auto;
+    }
+
+    .inbox-card {
+      background: var(--surface-card);
+      border: 1px solid var(--rule);
+      display: grid;
+      gap: 10px;
+      padding: 18px;
+    }
+
+    .inbox-card-head {
+      align-items: start;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .inbox-card-title {
+      color: var(--ink-primary);
+      font-size: 17px;
+      font-weight: 500;
+      line-height: 1.25;
+    }
+
+    .inbox-card-body {
+      color: var(--ink-body);
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .inbox-time {
+      color: var(--ink-muted);
+      font-size: 12px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .inbox-card-meta,
+    .inbox-card-foot,
+    .inbox-target-help {
+      color: var(--ink-muted);
+      font-size: 12px;
+    }
+
+    .inbox-card-foot {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .inbox-badge {
+      border: 1px solid var(--rule);
+      color: var(--ink-muted);
+      display: inline-flex;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      padding: 5px 7px;
+      text-transform: uppercase;
+    }
+
+    .inbox-composer-head {
+      align-items: end;
+      display: flex;
+      gap: 14px;
+      justify-content: space-between;
+    }
+
     .customer-detail-actions {
       background: var(--surface-inset);
       border-top: 1px solid var(--rule);
@@ -2378,7 +2514,7 @@
         min-height: 96px;
       }
 
-      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-risk-grid, .admin-pulse-grid, .admin-dashboard-grid, .admin-stage-grid {
+      .stat-grid, .proposal-grid, .admin-filter-grid, .admin-risk-grid, .admin-pulse-grid, .admin-dashboard-grid, .admin-stage-grid, .inbox-summary-grid {
         grid-template-columns: 1fr;
       }
 
@@ -2594,6 +2730,10 @@
               <span class="nav-item-label">My Queue</span>
               <span class="nav-item-description">Tasks assigned to you</span>
             </button>
+            <button id="tab-inbox" class="nav-menu-item" type="button" data-view="inbox" role="menuitem">
+              <span class="nav-item-label">Inbox</span>
+              <span class="nav-item-description">Schedule updates and team messages</span>
+            </button>
             <button id="tab-calendar" class="nav-menu-item" type="button" data-view="calendar" role="menuitem">
               <span class="nav-item-label">Calendar</span>
               <span class="nav-item-description">Upcoming appointments</span>
@@ -2706,6 +2846,15 @@
       selectedTaskId: '',
       detail: null,
       userAdmin: null,
+      inbox: {
+        filter: 'all',
+        notifications: [],
+        nextCursor: '',
+        hasMore: false,
+        canSendBroadcast: false,
+        composerOpen: false,
+        broadcastOptions: null
+      },
       calendarMonth: '',
       calendarAppointments: [],
       diamondTrackingRows: [],
@@ -2933,12 +3082,13 @@
         });
       }
 
-      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (view) {
+      ['mine', 'inbox', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (view) {
         var tab = document.getElementById('tab-' + view);
         if (!tab) return;
         tab.addEventListener('click', function () {
           closeNavigationMenus();
-          if (view === 'calendar') loadCalendar();
+          if (view === 'inbox') loadInbox();
+          else if (view === 'calendar') loadCalendar();
           else if (view === 'customerSearch') loadCustomerSearch();
           else if (view === 'inStockDiamonds') loadInStockDiamonds();
           else if (view === 'diamondTracking') loadDiamondTracking();
@@ -2967,6 +3117,28 @@
           }
           if (closestMatch_(event.target, '.js-open-loupe360-sync')) {
             openLoupe360SyncPanel();
+            return;
+          }
+          var inboxFilterButton = closestMatch_(event.target, '.js-inbox-filter');
+          if (inboxFilterButton) {
+            setInboxFilter(inboxFilterButton.getAttribute('data-filter') || 'all');
+            return;
+          }
+          if (closestMatch_(event.target, '.js-inbox-load-more')) {
+            loadInbox({ append: true });
+            return;
+          }
+          if (closestMatch_(event.target, '.js-inbox-open-composer')) {
+            openInboxComposer();
+            return;
+          }
+          if (closestMatch_(event.target, '.js-inbox-cancel-broadcast')) {
+            closeInboxComposer();
+            return;
+          }
+          var inboxSendButton = closestMatch_(event.target, '.js-inbox-send-broadcast');
+          if (inboxSendButton) {
+            sendInboxBroadcast(inboxSendButton);
             return;
           }
           if (closestMatch_(event.target, '.js-admin-dashboard-apply')) {
@@ -3035,6 +3207,10 @@
         taskList.addEventListener('change', function (event) {
           if (closestMatch_(event.target, '.js-stock-filter')) {
             updateInStockDiamondFilters();
+            return;
+          }
+          if (closestMatch_(event.target, '#inboxRecipientMode')) {
+            renderInboxBroadcastTargets();
             return;
           }
           if (closestMatch_(event.target, '.js-bulk-return-checkbox')) {
@@ -3594,6 +3770,7 @@
       user = user || {};
       return {
         mine: true,
+        inbox: true,
         calendar: true,
         customerSearch: !!(user.isAdmin || user.isJoc || user.isRep),
         cleanup: false,
@@ -3636,6 +3813,7 @@
         '</span>'
       ].join('');
       document.getElementById('tab-cleanup').style.display = res.views && res.views.cleanup ? '' : 'none';
+      document.getElementById('tab-inbox').style.display = res.views && res.views.inbox !== false ? '' : 'none';
       document.getElementById('tab-customerSearch').style.display = res.views && res.views.customerSearch ? '' : 'none';
       document.getElementById('tab-inStockDiamonds').style.display = res.views && res.views.inStockDiamonds !== false ? '' : 'none';
       document.getElementById('tab-diamondTracking').style.display = res.views && res.views.diamondTracking ? '' : 'none';
@@ -3838,6 +4016,10 @@
     }
 
     function loadTasks(view, options) {
+      if (view === 'inbox') {
+        loadInbox();
+        return;
+      }
       if (view === 'calendar') {
         loadCalendar(appState.calendarMonth);
         return;
@@ -3893,7 +4075,7 @@
     }
 
     function setActiveTab(view) {
-      ['mine', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (v) {
+      ['mine', 'inbox', 'calendar', 'customerSearch', 'cleanup', 'inStockDiamonds', 'diamondTracking', 'bulkReturns', 'coverage', 'adminDashboard', 'employeeSchedules', 'admin'].forEach(function (v) {
         var el = document.getElementById('tab-' + v);
         if (el) el.classList.toggle('active', v === view);
       });
@@ -3907,6 +4089,7 @@
       var shell = document.getElementById('appShell');
       if (!shell) return;
       shell.classList.toggle('admin-dashboard-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'adminDashboard');
+      shell.classList.toggle('inbox-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'inbox');
       shell.classList.toggle('customer-search-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'customerSearch');
       shell.classList.toggle('employee-schedule-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'employeeSchedules');
       shell.classList.toggle('user-admin-wide', !shell.classList.contains('proposal-workspace-mode') && appState.view === 'userAdmin');
@@ -3922,6 +4105,10 @@
       if (view === 'calendar') {
         title = 'Upcoming appointments by month';
         eyebrow = 'Calendar';
+      }
+      if (view === 'inbox') {
+        title = 'Schedule updates and team messages';
+        eyebrow = 'Inbox';
       }
       if (view === 'customerSearch') {
         title = 'Search customers and take action';
@@ -5428,6 +5615,345 @@
       } catch (_) {
         return '$' + Math.round(n).toLocaleString();
       }
+    }
+
+    function loadInbox(options) {
+      options = options || {};
+      var state = appState.inbox || (appState.inbox = {});
+      var append = !!options.append;
+      var requestId = append ? appState.mainRequestId : beginMainRequest('inbox');
+      if (!append) {
+        appState.selectedTaskId = '';
+        state.notifications = [];
+        state.nextCursor = '';
+        state.hasMore = false;
+        setActiveTab('inbox');
+        renderViewHeader('inbox');
+        document.getElementById('taskList').innerHTML = '<div class="loading">LOADING INBOX</div>';
+        renderTaskDetailPlaceholder('Inbox', 'News bulletin', 'Schedule updates and team messages appear here.');
+      }
+      serverCall('sw_getInboxNotifications', [{
+        filter: state.filter || 'all',
+        cursor: append ? state.nextCursor || '' : '',
+        limit: 50,
+        windowDays: 7
+      }], function (res) {
+        if (appState.view !== 'inbox') return;
+        if (!append && !isCurrentMainRequest(requestId, 'inbox')) return;
+        var nextItems = res.notifications || [];
+        state.notifications = append ? (state.notifications || []).concat(nextItems) : nextItems;
+        state.nextCursor = res.nextCursor || '';
+        state.hasMore = !!res.hasMore;
+        state.canSendBroadcast = !!res.canSendBroadcast;
+        state.lastGeneratedAt = res.generatedAt || '';
+        renderInbox();
+      }, append ? 'Loading older inbox updates' : 'Loading inbox');
+    }
+
+    function setInboxFilter(filter) {
+      filter = ['all', 'schedule', 'broadcast'].indexOf(filter) >= 0 ? filter : 'all';
+      var state = appState.inbox || (appState.inbox = {});
+      if ((state.filter || 'all') === filter) return;
+      state.filter = filter;
+      state.nextCursor = '';
+      state.hasMore = false;
+      loadInbox();
+    }
+
+    function renderInbox() {
+      var state = appState.inbox || {};
+      var items = state.notifications || [];
+      document.getElementById('taskList').innerHTML = [
+        '<div class="inbox-shell">',
+          renderInboxToolbar(),
+          state.composerOpen && inboxCanSendBroadcast() ? renderInboxComposer() : '',
+          renderInboxSummary(items),
+          '<div class="inbox-list">',
+            items.length ? items.map(renderInboxCard).join('') : renderInboxEmptyState(),
+          '</div>',
+          state.hasMore ? '<div class="actions"><button class="js-inbox-load-more" type="button">Load older updates</button></div>' : '',
+        '</div>'
+      ].join('');
+      renderTaskDetailPlaceholder('Inbox', 'News bulletin', 'Schedule updates and team messages appear here.');
+    }
+
+    function renderInboxToolbar() {
+      var state = appState.inbox || {};
+      var current = state.filter || 'all';
+      var filters = [
+        { value: 'all', label: 'All' },
+        { value: 'schedule', label: 'Schedule' },
+        { value: 'broadcast', label: 'Messages' }
+      ];
+      return [
+        '<div class="inbox-toolbar">',
+          '<div>',
+            '<div class="eyebrow">Latest updates</div>',
+            '<div class="meta">Showing recent updates first. Use Load older updates for prior days.</div>',
+          '</div>',
+          '<div class="inbox-filter-group">',
+            filters.map(function (filter) {
+              return '<button class="inbox-filter-button js-inbox-filter' + (filter.value === current ? ' active' : '') + '" type="button" data-filter="' + escapeAttrValue(filter.value) + '">' + escapeHtml(filter.label) + '</button>';
+            }).join(''),
+            inboxCanSendBroadcast() && !state.composerOpen ? '<button class="primary js-inbox-open-composer" type="button">Send broadcast</button>' : '',
+          '</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderInboxSummary(items) {
+      items = items || [];
+      var schedule = 0;
+      var broadcast = 0;
+      items.forEach(function (item) {
+        if (item.kind === 'schedule') schedule++;
+        if (item.kind === 'broadcast') broadcast++;
+      });
+      var latest = items.length ? inboxDateTimeLabel(items[0].createdAt) : 'None';
+      return [
+        '<div class="inbox-summary-grid">',
+          statCardHtml('Visible', items.length),
+          statCardHtml('Schedule', schedule),
+          statCardHtml('Messages', broadcast),
+          statCardHtml('Latest', latest),
+        '</div>'
+      ].join('');
+    }
+
+    function renderInboxEmptyState() {
+      return [
+        '<div class="empty">',
+          '<strong>No inbox updates in this view.</strong>',
+          '<div class="meta">If you were out, use Load older updates when available to reach previous days.</div>',
+        '</div>'
+      ].join('');
+    }
+
+    function renderInboxCard(item) {
+      item = item || {};
+      var badge = item.badgeLabel || (item.kind === 'broadcast' ? 'Message' : 'Schedule');
+      var meta = inboxMetaLine(item);
+      var foot = inboxFootParts(item);
+      return [
+        '<article class="inbox-card">',
+          '<div class="inbox-card-head">',
+            '<div>',
+              '<span class="inbox-badge">' + escapeHtml(badge) + '</span>',
+              '<div class="inbox-card-title">' + escapeHtml(item.title || 'Inbox update') + '</div>',
+              meta ? '<div class="inbox-card-meta">' + escapeHtml(meta) + '</div>' : '',
+            '</div>',
+            '<time class="inbox-time">' + escapeHtml(inboxDateTimeLabel(item.createdAt)) + '</time>',
+          '</div>',
+          item.body ? '<div class="inbox-card-body">' + escapeHtml(item.body) + '</div>' : '',
+          foot.length ? '<div class="inbox-card-foot">' + foot.map(function (part) { return '<span>' + escapeHtml(part) + '</span>'; }).join('') + '</div>' : '',
+        '</article>'
+      ].join('');
+    }
+
+    function inboxMetaLine(item) {
+      if (item.kind === 'broadcast') {
+        return item.senderName ? 'From ' + item.senderName : 'Broadcast message';
+      }
+      return 'System schedule update';
+    }
+
+    function inboxFootParts(item) {
+      var out = [];
+      if (item.customerName) out.push(item.customerName);
+      if (item.brand) out.push(item.brand);
+      if (item.visitDate || item.visitTime) out.push(['Visit', item.visitDate, item.visitTime].filter(Boolean).join(' '));
+      if (item.appt) out.push('APPT ' + item.appt);
+      return out;
+    }
+
+    function inboxDateTimeLabel(value) {
+      if (!value) return '';
+      var d = new Date(value);
+      if (isNaN(d.getTime())) return String(value || '');
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        }).format(d);
+      } catch (_) {
+        return d.toLocaleString();
+      }
+    }
+
+    function inboxCanSendBroadcast() {
+      var user = appState.user || {};
+      return !!((appState.inbox && appState.inbox.canSendBroadcast) || user.isAdmin || user.isDiamondOrderAdmin);
+    }
+
+    function openInboxComposer() {
+      if (!inboxCanSendBroadcast()) {
+        setStatus('Broadcast access requires Admin or Diamond Order Admin.', true);
+        return;
+      }
+      appState.inbox.composerOpen = true;
+      renderInbox();
+      ensureInboxBroadcastOptions();
+    }
+
+    function closeInboxComposer() {
+      appState.inbox.composerOpen = false;
+      renderInbox();
+    }
+
+    function ensureInboxBroadcastOptions() {
+      var state = appState.inbox || (appState.inbox = {});
+      if (state.broadcastOptions) {
+        renderInboxBroadcastTargets();
+        return;
+      }
+      serverCall('sw_getInboxBroadcastOptions', [], function (res) {
+        state.broadcastOptions = res || {};
+        renderInbox();
+      }, 'Loading broadcast options');
+    }
+
+    function renderInboxComposer() {
+      var state = appState.inbox || {};
+      var options = state.broadcastOptions || null;
+      var recipientMode = valueOf('inboxRecipientMode') || 'all';
+      return [
+        '<div class="inbox-composer">',
+          '<div class="inbox-composer-head">',
+            '<div>',
+              '<div class="eyebrow">Broadcast</div>',
+              '<h3>Send team message</h3>',
+              '<div class="meta">Text-only subject and body. Recipients are resolved from active workflow users.</div>',
+            '</div>',
+            '<button class="js-inbox-cancel-broadcast" type="button">Cancel</button>',
+          '</div>',
+          '<div class="field-grid">',
+            '<div class="wide"><label for="inboxBroadcastSubject">Subject *</label><input id="inboxBroadcastSubject" type="text" maxlength="140" placeholder="Short subject"></div>',
+            '<div class="wide"><label for="inboxBroadcastBody">Body *</label><textarea id="inboxBroadcastBody" placeholder="Message body"></textarea></div>',
+            '<div><label for="inboxRecipientMode">Send to</label><select id="inboxRecipientMode">' + inboxRecipientModeOptions(recipientMode) + '</select></div>',
+            '<div class="wide" id="inboxTargetPicker">' + (options ? inboxBroadcastTargetPickerHtml(recipientMode, options) : '<div class="loading">LOADING RECIPIENTS</div>') + '</div>',
+          '</div>',
+          '<div class="actions"><button class="primary js-inbox-send-broadcast" type="button">Send broadcast</button></div>',
+        '</div>'
+      ].join('');
+    }
+
+    function inboxRecipientModeOptions(selected) {
+      var modes = [
+        { value: 'all', label: 'Team-wide' },
+        { value: 'roles', label: 'Specific roles' },
+        { value: 'users', label: 'Specific users' }
+      ];
+      return modes.map(function (mode) {
+        return '<option value="' + escapeAttrValue(mode.value) + '"' + (mode.value === selected ? ' selected' : '') + '>' + escapeHtml(mode.label) + '</option>';
+      }).join('');
+    }
+
+    function renderInboxBroadcastTargets() {
+      var mount = document.getElementById('inboxTargetPicker');
+      if (!mount) return;
+      var state = appState.inbox || {};
+      mount.innerHTML = state.broadcastOptions
+        ? inboxBroadcastTargetPickerHtml(valueOf('inboxRecipientMode') || 'all', state.broadcastOptions)
+        : '<div class="loading">LOADING RECIPIENTS</div>';
+    }
+
+    function inboxBroadcastTargetPickerHtml(mode, options) {
+      options = options || {};
+      var users = options.users || [];
+      if (mode === 'all') {
+        return '<div class="template-box">This will send to all active workflow users currently eligible for the dashboard. Active recipients: ' + escapeHtml(users.length) + '.</div>';
+      }
+      if (mode === 'roles') {
+        var roles = options.roleOptions || [];
+        if (!roles.length) return '<div class="empty">No roles are available.</div>';
+        return [
+          '<div class="inbox-target-help">Choose one or more roles. Users with any selected role will receive the message.</div>',
+          '<div class="inbox-target-grid">',
+            roles.map(function (role) {
+              return [
+                '<label class="inbox-target-option">',
+                  '<input class="inbox-role-target" type="checkbox" value="' + escapeAttrValue(role.value || '') + '">',
+                  '<span><span class="task-title">' + escapeHtml(role.label || role.value || '') + '</span></span>',
+                '</label>'
+              ].join('');
+            }).join(''),
+          '</div>'
+        ].join('');
+      }
+      if (mode === 'users') {
+        if (!users.length) return '<div class="empty">No active users are available.</div>';
+        return [
+          '<div class="inbox-target-help">Choose one or more active users.</div>',
+          '<div class="inbox-target-grid">',
+            users.map(function (user) {
+              return [
+                '<label class="inbox-target-option">',
+                  '<input class="inbox-user-target" type="checkbox" value="' + escapeAttrValue(user.email || '') + '">',
+                  '<span>',
+                    '<span class="task-title">' + escapeHtml(user.name || user.email || 'Unknown user') + '</span>',
+                    '<span class="meta">' + escapeHtml([user.email || '', user.roleLabels || ''].filter(Boolean).join(' | ')) + '</span>',
+                  '</span>',
+                '</label>'
+              ].join('');
+            }).join(''),
+          '</div>'
+        ].join('');
+      }
+      return '';
+    }
+
+    function sendInboxBroadcast(sourceButton) {
+      var payload = collectInboxBroadcastPayload();
+      if (!payload) return;
+      serverCall('sw_sendInboxBroadcast', [payload], function (res) {
+        appState.inbox.composerOpen = false;
+        appState.inbox.nextCursor = '';
+        appState.inbox.hasMore = false;
+        setStatus((res && res.message) || 'Broadcast sent');
+        loadInbox();
+      }, 'Sending broadcast', sourceButton);
+    }
+
+    function collectInboxBroadcastPayload() {
+      var mode = valueOf('inboxRecipientMode') || 'all';
+      var subject = valueOf('inboxBroadcastSubject').trim();
+      var body = valueOf('inboxBroadcastBody').trim();
+      if (!subject) {
+        setStatus('Subject is required.', true);
+        return null;
+      }
+      if (!body) {
+        setStatus('Body is required.', true);
+        return null;
+      }
+      var roleTargets = checkedInboxValues('.inbox-role-target');
+      var userTargets = checkedInboxValues('.inbox-user-target');
+      if (mode === 'roles' && !roleTargets.length) {
+        setStatus('Select at least one role.', true);
+        return null;
+      }
+      if (mode === 'users' && !userTargets.length) {
+        setStatus('Select at least one user.', true);
+        return null;
+      }
+      return {
+        recipientMode: mode,
+        subject: subject,
+        body: body,
+        roleTargets: roleTargets,
+        userTargets: userTargets
+      };
+    }
+
+    function checkedInboxValues(selector) {
+      return Array.prototype.slice.call(document.querySelectorAll(selector)).filter(function (el) {
+        return !!el.checked;
+      }).map(function (el) {
+        return el.value || '';
+      }).filter(Boolean);
     }
 
     function loadCalendar(monthKey) {

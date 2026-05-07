@@ -417,10 +417,20 @@ function acuityCancelOnMaster_(acuityUid) {
 
   sh.getRange(masterRow, H['Status']).setValue('Canceled');
   if (H['Active?'])          sh.getRange(masterRow, H['Active?']).setValue('No');
+  if (H['CanceledAt'] && !sh.getRange(masterRow, H['CanceledAt']).getValue()) {
+    sh.getRange(masterRow, H['CanceledAt']).setValue(new Date());
+  }
   if (H['Automation Notes']) {
     const prev = sh.getRange(masterRow, H['Automation Notes']).getValue() || '';
     const note = 'Canceled via Acuity @ ' + new Date().toISOString();
     sh.getRange(masterRow, H['Automation Notes']).setValue(prev ? prev + '\n' + note : note);
+  }
+  try {
+    if (typeof swInboxLogAppointmentScheduleChangeFromRows_ === 'function') {
+      swInboxLogAppointmentScheduleChangeFromRows_(swSpreadsheet_(), 'APPOINTMENT_CANCELED', masterRow, 0);
+    }
+  } catch (inboxErr) {
+    Logger.log('Inbox cancel notification failed: ' + (inboxErr && inboxErr.message || inboxErr));
   }
   Logger.log('Canceled on Master: row=' + masterRow + ' uid=' + acuityUid);
   return true;

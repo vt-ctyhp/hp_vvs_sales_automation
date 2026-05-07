@@ -11,6 +11,7 @@ var SW_SHEETS = {
   USERS: '_SalesWorkflowUsers',
   DATA_CLEANUP: '_SalesDataCleanup',
   APPOINTMENT_ARTIFACTS: '_AppointmentArtifacts',
+  INBOX_LOG: '_SalesInboxLog',
   READ_MODEL_TASKS: '_SW_TaskReadModel',
   READ_MODEL_CUSTOMERS: '_SW_CustomerReadModel',
   READ_MODEL_DIAMONDS: '_SW_DiamondReadModel',
@@ -19,6 +20,7 @@ var SW_SHEETS = {
   READ_MODEL_CALENDAR_MONTHS: '_SW_CalendarMonthReadModel',
   READ_MODEL_PAYMENTS: '_SW_PaymentReadModel',
   READ_MODEL_ADMIN_DASHBOARD: '_SW_AdminDashboardReadModel',
+  READ_MODEL_INBOX: '_SW_InboxReadModel',
   READ_MODEL_META: '_SW_ReadModelMeta',
   ROSTER: '10_Roster_Schedule',
   SCHEDULE_CHANGES: 'Schedule Changes',
@@ -367,6 +369,42 @@ var SW_ADMIN_DASHBOARD_READ_MODEL_HEADERS = [
   'Built At',
   'Payload JSON',
   'Payload Bytes',
+  'Search Text'
+];
+var SW_INBOX_LOG_HEADERS = [
+  'NotificationID',
+  'Created At',
+  'Kind',
+  'Event Type',
+  'Title',
+  'Body',
+  'Badge Label',
+  'Sender Name',
+  'Sender Email',
+  'Sender Role',
+  'Recipient Mode',
+  'Role Targets JSON',
+  'User Targets JSON',
+  'Visible Emails JSON',
+  'RootApptID',
+  'APPT_ID',
+  'Previous APPT_ID',
+  'Customer Name',
+  'Brand',
+  'Visit Date',
+  'Visit Time',
+  'Previous Visit Date',
+  'Previous Visit Time',
+  'Booked At',
+  'Booked Within 24 Hours?',
+  'Fingerprint',
+  'Payload JSON'
+];
+var SW_INBOX_READ_MODEL_HEADERS = [
+  'Month Key',
+  'Notification Count',
+  'Notifications JSON',
+  'Built At',
   'Search Text'
 ];
 var SW_READ_MODEL_META_HEADERS = [

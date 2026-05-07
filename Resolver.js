@@ -12,6 +12,7 @@
 const SHT = {
   MASTER: '00_Master Appointments',
   FORM_INBOX: '02_Form_Inbox',
+  TASKS: '_SalesTaskQueue',
   LOG: '20_Automation_Log',
   ERR: '90_Validation_Errors'
 };
@@ -897,23 +898,42 @@ function intakeTemplateIdForBrand_(brand){
 function syncVisitDateTime_(row, vdate, vtime) {
   const TZ = CFG.TZ || 'America/Los_Angeles';
 
-  if (!vdate || !vtime) {
-    Logger.log(`[syncDateTime] row ${row} skipped - incomplete data`);
+  var dateText = '';
+  var timeText = '';
+
+  if (vdate instanceof Date && !isNaN(vdate.getTime())) {
+    dateText = Utilities.formatDate(vdate, TZ, 'M/d/yyyy');
+  } else {
+    dateText = String(vdate || '').trim();
+  }
+
+  if (vtime instanceof Date && !isNaN(vtime.getTime())) {
+    timeText = Utilities.formatDate(vtime, TZ, 'h:mm:ss a');
+  } else {
+    timeText = String(vtime || '').trim();
+  }
+
+  if (dateText) setCell_(SHT.MASTER, row, 'Visit Date', dateText);
+  if (timeText) setCell_(SHT.MASTER, row, 'Visit Time', timeText);
+
+  if (!dateText && !timeText) {
+    Logger.log(`[syncDateTime] row ${row} skipped - no visit date/time provided`);
     return '';
   }
 
-  // ── FIX: Calendly gửi ISO object → parse trực tiếp ──
+  if (!dateText || !timeText) {
+    Logger.log(`[syncDateTime] row ${row} partial sync - kept visit fields without ISO (date="${dateText}" time="${timeText}")`);
+    return '';
+  }
+
   let newISO = '';
   try {
-    // Case 1: vdate là full ISO (Calendly format)
-    // "2026-04-29T07:00:00.000Z" + "1899-12-30T22:30:00.000Z"
-    const isISODate = /^\d{4}-\d{2}-\d{2}T/.test(String(vdate));
-    const isISOTime = /^\d{4}-\d{2}-\d{2}T/.test(String(vtime));
+    const isISODate = /^\d{4}-\d{2}-\d{2}T/.test(dateText);
+    const isISOTime = /^\d{4}-\d{2}-\d{2}T/.test(timeText);
 
     if (isISODate && isISOTime) {
-      // Lấy phần date từ vdate, phần time từ vtime
-      const datePart = new Date(vdate);
-      const timePart = new Date(vtime);
+      const datePart = new Date(dateText);
+      const timePart = new Date(timeText);
 
       const combined = new Date(
         datePart.getUTCFullYear(),
@@ -925,14 +945,13 @@ function syncVisitDateTime_(row, vdate, vtime) {
       );
       newISO = Utilities.formatDate(combined, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
 
-    // Case 2: format cũ MM/DD/YYYY + "2:30:00 PM"
     } else {
-      const parts = String(vdate).split('/');
-      let dateStr = vdate;
+      const parts = dateText.split('/');
+      let dateStr = dateText;
       if (parts.length === 3) {
         dateStr = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
       }
-      const dt = new Date(`${dateStr} ${vtime}`);
+      const dt = new Date(`${dateStr} ${timeText}`);
       if (!isNaN(dt.getTime())) {
         newISO = Utilities.formatDate(dt, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
       }
@@ -944,9 +963,9 @@ function syncVisitDateTime_(row, vdate, vtime) {
 
   if (newISO) {
     setCell_(SHT.MASTER, row, 'ApptDateTime (ISO)', newISO);
-    setCell_(SHT.MASTER, row, 'Visit Date', vdate);
-    setCell_(SHT.MASTER, row, 'Visit Time', vtime);
     Logger.log(`[syncDateTime] row ${row} synced: ${newISO}`);
+  } else {
+    Logger.log(`[syncDateTime] row ${row} kept visit fields but could not build ISO (date="${dateText}" time="${timeText}")`);
   }
 
   return newISO;
@@ -2061,6 +2080,8 @@ function onFormSubmit(e){
       'Email': email || getCell_(SHT.MASTER,row,'Email') || '',
       'EmailLower': emailLower || getCell_(SHT.MASTER,row,'EmailLower') || '',
       'Visit Type': vtype || getCell_(SHT.MASTER,row,'Visit Type') || '',
+      'Visit Date': vdate || getCell_(SHT.MASTER,row,'Visit Date') || '',
+      'Visit Time': vtime || getCell_(SHT.MASTER,row,'Visit Time') || '',
       'Timezone': CFG.TZ,
       'Duration (min)': getCell_(SHT.MASTER,row,'Duration (min)') || DEFAULT_DURATION_MIN,
       'Location': locToEnum_(location) || getCell_(SHT.MASTER,row,'Location') || '',
@@ -2095,11 +2116,7 @@ function onFormSubmit(e){
       Logger.log('[batchWrite] wrote ' + Object.keys(updates).length + ' fields in 1 call');
     })(updates);
 
-    if (vdate && vtime) {
-      syncVisitDateTime_(row, vdate, vtime);
-    } else {
-      Logger.log(`[onFormSubmit] row ${row} - datetime sync skipped (vdate="${vdate}" vtime="${vtime}")`);
-    }
+    syncVisitDateTime_(row, vdate, vtime);
 
     stampSalesStageIfConsult_(row, vtype);
 
@@ -2187,6 +2204,18 @@ function onFormSubmit(e){
       err_('postNotify_', ex.message, { row, looksLikeReschedule, oldRow });
     }
 
+    try {
+      if (typeof swInboxLogAppointmentScheduleChangeFromRows_ === 'function') {
+        if (looksLikeReschedule && oldRow) {
+          swInboxLogAppointmentScheduleChangeFromRows_(swSpreadsheet_(), 'APPOINTMENT_RESCHEDULED', row, oldRow);
+        } else if (createdNow) {
+          swInboxLogAppointmentScheduleChangeFromRows_(swSpreadsheet_(), 'NEW_APPOINTMENT', row, 0);
+        }
+      }
+    } catch (inboxErr) {
+      err_('onFormSubmit.swInboxLogAppointmentScheduleChangeFromRows_', inboxErr.message || String(inboxErr), { row, oldRow, looksLikeReschedule });
+    }
+
     _appendNote_(row, `Form merged @ ${new Date().toISOString()}`);
 
     if (CFG.DEBUG) log_('FORM_MERGED', {row, emailLower, brand});
@@ -2198,6 +2227,322 @@ function onFormSubmit(e){
       try { swOrchMarkIntakeFinish_('onFormSubmit'); } catch (_) {}
     }
   }
+}
+
+function sw_repairMissingVisitDateTimeFromFormInbox(options) {
+  options = options || {};
+  const dryRun = options.dryRun !== false;
+  const refreshTasks = options.refreshTasks === true;
+
+  const inboxSh = SH(SHT.FORM_INBOX);
+  const masterSh = SH(SHT.MASTER);
+  const IH = headers_(SHT.FORM_INBOX);
+  const MH = headers_(SHT.MASTER);
+  let taskIndex = null;
+  try { taskIndex = sw_taskQueueVisitDateTimeIndex_(); } catch (_) { taskIndex = null; }
+  const inboxLast = inboxSh.getLastRow();
+  const masterLast = lastDataRow_(SHT.MASTER, LASTROW_SENTINELS);
+  const inboxTimestampCol = IH['Timestamp'];
+  const inboxNameCol = IH['Customer Name'];
+  const inboxVisitTypeCol = IH['Visit Type'];
+  const inboxVisitDateCol = IH['Visit Date'];
+  const inboxVisitTimeCol = IH['Visit Time'];
+  const masterApptCol = MH['APPT_ID'];
+  const masterRootCol = MH['RootApptID'];
+  const masterTimestampCol = MH['Timestamp'];
+  const masterNameCol = MH['Customer Name'];
+  const masterVisitDateCol = MH['Visit Date'];
+  const masterVisitTimeCol = MH['Visit Time'];
+
+  if (inboxLast < 2 || masterLast < 2 ||
+      !inboxTimestampCol || !inboxNameCol || !inboxVisitDateCol || !inboxVisitTimeCol ||
+      !masterTimestampCol || !masterNameCol || !masterVisitDateCol || !masterVisitTimeCol) {
+    return { ok: true, dryRun: dryRun, candidates: [], repaired: [], ambiguous: [] };
+  }
+
+  const inboxVals = inboxSh.getRange(2, 1, inboxLast - 1, inboxSh.getLastColumn()).getDisplayValues();
+  const masterVals = masterSh.getRange(2, 1, masterLast - 1, masterSh.getLastColumn()).getDisplayValues();
+  const masterByKey = {};
+
+  masterVals.forEach((row, idx) => {
+    const ts = String(row[masterTimestampCol - 1] || '').trim();
+    const name = String(row[masterNameCol - 1] || '').trim().toLowerCase();
+    if (!ts || !name) return;
+    const key = ts + '|' + name;
+    if (!masterByKey[key]) masterByKey[key] = [];
+    masterByKey[key].push({ rowNumber: idx + 2, row: row });
+  });
+
+  const candidates = [];
+  const repaired = [];
+  const ambiguous = [];
+
+  inboxVals.forEach((row, idx) => {
+    const ts = String(row[inboxTimestampCol - 1] || '').trim();
+    const rawName = String(row[inboxNameCol - 1] || '').trim();
+    const nameKey = rawName.toLowerCase();
+    const formDate = String(row[inboxVisitDateCol - 1] || '').trim();
+    const formTime = String(row[inboxVisitTimeCol - 1] || '').trim();
+    if (!ts || !nameKey || (!formDate && !formTime)) return;
+
+    const matches = masterByKey[ts + '|' + nameKey] || [];
+    if (matches.length !== 1) {
+      if (matches.length > 1) {
+        ambiguous.push({
+          formRow: idx + 2,
+          timestamp: ts,
+          customerName: rawName,
+          matchedMasterRows: matches.map(function (match) { return match.rowNumber; })
+        });
+      }
+      return;
+    }
+
+    const match = matches[0];
+    const masterDate = String(match.row[masterVisitDateCol - 1] || '').trim();
+    const masterTime = String(match.row[masterVisitTimeCol - 1] || '').trim();
+    const rootApptId = masterRootCol ? String(match.row[masterRootCol - 1] || '').trim() : '';
+    const apptId = masterApptCol ? String(match.row[masterApptCol - 1] || '').trim() : '';
+    const needsDate = !!formDate && !masterDate;
+    const needsTime = !!formTime && !masterTime;
+    const nextDate = masterDate || formDate;
+    const nextTime = masterTime || formTime;
+    const taskRefs = sw_taskQueueRefsForAppointment_(taskIndex, rootApptId, apptId);
+    const taskNeedsSync = sw_taskQueueVisitDateTimeNeedsSync_(taskIndex, taskRefs, nextDate, nextTime);
+    if (!needsDate && !needsTime && !taskNeedsSync) return;
+
+    const item = {
+      formRow: idx + 2,
+      masterRow: match.rowNumber,
+      rootApptId: rootApptId,
+      apptId: apptId,
+      customerName: rawName,
+      visitType: inboxVisitTypeCol ? String(row[inboxVisitTypeCol - 1] || '').trim() : '',
+      formDate: formDate,
+      formTime: formTime,
+      masterDateBefore: masterDate,
+      masterTimeBefore: masterTime,
+      taskQueueRowNumbers: taskRefs.map(function (ref) { return ref.rowNumber; }),
+      taskQueueNeedsSync: taskNeedsSync
+    };
+    candidates.push(item);
+
+    item.masterDateAfter = nextDate;
+    item.masterTimeAfter = nextTime;
+    if (dryRun) return;
+
+    if (needsDate) setCell_(SHT.MASTER, match.rowNumber, 'Visit Date', formDate);
+    if (needsTime) setCell_(SHT.MASTER, match.rowNumber, 'Visit Time', formTime);
+    syncVisitDateTime_(match.rowNumber, nextDate, nextTime);
+    repaired.push(item);
+  });
+
+  let taskQueueSync = null;
+  if (!dryRun && repaired.length) {
+    taskQueueSync = sw_syncVisitDateTimeToTaskQueue_(taskIndex, repaired);
+  }
+
+  let taskRefresh = null;
+  const repairedMasterCount = repaired.filter(function (item) {
+    return !!((item.masterDateBefore || '') !== (item.masterDateAfter || '') ||
+      (item.masterTimeBefore || '') !== (item.masterTimeAfter || ''));
+  }).length;
+  if (!dryRun && refreshTasks && repairedMasterCount && typeof sw_generateSalesWorkflowTasks === 'function') {
+    try {
+      taskRefresh = sw_generateSalesWorkflowTasks();
+    } catch (err) {
+      taskRefresh = { ok: false, error: String(err && err.message || err) };
+    }
+  }
+
+  return {
+    ok: true,
+    dryRun: dryRun,
+    candidateCount: candidates.length,
+    repairedCount: repaired.length,
+    repairedMasterCount: repairedMasterCount,
+    candidates: candidates,
+    repaired: repaired,
+    ambiguous: ambiguous,
+    taskQueueSync: taskQueueSync,
+    taskRefresh: taskRefresh
+  };
+}
+
+function sw_taskQueueVisitDateTimeIndex_() {
+  let taskSh;
+  try { taskSh = SH(SHT.TASKS); } catch (_) { return null; }
+  const TH = headers_(SHT.TASKS);
+  const colTaskId = TH['TaskID'];
+  const colRoot = TH['RootApptID'];
+  const colAppt = TH['APPT_ID'];
+  const colVisitDate = TH['Visit Date'];
+  const colVisitTime = TH['Visit Time'];
+  const colPayload = TH['Payload JSON'];
+  if (!colTaskId || !colRoot || !colAppt || !colVisitDate || !colVisitTime || !colPayload) return null;
+
+  const lastRow = taskSh.getLastRow();
+  if (lastRow < 2) {
+    return {
+      sheet: taskSh,
+      cols: { taskId: colTaskId, root: colRoot, appt: colAppt, visitDate: colVisitDate, visitTime: colVisitTime, payload: colPayload },
+      rows: [],
+      byKey: {}
+    };
+  }
+
+  const width = Math.max(colTaskId, colRoot, colAppt, colVisitDate, colVisitTime, colPayload);
+  const rows = taskSh.getRange(2, 1, lastRow - 1, width).getDisplayValues();
+  const byKey = {};
+  rows.forEach(function (row, idx) {
+    const ref = {
+      rowNumber: idx + 2,
+      row: row,
+      taskId: String(row[colTaskId - 1] || '').trim(),
+      root: String(row[colRoot - 1] || '').trim(),
+      appt: String(row[colAppt - 1] || '').trim()
+    };
+    [ref.root, ref.appt].forEach(function (key) {
+      if (!key) return;
+      if (!byKey[key]) byKey[key] = [];
+      byKey[key].push(ref);
+    });
+  });
+
+  return {
+    sheet: taskSh,
+    cols: { taskId: colTaskId, root: colRoot, appt: colAppt, visitDate: colVisitDate, visitTime: colVisitTime, payload: colPayload },
+    rows: rows,
+    byKey: byKey
+  };
+}
+
+function sw_taskQueueRefsForAppointment_(taskIndex, rootApptId, apptId) {
+  if (!taskIndex || !taskIndex.byKey) return [];
+  const out = [];
+  const seen = {};
+  const rootKey = String(rootApptId || '').trim();
+  const apptKey = String(apptId || '').trim();
+  let refs = [];
+
+  if (rootKey && apptKey) {
+    refs = (taskIndex.byKey[apptKey] || []).filter(function (ref) {
+      return ref && ref.root === rootKey && ref.appt === apptKey;
+    });
+  } else if (apptKey) {
+    refs = (taskIndex.byKey[apptKey] || []).filter(function (ref) {
+      return ref && ref.appt === apptKey;
+    });
+  } else if (rootKey) {
+    refs = (taskIndex.byKey[rootKey] || []).filter(function (ref) {
+      return ref && ref.root === rootKey;
+    });
+  }
+
+  refs.forEach(function (ref) {
+    if (!ref || seen[ref.rowNumber]) return;
+    seen[ref.rowNumber] = true;
+    out.push(ref);
+  });
+  return out;
+}
+
+function sw_taskQueueVisitDateTimeNeedsSync_(taskIndex, taskRefs, visitDate, visitTime) {
+  visitDate = String(visitDate || '').trim();
+  visitTime = String(visitTime || '').trim();
+  if (!taskIndex) return false;
+  const cols = taskIndex.cols;
+  return (taskRefs || []).some(function (ref) {
+    const row = ref && ref.row || [];
+    const currentDate = String(row[cols.visitDate - 1] || '').trim();
+    const currentTime = String(row[cols.visitTime - 1] || '').trim();
+    if (visitDate && !currentDate) return true;
+    if (visitTime && !currentTime) return true;
+    const rawPayload = String(row[cols.payload - 1] || '');
+    if (!rawPayload) return false;
+    try {
+      const payload = JSON.parse(rawPayload);
+      const payloadDate = String((((payload || {}).appointment || {}).visitDate) || '').trim();
+      const payloadTime = String((((payload || {}).appointment || {}).visitTime) || '').trim();
+      if (visitDate && !payloadDate) return true;
+      if (visitTime && !payloadTime) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+function sw_syncVisitDateTimeToTaskQueue_(taskIndex, repairedItems) {
+  if (!taskIndex || !taskIndex.sheet) {
+    return { ok: true, candidateRows: 0, updatedRows: 0, skipped: true, reason: 'taskQueueUnavailable' };
+  }
+
+  const sh = taskIndex.sheet;
+  const cols = taskIndex.cols;
+  const updatedTaskIds = [];
+  let candidateRows = 0;
+  let updatedRows = 0;
+
+  (repairedItems || []).forEach(function (item) {
+    const nextDate = String(item.masterDateAfter || item.masterDateBefore || item.formDate || '').trim();
+    const nextTime = String(item.masterTimeAfter || item.masterTimeBefore || item.formTime || '').trim();
+    const taskRefs = sw_taskQueueRefsForAppointment_(taskIndex, item.rootApptId, item.apptId);
+    candidateRows += taskRefs.length;
+    let itemUpdated = 0;
+
+    taskRefs.forEach(function (ref) {
+      const row = ref.row || [];
+      const currentDate = String(row[cols.visitDate - 1] || '').trim();
+      const currentTime = String(row[cols.visitTime - 1] || '').trim();
+      let payloadChanged = false;
+      let nextPayload = String(row[cols.payload - 1] || '');
+      const nextRowDate = currentDate || nextDate;
+      const nextRowTime = currentTime || nextTime;
+
+      if (nextPayload) {
+        try {
+          const payload = JSON.parse(nextPayload);
+          if (payload && typeof payload === 'object' && payload.appointment && typeof payload.appointment === 'object') {
+            const payloadDate = String(payload.appointment.visitDate || '').trim();
+            const payloadTime = String(payload.appointment.visitTime || '').trim();
+            if (nextDate && !payloadDate) {
+              payload.appointment.visitDate = nextDate;
+              payloadChanged = true;
+            }
+            if (nextTime && !payloadTime) {
+              payload.appointment.visitTime = nextTime;
+              nextPayload = JSON.stringify(payload);
+              payloadChanged = true;
+            }
+            if (payloadChanged) nextPayload = JSON.stringify(payload);
+          }
+        } catch (_) {}
+      }
+
+      if (currentDate === nextRowDate && currentTime === nextRowTime && !payloadChanged) return;
+
+      if (nextDate && !currentDate) sh.getRange(ref.rowNumber, cols.visitDate).setValue(nextDate);
+      if (nextTime && !currentTime) sh.getRange(ref.rowNumber, cols.visitTime).setValue(nextTime);
+      if (payloadChanged) sh.getRange(ref.rowNumber, cols.payload).setValue(nextPayload);
+
+      row[cols.visitDate - 1] = nextRowDate;
+      row[cols.visitTime - 1] = nextRowTime;
+      if (payloadChanged) row[cols.payload - 1] = nextPayload;
+      updatedRows++;
+      itemUpdated++;
+      updatedTaskIds.push(ref.taskId);
+    });
+
+    item.taskQueueRowsUpdated = itemUpdated;
+  });
+
+  return {
+    ok: true,
+    candidateRows: candidateRows,
+    updatedRows: updatedRows,
+    updatedTaskIds: updatedTaskIds
+  };
 }
 
 function withScriptLock_(fn){

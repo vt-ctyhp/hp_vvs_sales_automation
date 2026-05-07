@@ -16,6 +16,7 @@ function sw_setupSalesWorkflow() {
   var usersSheet = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var cleanupSheet = swEnsureSheet_(ss, SW_SHEETS.DATA_CLEANUP, SW_DATA_CLEANUP_HEADERS);
   var artifactSheet = swEnsureAppointmentArtifactsSheet_(ss);
+  var inboxSheet = swEnsureSheet_(ss, SW_SHEETS.INBOX_LOG, SW_INBOX_LOG_HEADERS);
   var rosterSheet = swEnsureSheet_(ss, SW_SHEETS.ROSTER, SW_EMPLOYEE_SCHEDULE_HEADERS);
   var scheduleChangesSheet = swEnsureSheet_(ss, SW_SHEETS.SCHEDULE_CHANGES, SW_SCHEDULE_CHANGE_HEADERS);
 
@@ -26,6 +27,7 @@ function sw_setupSalesWorkflow() {
   swStyleSheet_(usersSheet);
   swStyleSheet_(cleanupSheet);
   swStyleSheet_(artifactSheet);
+  swStyleSheet_(inboxSheet);
   swStyleSheet_(rosterSheet);
   swStyleSheet_(scheduleChangesSheet);
 
@@ -633,6 +635,7 @@ function swBootstrapViewsForUser_(user, cleanupTabEnabled) {
   user = user || {};
   return {
     mine: true,
+    inbox: true,
     customerSearch: user.isAdmin || user.isJoc || user.isRep,
     calendar: true,
     inStockDiamonds: true,
