@@ -70,6 +70,8 @@ function onOpen(e) {
   // 🧹 Audit — data quality checks
   ui.createMenu('🧹 Audit')
     .addItem('Run master audit', 'runMasterAuditV1')
+    .addItem('Inspect one-time test cleanup candidates', 'sw_previewTestDataCleanupOnceFromMenu')
+    .addItem('Cleanup one-time test rows', 'sw_runTestDataCleanupOnceFromMenu')
     .addToUi();
 
   ui.createMenu('Recovery')

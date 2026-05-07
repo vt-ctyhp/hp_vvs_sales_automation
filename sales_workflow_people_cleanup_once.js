@@ -95,6 +95,129 @@ function sw_applyTestDataCleanupOnce(options) {
   }
 }
 
+function sw_runTestDataCleanupOnceFromMenu() {
+  var ui = SpreadsheetApp.getUi();
+  var preview = null;
+  try {
+    preview = sw_previewTestDataCleanupOnce();
+    if (!preview || !preview.ok) {
+      throw new Error((preview && preview.summary && preview.summary.errors && preview.summary.errors[0] && preview.summary.errors[0].message) ||
+        'Preview could not be built.');
+    }
+
+    if (preview.totalCandidateRows === 0) {
+      ui.alert('Test data cleanup', 'No matching test data rows were found. Nothing to delete.', ui.ButtonSet.OK);
+      return preview;
+    }
+
+    if (!swPreviewTestDataCleanupForMenu_(ui, preview)) {
+      return preview;
+    }
+
+    var prompt = ui.prompt(
+      'Pre-commit test data cleanup',
+      'Type this token to run cleanup:\n' + preview.confirmationToken +
+      '\n\n(You already reviewed candidate rows in the previous step.)',
+      ui.ButtonSet.OK_CANCEL
+    );
+
+    if (prompt.getSelectedButton() !== ui.Button.OK) {
+      ui.alert('Test data cleanup', 'Cleanup was canceled by user.', ui.ButtonSet.OK);
+      return preview;
+    }
+
+    var response = swTestDataCleanupTrim_(prompt.getResponseText());
+    if (response !== preview.confirmationToken) {
+      ui.alert('Test data cleanup', 'Token mismatch. No rows were deleted.', ui.ButtonSet.OK);
+      return preview;
+    }
+
+    var result = sw_applyTestDataCleanupOnce({ confirmationToken: response });
+    if (!result || !result.ok) {
+      var firstErr = (result && result.errors && result.errors[0] && result.errors[0].message) || 'Cleanup reported errors.';
+      ui.alert('Test data cleanup', 'Cleanup did not complete cleanly. ' + firstErr, ui.ButtonSet.OK);
+      return result;
+    }
+
+    ui.alert(
+      'Test data cleanup',
+      'Completed cleanup.\n\nDeleted rows: ' + (result.deletedCount || 0) +
+      '\nDownstream invalidation: ' + (result.invalidation ? 'done' : 'skipped') +
+      '\nRead-model rebuild: ' +
+      ((result.readModelRebuild && result.readModelRebuild.ok) ? 'done' : 'skipped'),
+      ui.ButtonSet.OK
+    );
+    return result;
+  } catch (err) {
+    ui.alert('Test data cleanup error', (err && err.message) ? err.message : String(err), ui.ButtonSet.OK);
+    return preview && preview.ok === false ? preview : { ok: false, errors: [{ type: 'menu', message: err && err.message ? err.message : String(err) }] };
+  }
+}
+
+function sw_previewTestDataCleanupOnceFromMenu() {
+  var ui = SpreadsheetApp.getUi();
+  var preview = null;
+  try {
+    preview = sw_previewTestDataCleanupOnce();
+    if (!preview || preview.ok === false) {
+      throw new Error('Unable to build candidate preview.');
+    }
+    if (preview.totalCandidateRows === 0) {
+      ui.alert('Test data cleanup', 'No matching test rows found.', ui.ButtonSet.OK);
+      return preview;
+    }
+    swPreviewTestDataCleanupForMenu_(ui, preview);
+    return preview;
+  } catch (err) {
+    ui.alert('Test data cleanup', (err && err.message) ? err.message : String(err), ui.ButtonSet.OK);
+    return { ok: false, errors: [{ type: 'menu', message: err && err.message ? err.message : String(err) }] };
+  }
+}
+
+function swPreviewTestDataCleanupForMenu_(ui, preview) {
+  ui.alert(
+    'Pre-commit candidate inspection',
+    swTestDataCleanupMenuSummary_(preview),
+    ui.ButtonSet.OK
+  );
+  var confirm = ui.alert(
+    'Pre-commit',
+    'Proceed to cleanup execution after inspecting these candidates?',
+    ui.ButtonSet.YES_NO
+  );
+  return confirm === ui.Button.YES;
+}
+
+function swTestDataCleanupMenuSummary_(preview) {
+  var lines = [
+    'Pre-commit preview for one-time test data cleanup',
+    'Total matched rows: ' + (preview.totalCandidateRows || 0),
+    'Workflow file: ' + (preview.workflowSpreadsheetName || preview.workflowSpreadsheetId || '(unknown)'),
+    ''
+  ];
+  var sources = (preview.summary && preview.summary.sources) || [];
+  lines.push('Source candidates:');
+  for (var i = 0; i < sources.length; i++) {
+    var source = sources[i];
+    lines.push('  ' + source.workbookKey + ' / ' + source.sheetName + ': ' + source.candidates + ' row(s)');
+  }
+  if (!sources.length) lines.push('  (none)');
+  lines.push('', 'Top candidate sample:');
+  var sampleCount = Math.min(15, (preview.candidates || []).length);
+  var sample = (preview.candidates || []).slice(0, sampleCount);
+  for (var j = 0; j < sample.length; j++) {
+    var row = sample[j];
+    lines.push(
+      '  - ' + (j + 1) + ') ' + row.sheetName + ' | row ' + row.rowNumber +
+      ' | ' + (row.matchedField || row.matchedValue || 'match')
+    );
+  }
+  if ((preview.candidates || []).length > sampleCount) {
+    lines.push('  ... and ' + ((preview.candidates.length - sampleCount) + ' more'));
+  }
+  return lines.join('\n');
+}
+
 function swBuildTestDataCleanupPlan_(options) {
   options = options || {};
   var ss = swTestDataCleanupWorkflowSpreadsheet_();
