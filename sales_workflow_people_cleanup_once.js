@@ -18,6 +18,7 @@ var SW_TEST_DATA_CLEANUP_REASON_ = 'One-time test customer data cleanup';
 var SW_TEST_DATA_CLEANUP_WORKFLOW_SOURCE_ORDER_ = [
   '00_Master Appointments',
   '02_Form_Inbox',
+  '_ExternalBookingEvents',
   '_IntakeQueue',
   '_SalesTaskQueue',
   '_SalesTaskLog',
@@ -181,6 +182,7 @@ function swWorkflowTestDataCleanupSheetNames_(options) {
     names = [
       SW_SHEETS.MASTER || '00_Master Appointments',
       '02_Form_Inbox',
+      SW_SHEETS.EXTERNAL_BOOKING_EVENTS || '_ExternalBookingEvents',
       '_IntakeQueue',
       SW_SHEETS.TASKS || '_SalesTaskQueue',
       SW_SHEETS.LOG || '_SalesTaskLog',
@@ -356,7 +358,7 @@ function swTestDataCleanupColumns_(headerInfo) {
   return {
     root: swTestDataCleanupPick_(H, ['RootApptID', 'Root Appt ID', 'Root Appointment ID', 'ROOT', 'Root_ID']),
     appt: swTestDataCleanupPick_(H, ['APPT_ID', 'Appt ID', 'Appointment ID']),
-    uid: swTestDataCleanupPick_(H, ['CalendlyEventUID', 'Calendly Event UID', 'Admin: Calendly Event UID', 'Acuity ID', 'UID', 'External Booking UID']),
+    uid: swTestDataCleanupPick_(H, ['CalendlyEventUID', 'Calendly Event UID', 'Admin: Calendly Event UID', 'Acuity ID', 'UID', 'External Booking UID', 'ProviderAppointmentID', 'Provider Appointment ID']),
     taskId: swTestDataCleanupPick_(H, ['TaskID', 'Task ID']),
     name: swTestDataCleanupPick_(H, ['Customer Name', 'Customer', 'Client Name', 'Name', 'Full Name']),
     emailLower: swTestDataCleanupPick_(H, ['EmailLower', 'Email Lower']),
@@ -368,7 +370,7 @@ function swTestDataCleanupColumns_(headerInfo) {
     status: swTestDataCleanupPick_(H, ['Status', 'DocStatus', 'Doc Status']),
     paymentId: swTestDataCleanupPick_(H, ['PAYMENT_ID', 'Payment ID', 'PaymentId']),
     docNumber: swTestDataCleanupPick_(H, ['DocNumber', 'Doc #', 'Document Number']),
-    payloadJson: swTestDataCleanupPick_(H, ['Payload JSON', 'Payload', 'Request JSON', 'Raw JSON', 'JSON', 'Event JSON'])
+    payloadJson: swTestDataCleanupPick_(H, ['Payload JSON', 'Payload', 'Request JSON', 'Raw JSON', 'RawPayloadJSON', 'JSON', 'Event JSON'])
   };
 }
 

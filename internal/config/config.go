@@ -10,11 +10,12 @@ import (
 
 // Config holds the full application configuration.
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Seed     SeedConfig     `yaml:"seed"`
+	Server          ServerConfig          `yaml:"server"`
+	Database        DatabaseConfig        `yaml:"database"`
+	Logging         LoggingConfig         `yaml:"logging"`
+	Auth            AuthConfig            `yaml:"auth"`
+	Seed            SeedConfig            `yaml:"seed"`
+	ExternalBooking ExternalBookingConfig `yaml:"external_booking"`
 }
 
 // ServerConfig defines HTTP server settings.
@@ -43,6 +44,15 @@ type SeedConfig struct {
 	AdminEmail    string `yaml:"admin_email"`
 	AdminPassword string `yaml:"admin_password"`
 	AdminRole     string `yaml:"admin_role"`
+}
+
+// ExternalBookingConfig controls verified third-party booking relay behavior.
+type ExternalBookingConfig struct {
+	AcuityWebhookSecret      string `yaml:"acuity_webhook_secret"`
+	SpreadsheetID            string `yaml:"spreadsheet_id"`
+	QueueRange               string `yaml:"queue_range"`
+	GoogleServiceAccountJSON string `yaml:"google_service_account_json"`
+	GoogleServiceAccountFile string `yaml:"google_service_account_file"`
 }
 
 // Load reads configuration from disk and applies environment overrides.
@@ -82,6 +92,9 @@ func defaultConfig() Config {
 			AdminPassword: "changeme123",
 			AdminRole:     "admin",
 		},
+		ExternalBooking: ExternalBookingConfig{
+			QueueRange: "'_ExternalBookingEvents'!A:P",
+		},
 	}
 }
 
@@ -112,6 +125,24 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("VVSAPP_ADMIN_ROLE"); v != "" {
 		c.Seed.AdminRole = v
 	}
+	if v := os.Getenv("VVSAPP_ACUITY_WEBHOOK_SECRET"); v != "" {
+		c.ExternalBooking.AcuityWebhookSecret = v
+	}
+	if v := os.Getenv("VVSAPP_ACUITY_API_KEY"); v != "" && c.ExternalBooking.AcuityWebhookSecret == "" {
+		c.ExternalBooking.AcuityWebhookSecret = v
+	}
+	if v := os.Getenv("VVSAPP_BOOKING_SPREADSHEET_ID"); v != "" {
+		c.ExternalBooking.SpreadsheetID = v
+	}
+	if v := os.Getenv("VVSAPP_EXTERNAL_BOOKING_QUEUE_RANGE"); v != "" {
+		c.ExternalBooking.QueueRange = v
+	}
+	if v := os.Getenv("VVSAPP_GOOGLE_SERVICE_ACCOUNT_JSON"); v != "" {
+		c.ExternalBooking.GoogleServiceAccountJSON = v
+	}
+	if v := os.Getenv("VVSAPP_GOOGLE_SERVICE_ACCOUNT_FILE"); v != "" {
+		c.ExternalBooking.GoogleServiceAccountFile = v
+	}
 }
 
 func parseIntEnv(raw string) (int, error) {
@@ -138,6 +169,12 @@ func (c *Config) Summary() map[string]any {
 		"seed": map[string]any{
 			"admin_email": c.Seed.AdminEmail,
 			"admin_role":  c.Seed.AdminRole,
+		},
+		"external_booking": map[string]any{
+			"acuity_webhook_secret_set": c.ExternalBooking.AcuityWebhookSecret != "",
+			"spreadsheet_id_set":        c.ExternalBooking.SpreadsheetID != "",
+			"queue_range":               c.ExternalBooking.QueueRange,
+			"service_account_set":       c.ExternalBooking.GoogleServiceAccountJSON != "" || c.ExternalBooking.GoogleServiceAccountFile != "",
 		},
 	}
 }

@@ -757,6 +757,16 @@ function swReadTaskListStateForDashboard_(ss, config) {
   var readModel = swTryReadTaskListStateFromReadModel_(ss, config);
   if (readModel && readModel.state) return readModel;
 
+  var cachedState = swReadCachedTaskListState_(ss);
+  if (cachedState && cachedState.tasks) {
+    return {
+      source: 'taskListCache',
+      fallbackReason: readModel ? readModel.fallbackReason || '' : '',
+      ageSeconds: readModel ? readModel.ageSeconds || 0 : 0,
+      state: cachedState
+    };
+  }
+
   var state = swReadTaskListState_(ss, true, { skipReadModelFallback: true });
   return {
     source: 'taskQueue',

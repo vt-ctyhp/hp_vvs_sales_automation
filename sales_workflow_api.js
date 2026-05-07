@@ -16,6 +16,7 @@ function sw_setupSalesWorkflow() {
   var usersSheet = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var cleanupSheet = swEnsureSheet_(ss, SW_SHEETS.DATA_CLEANUP, SW_DATA_CLEANUP_HEADERS);
   var artifactSheet = swEnsureAppointmentArtifactsSheet_(ss);
+  var externalBookingEventsSheet = swEnsureSheet_(ss, SW_SHEETS.EXTERNAL_BOOKING_EVENTS, SW_EXTERNAL_BOOKING_EVENT_HEADERS);
   var inboxSheet = swEnsureSheet_(ss, SW_SHEETS.INBOX_LOG, SW_INBOX_LOG_HEADERS);
   var rosterSheet = swEnsureSheet_(ss, SW_SHEETS.ROSTER, SW_EMPLOYEE_SCHEDULE_HEADERS);
   var scheduleChangesSheet = swEnsureSheet_(ss, SW_SHEETS.SCHEDULE_CHANGES, SW_SCHEDULE_CHANGE_HEADERS);
@@ -27,6 +28,7 @@ function sw_setupSalesWorkflow() {
   swStyleSheet_(usersSheet);
   swStyleSheet_(cleanupSheet);
   swStyleSheet_(artifactSheet);
+  swStyleSheet_(externalBookingEventsSheet);
   swStyleSheet_(inboxSheet);
   swStyleSheet_(rosterSheet);
   swStyleSheet_(scheduleChangesSheet);
@@ -107,6 +109,7 @@ function swSalesWorkflowRuntimeSheetNames_() {
     SW_SHEETS.USERS,
     SW_SHEETS.DATA_CLEANUP,
     SW_SHEETS.APPOINTMENT_ARTIFACTS,
+    SW_SHEETS.EXTERNAL_BOOKING_EVENTS,
     SW_SHEETS.ROSTER,
     SW_SHEETS.SCHEDULE_CHANGES
   ];

@@ -1041,10 +1041,54 @@ function swSafeFilename_(value) {
 
 function swAppointmentRecordForRoot_(ss, rootApptId) {
   var rows = swReadAppointments_(ss);
+  var matches = [];
   for (var i = 0; i < rows.length; i++) {
-    if (rows[i].root === rootApptId || rows[i].appt === rootApptId) return rows[i];
+    if (rows[i].root === rootApptId || rows[i].appt === rootApptId) matches.push(rows[i]);
   }
-  return null;
+  if (!matches.length) return null;
+  matches.sort(function (a, b) {
+    var ar = swAppointmentRecordActiveRank_(a);
+    var br = swAppointmentRecordActiveRank_(b);
+    if (ar !== br) return br - ar;
+    var am = swAppointmentRecordVisitMs_(a);
+    var bm = swAppointmentRecordVisitMs_(b);
+    if (am !== bm) return bm - am;
+    return Number(b.row || 0) - Number(a.row || 0);
+  });
+  return matches[0];
+}
+
+function swAppointmentRecordActiveRank_(rec) {
+  var status = swNorm_(rec && rec.status || '').replace(/[-_]+/g, ' ');
+  if (/canceled|cancelled|rescheduled|no show/.test(status)) return 0;
+  var active = swNorm_(rec && rec.active || '');
+  if (/^(yes|true|active|1)$/.test(active)) return 2;
+  if (/^(no|false|inactive|0)$/.test(active)) return 0;
+  return 1;
+}
+
+function swAppointmentRecordVisitMs_(rec) {
+  if (!rec) return 0;
+  var d = rec.visitDateRaw instanceof Date ? new Date(rec.visitDateRaw.getTime()) : new Date(rec.visitDate || '');
+  if (!d || isNaN(d.getTime())) return 0;
+  var time = rec.visitTimeRaw instanceof Date ? rec.visitTimeRaw : swTrim_(rec.visitTime || '');
+  if (time instanceof Date && !isNaN(time.getTime())) {
+    d.setHours(time.getHours(), time.getMinutes(), 0, 0);
+    return d.getTime();
+  }
+  var m24 = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (m24) {
+    d.setHours(Number(m24[1]), Number(m24[2]), 0, 0);
+    return d.getTime();
+  }
+  var m12 = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i.exec(time);
+  if (m12) {
+    var h = Number(m12[1]);
+    if (/AM/i.test(m12[3]) && h === 12) h = 0;
+    if (/PM/i.test(m12[3]) && h !== 12) h += 12;
+    d.setHours(h, Number(m12[2]), 0, 0);
+  }
+  return d.getTime();
 }
 
 function sw_ingestRawAppointmentUpload_(e) {

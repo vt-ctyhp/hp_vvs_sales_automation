@@ -58,6 +58,22 @@ function sw_backgroundOrchestrator(e) {
         return summary;
       }
 
+      var externalBookingJob = swOrchRunJob_(summary, runId, 'sw_processExternalBookingEvents', function () {
+        return typeof sw_processExternalBookingEvents === 'function'
+          ? sw_processExternalBookingEvents({ source: 'orchestrator' })
+          : { ok: true, skipped: true, reason: 'sw_processExternalBookingEvents unavailable' };
+      });
+      if (swOrchAcuitySubmitted_(externalBookingJob.result)) {
+        swOrchMarkIntakeDrain_('external booking events submitted Google Form responses', {
+          submitted: Number(externalBookingJob.result.submitted || 0),
+          rescheduled: Number(externalBookingJob.result.rescheduled || 0)
+        });
+        summary.deferred = true;
+        summary.reason = 'EXTERNAL_BOOKING_FORM_SUBMIT_DRAIN';
+        swOrchSaveState_(state);
+        return summary;
+      }
+
       var acuityJob = swOrchRunJob_(summary, runId, 'acuityPollAndSubmit', function () {
         return typeof acuityPollAndSubmit === 'function'
           ? acuityPollAndSubmit()
@@ -234,6 +250,7 @@ function sw_installBackgroundOrchestratorTrigger() {
 
 function sw_removeBackgroundWorkerTriggers_() {
   var handlers = {
+    sw_processExternalBookingEvents: true,
     acuityPollAndSubmit: true,
     acuityLabelSync: true,
     sw_processAppointmentAutomation: true,
@@ -678,6 +695,7 @@ function swOrchListRelevantTriggers_() {
   handlers[SW_ORCH_HANDLER] = true;
   [
     'acuityPollAndSubmit',
+    'sw_processExternalBookingEvents',
     'acuityLabelSync',
     'sw_processAppointmentAutomation',
     'sw_generateSalesWorkflowTasks',

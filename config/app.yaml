@@ -15,3 +15,10 @@ seed:
   admin_email: "admin@example.com"
   admin_password: "changeme123"
   admin_role: "admin"
+
+external_booking:
+  acuity_webhook_secret: ""
+  spreadsheet_id: ""
+  queue_range: "'_ExternalBookingEvents'!A:P"
+  google_service_account_json: ""
+  google_service_account_file: ""

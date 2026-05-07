@@ -11,6 +11,7 @@ var SW_SHEETS = {
   USERS: '_SalesWorkflowUsers',
   DATA_CLEANUP: '_SalesDataCleanup',
   APPOINTMENT_ARTIFACTS: '_AppointmentArtifacts',
+  EXTERNAL_BOOKING_EVENTS: '_ExternalBookingEvents',
   INBOX_LOG: '_SalesInboxLog',
   READ_MODEL_TASKS: '_SW_TaskReadModel',
   READ_MODEL_CUSTOMERS: '_SW_CustomerReadModel',
@@ -26,6 +27,25 @@ var SW_SHEETS = {
   SCHEDULE_CHANGES: 'Schedule Changes',
   DROPDOWN: 'Dropdown'
 };
+
+var SW_EXTERNAL_BOOKING_EVENT_HEADERS = [
+  'ReceivedAt',
+  'Provider',
+  'Action',
+  'ProviderAppointmentID',
+  'CalendarID',
+  'AppointmentTypeID',
+  'RawPayloadJSON',
+  'SignatureVerified',
+  'Status',
+  'Attempts',
+  'ProcessedAt',
+  'ResolvedUID',
+  'MasterRow',
+  'ResultJSON',
+  'Error',
+  'TestRunID'
+];
 var SW_STATUSES = {
   PENDING: 'Pending',
   COMPLETED: 'Completed',

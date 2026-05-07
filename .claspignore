@@ -4,6 +4,7 @@ cmd/**
 internal/**
 docs/**
 config/**
+scripts/**
 
 # Local/runtime files.
 .git/**

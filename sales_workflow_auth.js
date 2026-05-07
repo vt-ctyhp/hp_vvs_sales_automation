@@ -266,10 +266,30 @@ function swAuthCachedApiUser_(ss, email) {
   return null;
 }
 
+function swAuthCachedLoginRow_(ss, email) {
+  email = swNormEmail_(email);
+  if (!email) return null;
+  try {
+    var cached = CacheService.getScriptCache().get(swAuthLoginRowCacheKey_(ss, email));
+    var row = cached ? swParseJson_(cached, null) : null;
+    if (row && swNormEmail_(row['Email']) === email) return row;
+  } catch (_) {}
+  return null;
+}
+
 function swAuthCacheApiUser_(ss, user) {
   if (!user || !user.email) return;
   try {
     CacheService.getScriptCache().put(swAuthUserCacheKey_(ss, user.email), swStringify_(user), SW_AUTH_USER_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAuthCacheLoginRow_(ss, row) {
+  row = row || {};
+  var email = swNormEmail_(row['Email']);
+  if (!email) return;
+  try {
+    CacheService.getScriptCache().put(swAuthLoginRowCacheKey_(ss, email), swStringify_(row), SW_AUTH_USER_CACHE_SECONDS);
   } catch (_) {}
 }
 
@@ -315,12 +335,19 @@ function swAuthClearUserCaches_(ss, email) {
     var cache = CacheService.getScriptCache();
     cache.remove(swAuthUserListCacheKey_(ss));
     email = swNormEmail_(email);
-    if (email) cache.remove(swAuthUserCacheKey_(ss, email));
+    if (email) {
+      cache.remove(swAuthUserCacheKey_(ss, email));
+      cache.remove(swAuthLoginRowCacheKey_(ss, email));
+    }
   } catch (_) {}
 }
 
 function swAuthUserCacheKey_(ss, email) {
   return 'sw:apiUser:v1:' + ss.getId() + ':' + swNormEmail_(email);
+}
+
+function swAuthLoginRowCacheKey_(ss, email) {
+  return 'sw:loginRow:v1:' + ss.getId() + ':' + swNormEmail_(email);
 }
 
 function swAuthUserListCacheKey_(ss) {
@@ -597,7 +624,13 @@ function swAuthRoleKey_(role) {
 }
 
 function swAuthFindUserRowForLogin_(ss, email) {
-  return swAuthFindUserRowReadOnly_(ss, email) || swAuthFindUserRow_(ss, email);
+  email = swNormEmail_(email);
+  if (!email) return null;
+  var cached = swAuthCachedLoginRow_(ss, email);
+  if (cached) return cached;
+  var row = swAuthFindUserRowReadOnly_(ss, email) || swAuthFindUserRow_(ss, email);
+  if (row) swAuthCacheLoginRow_(ss, row);
+  return row;
 }
 
 function swAuthFindUserRow_(ss, email) {

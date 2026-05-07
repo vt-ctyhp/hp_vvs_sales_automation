@@ -140,46 +140,27 @@ function acuityPollAndSubmit(e) {
       else skipped++;
     });
 
-    for (const apptRef of newActive) {
+    const activeBatch = acuityRotatingBatch_(activeExisting, ACUITY_ACTIVE_EXISTING_CURSOR_PROP, ACUITY_ACTIVE_EXISTING_BATCH_SIZE);
+    for (const apptRef of activeBatch.items) {
       try {
         const appt = acuityFetchAppointmentDetail_(userId, apiKey, apptRef);
-        const uid = String(appt.id);
-        const fieldMap = acuityToFormFieldMap_(appt);
-        acuitySubmitToForm_(formId, fieldMap);
-        SP.setProperty('ACUITY:DONE:' + uid, '1');
-        existingUIDs.add(uid);
-        CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
-        submitted++;
-        Logger.log('✅ Submitted: ' + uid + ' | ' + appt.firstName + ' ' + appt.lastName);
+        const result = acuityHandleExisting_(appt, formId);
+        checkedExisting++;
+        if (result === 'rescheduled' || result === 'edited') {
+          CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+        }
+        if (result === 'rescheduled') {
+          rescheduled++;
+          break;
+        }
+        if (result === 'edited') edited++;
       } catch (err) {
         errors++;
-        Logger.log('❌ Error new appt ' + (apptRef && apptRef.id) + ': ' + (err && err.message || err));
+        Logger.log('❌ Error existing appt ' + (apptRef && apptRef.id) + ': ' + (err && err.message || err));
       }
     }
 
-    if (!submitted) {
-      const activeBatch = acuityRotatingBatch_(activeExisting, ACUITY_ACTIVE_EXISTING_CURSOR_PROP, ACUITY_ACTIVE_EXISTING_BATCH_SIZE);
-      for (const apptRef of activeBatch.items) {
-        try {
-          const appt = acuityFetchAppointmentDetail_(userId, apiKey, apptRef);
-          const result = acuityHandleExisting_(appt, formId);
-          checkedExisting++;
-          if (result === 'rescheduled' || result === 'edited') {
-            CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
-          }
-          if (result === 'rescheduled') {
-            rescheduled++;
-            break;
-          }
-          if (result === 'edited') edited++;
-        } catch (err) {
-          errors++;
-          Logger.log('❌ Error existing appt ' + (apptRef && apptRef.id) + ': ' + (err && err.message || err));
-        }
-      }
-    }
-
-    if (!submitted && !rescheduled) {
+    if (!rescheduled) {
       const canceledBatch = acuityRotatingBatch_(canceledExisting, ACUITY_CANCELED_EXISTING_CURSOR_PROP, ACUITY_CANCELED_EXISTING_BATCH_SIZE);
       for (const appt of canceledBatch.items) {
         try {
@@ -194,6 +175,25 @@ function acuityPollAndSubmit(e) {
         } catch (err) {
           errors++;
           Logger.log('❌ Error canceled appt ' + (appt && appt.id) + ': ' + (err && err.message || err));
+        }
+      }
+    }
+
+    if (!rescheduled) {
+      for (const apptRef of newActive) {
+        try {
+          const appt = acuityFetchAppointmentDetail_(userId, apiKey, apptRef);
+          const uid = String(appt.id);
+          const fieldMap = acuityToFormFieldMap_(appt);
+          acuitySubmitToForm_(formId, fieldMap);
+          SP.setProperty('ACUITY:DONE:' + uid, '1');
+          existingUIDs.add(uid);
+          CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+          submitted++;
+          Logger.log('✅ Submitted: ' + uid + ' | ' + appt.firstName + ' ' + appt.lastName);
+        } catch (err) {
+          errors++;
+          Logger.log('❌ Error new appt ' + (apptRef && apptRef.id) + ': ' + (err && err.message || err));
         }
       }
     }

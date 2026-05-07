@@ -213,21 +213,28 @@ These handle appointment recording uploads, transcript processing, OpenAI follow
 
 Current flow:
 
-1. `sw_backgroundOrchestrator` calls `acuityPollAndSubmit`.
-2. `acuityPollAndSubmit` loads Acuity credentials and form ID from Script Properties.
-3. It reads existing UIDs from `00_Master Appointments` using `acuityGetMasterUIDs_`.
-4. It fetches active and canceled appointment lists from Acuity.
-5. For active appointments not already present, it fetches detail with `acuityFetchAppointmentDetail_`.
-6. `acuityToFormFieldMap_` normalizes Acuity fields into Google Form question titles.
-7. `acuitySubmitToForm_` submits a Google Form response.
-8. The Form submit trigger runs `onFormSubmit`.
-9. `onFormSubmit` parses form named values, dedupes by UID/email/timestamp, resolves/reschedules/dedupes against Master, and appends or updates a Master row.
-10. `onFormSubmit` creates or repairs folders/docs, stamps sales stage for consults, ensures root IDs, enqueues DV hooks, posts Chat notifications, and appends automation notes.
-11. The orchestrator defers downstream work briefly when Acuity submitted forms so the form-triggered writes can drain.
+1. A verified relay receives Acuity `scheduled`, `rescheduled`, and `canceled` webhooks and appends rows to `_ExternalBookingEvents`.
+2. `sw_backgroundOrchestrator` calls `sw_processExternalBookingEvents` before the polling fallback.
+3. `sw_processExternalBookingEvents` processes pending Acuity rows only, fetches appointment detail by ID, and writes queue status/result metadata.
+4. `scheduled` events submit the existing Google Form bridge when the Acuity UID is not already in Master/Form Inbox.
+5. `rescheduled` events reconcile the existing Acuity UID in Master through `acuityHandleExisting_`, mark the old row inactive/rescheduled, and submit the synthetic `_R...` form row.
+6. `canceled` events call `acuityCancelOnMaster_`.
+7. If the webhook queue has no pending form-producing work, `sw_backgroundOrchestrator` calls `acuityPollAndSubmit` as the fallback.
+8. `acuityPollAndSubmit` loads Acuity credentials and form ID from Script Properties.
+9. It reads existing UIDs from `00_Master Appointments` using `acuityGetMasterUIDs_`.
+10. It fetches active and canceled appointment lists from Acuity.
+11. For active appointments not already present, it fetches detail with `acuityFetchAppointmentDetail_`.
+12. `acuityToFormFieldMap_` normalizes Acuity fields into Google Form question titles.
+13. `acuitySubmitToForm_` submits a Google Form response.
+14. The Form submit trigger runs `onFormSubmit`.
+15. `onFormSubmit` parses form named values, dedupes by UID/email/timestamp, resolves/reschedules/dedupes against Master, and appends or updates a Master row.
+16. `onFormSubmit` creates or repairs folders/docs, stamps sales stage for consults, ensures root IDs, enqueues DV hooks, posts Chat notifications, and appends automation notes.
+17. The orchestrator defers downstream work briefly when Acuity submitted forms so the form-triggered writes can drain.
 
 Primary functions:
 
 - `acuityPollAndSubmit`
+- `sw_processExternalBookingEvents`
 - `acuityFetchAppointmentLists_`
 - `acuityFetchAppointmentDetail_`
 - `acuityToFormFieldMap_`
@@ -242,6 +249,7 @@ Primary functions:
 Current writes:
 
 - Google Form response
+- `_ExternalBookingEvents`
 - `00_Master Appointments`
 - Drive folders/docs
 - `02_Form_Inbox` when the Form captures raw responses
@@ -251,12 +259,13 @@ Current writes:
 
 Current flow:
 
-1. `acuityPollAndSubmit` rotates through existing active Acuity appointments when no new appointment was submitted.
-2. `acuityHandleExisting_` finds the Master row by `CalendlyEventUID`, preferring newest `_R...` reschedule row.
-3. It compares Acuity date/time to Master date/time.
-4. If date/time changed, the flow becomes a reschedule.
-5. If contact/profile fields changed, it updates the existing Master row in place for fields such as `Phone`, `Diamond Type`, `Budget Range`, `Source`, and `Style Notes`.
-6. It appends an "Edited via Acuity" automation note.
+1. Webhook-backed events are handled first through `sw_processExternalBookingEvents`.
+2. The polling fallback rotates through existing active Acuity appointments before new active appointments, so reschedules/edits are reconciled before a current active Acuity row can be treated as a brand-new booking.
+3. `acuityHandleExisting_` finds the Master row by `CalendlyEventUID`, preferring newest `_R...` reschedule row.
+4. It compares Acuity date/time to Master date/time.
+5. If date/time changed, the flow becomes a reschedule.
+6. If contact/profile fields changed, it updates the existing Master row in place for fields such as `Phone`, `Diamond Type`, `Budget Range`, `Source`, and `Style Notes`.
+7. It appends an "Edited via Acuity" automation note.
 
 Current writes:
 
@@ -311,14 +320,16 @@ Current job order:
 
 1. Acquire script/property lease.
 2. Check intake drain state so form submissions are not overlapped by dependent jobs.
-3. Run `acuityPollAndSubmit`.
-4. If Acuity submitted forms/reschedules, mark intake drain and exit early.
-5. Run `acuityLabelSync`.
-6. Run `sw_processAppointmentAutomation`.
-7. Run `sw_generateSalesWorkflowTasks` if a pending async task-generation request exists, or if automation did not already generate tasks and hourly cadence is due.
-8. Run `repairMissingUrls_` hourly.
-9. Run `sw_rebuildWorkflowReadModels` when read models are due.
-10. Save state and release lease.
+3. Run `sw_processExternalBookingEvents`.
+4. If webhook-backed Acuity processing submitted forms/reschedules, mark intake drain and exit early.
+5. Run `acuityPollAndSubmit`.
+6. If Acuity polling submitted forms/reschedules, mark intake drain and exit early.
+7. Run `acuityLabelSync`.
+8. Run `sw_processAppointmentAutomation`.
+9. Run `sw_generateSalesWorkflowTasks` if a pending async task-generation request exists, or if automation did not already generate tasks and hourly cadence is due.
+10. Run `repairMissingUrls_` hourly.
+11. Run `sw_rebuildWorkflowReadModels` when read models are due.
+12. Save state and release lease.
 
 Install/status functions:
 
