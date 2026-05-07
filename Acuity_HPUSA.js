@@ -116,22 +116,54 @@ function acuityPollAndSubmit(e) {
     Logger.log('Fetched: active=' + activeList.length + ' canceled=' + canceledList.length);
 
     let submitted = 0, rescheduled = 0, edited = 0, canceled = 0, skipped = 0, errors = 0;
+    let repairedFormInbox = 0, staleDoneCleared = 0, representedByFingerprint = 0;
     let checkedExisting = 0, checkedCanceled = 0;
     const activeExisting = [];
     const newActive = [];
     const canceledExisting = [];
 
     activeList.forEach(function (appt) {
-      const uid = String(appt.id);
-      if (existingUIDs.has(uid)) {
-        activeExisting.push(appt);
-        return;
+      try {
+        const uid = String(appt.id);
+        if (existingUIDs.has(uid)) {
+          activeExisting.push(appt);
+          return;
+        }
+
+        const fingerprintRow = acuityFindCurrentMasterRowForAppointment_(appt);
+        if (fingerprintRow) {
+          SP.setProperty('ACUITY:DONE:' + uid, '1');
+          representedByFingerprint++;
+          skipped++;
+          Logger.log('Acuity active already represented by Master fingerprint: uid=' + uid + ' masterRow=' + fingerprintRow);
+          return;
+        }
+
+        const doneKey = 'ACUITY:DONE:' + uid;
+        if (SP.getProperty(doneKey)) {
+          const repair = acuityRepairFormInboxUid_(uid);
+          if (repair.repaired) {
+            repairedFormInbox++;
+            existingUIDs.add(uid);
+            CacheService.getScriptCache().remove('MASTER_UIDS_CACHE');
+            Logger.log('Repaired Acuity Form Inbox row into Master: uid=' + uid + ' inboxRow=' + repair.inboxRow + ' masterRow=' + repair.masterRow);
+            return;
+          }
+          if (repair.found) {
+            errors++;
+            Logger.log('❌ Acuity Form Inbox repair failed for uid=' + uid + ': ' + (repair.error || 'unknown error'));
+            return;
+          }
+          SP.deleteProperty(doneKey);
+          staleDoneCleared++;
+          Logger.log('Cleared stale ACUITY:DONE flag with no Master/Form match: uid=' + uid);
+        }
+
+        newActive.push(appt);
+      } catch (err) {
+        errors++;
+        Logger.log('❌ Error classifying active Acuity appt ' + (appt && appt.id) + ': ' + (err && err.message || err));
       }
-      if (SP.getProperty('ACUITY:DONE:' + uid)) {
-        skipped++;
-        return;
-      }
-      newActive.push(appt);
     });
 
     canceledList.forEach(function (appt) {
@@ -200,7 +232,7 @@ function acuityPollAndSubmit(e) {
 
     SP.setProperty('ACUITY_LAST_FETCH', new Date().toISOString());
     skipped += Math.max(0, activeExisting.length - checkedExisting) + Math.max(0, canceledExisting.length - checkedCanceled);
-    Logger.log('Done — submitted=' + submitted + ' rescheduled=' + rescheduled + ' edited=' + edited + ' canceled=' + canceled + ' checkedExisting=' + checkedExisting + '/' + activeExisting.length + ' checkedCanceled=' + checkedCanceled + '/' + canceledExisting.length + ' skipped=' + skipped + ' errors=' + errors);
+    Logger.log('Done — submitted=' + submitted + ' rescheduled=' + rescheduled + ' edited=' + edited + ' canceled=' + canceled + ' checkedExisting=' + checkedExisting + '/' + activeExisting.length + ' checkedCanceled=' + checkedCanceled + '/' + canceledExisting.length + ' skipped=' + skipped + ' repairedFormInbox=' + repairedFormInbox + ' staleDoneCleared=' + staleDoneCleared + ' representedByFingerprint=' + representedByFingerprint + ' errors=' + errors);
     return {
       ok: errors === 0,
       submitted: submitted,
@@ -208,6 +240,9 @@ function acuityPollAndSubmit(e) {
       edited: edited,
       canceled: canceled,
       skipped: skipped,
+      repairedFormInbox: repairedFormInbox,
+      staleDoneCleared: staleDoneCleared,
+      representedByFingerprint: representedByFingerprint,
       errors: errors,
       formSubmitted: submitted + rescheduled,
       checkedExisting: checkedExisting,
@@ -287,6 +322,130 @@ function acuityFetchAppointmentDetail_(userId, apiKey, appt) {
     if (r.getResponseCode() === 200) return JSON.parse(r.getContentText());
   } catch(_) {}
   return appt;
+}
+
+function acuityFindCurrentMasterRowForAppointment_(appt) {
+  try {
+    if (typeof findCurrentMasterRowByFingerprint_ !== 'function') return 0;
+    const fieldMap = acuityToFormFieldMap_(appt || {});
+    const company = fieldMap['Company'] || ACUITY_CFG.COMPANY;
+    const brand = typeof brandFromCompany_ === 'function' ? brandFromCompany_(company) : company;
+    const email = typeof normEmail_ === 'function'
+      ? normEmail_(fieldMap['Email'] || '')
+      : String(fieldMap['Email'] || '').trim().toLowerCase();
+    const phone = typeof normPhone_ === 'function'
+      ? normPhone_(fieldMap['Phone'] || '')
+      : String(fieldMap['Phone'] || '').replace(/\D+/g, '');
+    return findCurrentMasterRowByFingerprint_(
+      brand,
+      fieldMap['Visit Date'] || '',
+      fieldMap['Visit Time'] || '',
+      fieldMap['Visit Type'] || '',
+      email,
+      phone,
+      0
+    ) || 0;
+  } catch (err) {
+    Logger.log('Acuity fingerprint lookup skipped for uid=' + (appt && appt.id || '') + ': ' + (err && err.message || err));
+    return 0;
+  }
+}
+
+function acuityRepairFormInboxUid_(uid) {
+  uid = String(uid || '').trim();
+  if (!uid) return { found: false, repaired: false };
+  const before = acuityFindMasterRowByUid_(uid);
+  if (before) return { found: true, repaired: true, masterRow: before, source: 'master' };
+
+  const inbox = acuityFindFormInboxRowByUid_(uid);
+  if (!inbox.found) return { found: false, repaired: false };
+
+  try {
+    if (typeof onFormSubmit !== 'function') {
+      return { found: true, repaired: false, inboxRow: inbox.rowNumber, error: 'onFormSubmit unavailable' };
+    }
+    onFormSubmit({ namedValues: inbox.namedValues });
+    const after = acuityFindMasterRowByUid_(uid);
+    if (!after) {
+      return { found: true, repaired: false, inboxRow: inbox.rowNumber, error: 'onFormSubmit returned but Master UID was not created' };
+    }
+    try {
+      if (typeof _markInboxRowProcessed_ === 'function') {
+        _markInboxRowProcessed_(inbox.sheet, inbox.headerMap, inbox.rowNumber);
+      }
+    } catch (_) {}
+    return { found: true, repaired: true, inboxRow: inbox.rowNumber, masterRow: after };
+  } catch (err) {
+    return {
+      found: true,
+      repaired: false,
+      inboxRow: inbox.rowNumber,
+      error: err && (err.stack || err.message) ? String(err.stack || err.message) : String(err || '')
+    };
+  }
+}
+
+function acuityFindFormInboxRowByUid_(uid) {
+  uid = String(uid || '').trim();
+  if (!uid) return { found: false };
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName('02_Form_Inbox');
+  if (!sh || sh.getLastRow() < 2) return { found: false };
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (h) {
+    return String(h || '').trim();
+  });
+  const headerMap = {};
+  headers.forEach(function (h, i) { if (h) headerMap[h] = i + 1; });
+  const uidIdx = acuityHeaderIndex_(headers, ['Admin: Calendly Event UID', 'CalendlyEventUID', 'Calendly Event UID', 'Acuity ID']);
+  if (uidIdx < 0) return { found: false };
+
+  const values = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+  for (let i = values.length - 1; i >= 0; i--) {
+    const row = values[i];
+    if (String(row[uidIdx] || '').trim() !== uid) continue;
+    const namedValues = {};
+    headers.forEach(function (h, col) {
+      if (h) namedValues[h] = [row[col]];
+    });
+    return {
+      found: true,
+      sheet: sh,
+      headerMap: headerMap,
+      rowNumber: i + 2,
+      namedValues: namedValues
+    };
+  }
+  return { found: false };
+}
+
+function acuityFindMasterRowByUid_(uid) {
+  uid = String(uid || '').trim();
+  if (!uid) return 0;
+  try {
+    if (typeof findBestMasterRowByUID_ === 'function') return findBestMasterRowByUID_(uid) || 0;
+  } catch (_) {}
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName('00_Master Appointments');
+  if (!sh || sh.getLastRow() < 2) return 0;
+  const hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const col = hdr.indexOf('CalendlyEventUID') + 1;
+  if (!col) return 0;
+  const vals = sh.getRange(2, col, sh.getLastRow() - 1, 1).getValues();
+  let found = 0;
+  vals.forEach(function (row, i) {
+    if (String(row[0] || '').trim() === uid) found = i + 2;
+  });
+  return found;
+}
+
+function acuityHeaderIndex_(headers, names) {
+  const low = (headers || []).map(function (h) { return String(h || '').trim().toLowerCase(); });
+  for (let i = 0; i < names.length; i++) {
+    const idx = low.indexOf(String(names[i] || '').trim().toLowerCase());
+    if (idx >= 0) return idx;
+  }
+  return -1;
 }
 
 function acuityRotatingBatch_(items, cursorProp, batchSize) {

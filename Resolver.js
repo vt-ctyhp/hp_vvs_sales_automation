@@ -185,6 +185,25 @@ function dedupeNormTimeKey_(value){
   return dedupeNormKey_(s);
 }
 
+function visitDateTimeIso_(visitDate, visitTime){
+  const d = dedupeNormDateKey_(visitDate);
+  const t = dedupeNormTimeKey_(visitTime);
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (!dm) return '';
+
+  let h = 0;
+  let m = 0;
+  const tm = /^(\d{2}):(\d{2})$/.exec(t);
+  if (tm) {
+    h = Number(tm[1]) || 0;
+    m = Number(tm[2]) || 0;
+  }
+
+  const dt = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), h, m, 0);
+  if (isNaN(dt.getTime())) return '';
+  return Utilities.formatDate(dt, CFG.TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
+}
+
 function dedupeContactKey_(emailLower, phoneNorm){
   const email = normEmail_(emailLower);
   const phone = normPhone_(phoneNorm);
@@ -427,7 +446,9 @@ function parseBudget_(raw){
 
 /********** ID / APPT_ID **********/
 function nextApptId_(iso){
-  const tz = CFG.TZ, dt = iso ? new Date(iso) : new Date();
+  const tz = CFG.TZ;
+  let dt = iso ? new Date(iso) : new Date();
+  if (isNaN(dt.getTime())) dt = new Date();
   const ymd = Utilities.formatDate(dt, tz, 'yyyyMMdd');
   const s = SH(SHT.MASTER), m = headers_(SHT.MASTER);
   const col = m['APPT_ID'] || 0;
@@ -1813,6 +1834,7 @@ function keep_(rawVal, col, row) {
 // ====================================================================
 function onFormSubmit(e){
   var __swOrchIntakeMarked = false;
+  var __swFormSubmitDedupKey = '';
   try {
     if (typeof swOrchMarkIntakeStart_ === 'function') {
       var __swOrchMarkResult = swOrchMarkIntakeStart_('onFormSubmit');
@@ -1836,6 +1858,7 @@ function onFormSubmit(e){
       Logger.log('[dedup] No UID/email - skip dedup guard, proceed normally');
     } else {
       const _dedupKey   = 'formsubmit_' + (_calUID || (_email + '_' + _ts));
+      __swFormSubmitDedupKey = _dedupKey;
       const _dedupCache = CacheService.getScriptCache();
 
       if (_dedupCache.get(_dedupKey)) {
@@ -1949,9 +1972,7 @@ function onFormSubmit(e){
     __mark('reschedule detection done; looksLikeReschedule=' + looksLikeReschedule + ', oldRow=' + oldRow + ', preRow=' + row);
 
     if (!row){
-      const tempIso = (vdate && vtime) 
-        ? Utilities.formatDate(new Date(`${vdate} ${vtime}`), CFG.TZ, "yyyy-MM-dd'T'HH:mm:ssXXX") 
-        : '';
+      const tempIso = visitDateTimeIso_(vdate, vtime);
       row = withScriptLock_(() => {
         let existingRow = calUID ? findBestMasterRowByUID_(calUID) : 0;
         if (!existingRow && !looksLikeReschedule) {
@@ -2220,6 +2241,9 @@ function onFormSubmit(e){
 
     if (CFG.DEBUG) log_('FORM_MERGED', {row, emailLower, brand});
   }catch(ex){
+    if (__swFormSubmitDedupKey) {
+      try { CacheService.getScriptCache().remove(__swFormSubmitDedupKey); } catch (_) {}
+    }
     err_('onFormSubmit', ex.message, {stack: ex.stack});
     throw ex;
   } finally {
@@ -2547,7 +2571,7 @@ function sw_syncVisitDateTimeToTaskQueue_(taskIndex, repairedItems) {
 
 function withScriptLock_(fn){
   const lock = LockService.getDocumentLock();
-  lock.waitLock(10000);
+  lock.waitLock(30000);
   try { return fn(true); } finally { lock.releaseLock(); }
 }
 
