@@ -2828,7 +2828,7 @@
   </main>
 
   <script>
-    var SW_DASHBOARD_BUILD = 'client-load-timing-v3-2026-05-05';
+    var SW_DASHBOARD_BUILD = 'client-load-timing-v4-2026-05-06';
     var SW_APPOINTMENT_DRIVE_FOLDER_CLIENT_CACHE_MS = 10 * 60 * 1000;
 
     var swClientLoadTiming = {
@@ -2836,7 +2836,9 @@
       marks: {},
       eventsSent: {},
       mode: 'unknown',
-      tokenPresentOnInit: false
+      tokenPresentOnInit: false,
+      signInTransport: '',
+      bootstrapTransport: ''
     };
 
     var appState = {
@@ -2994,6 +2996,10 @@
         view: appState.view || '',
         taskCount: Number(extra.taskCount || 0),
         counts: extra.counts || {},
+        transports: {
+          signIn: swClientLoadTiming.signInTransport || '',
+          bootstrap: swClientLoadTiming.bootstrapTransport || ''
+        },
         timings: timings,
         marks: marks,
         navigation: swClientNavigationTiming_(),
@@ -3433,6 +3439,63 @@
       runner[fnName].apply(runner, callArgs);
     }
 
+    function dashboardPostUrl_() {
+      return String(window.location.href || '').split('#')[0];
+    }
+
+    function dashboardPostJson_(action, payload) {
+      if (!window.fetch) return Promise.reject(new Error('Fetch API unavailable.'));
+      var url = dashboardPostUrl_();
+      if (!url) return Promise.reject(new Error('Web app URL is unavailable.'));
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'follow',
+        body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+      }).then(function (response) {
+        return response.text().then(function (text) {
+          var data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (_) {
+            throw new Error('Received a non-JSON response from the web app.');
+          }
+          if (!response.ok) {
+            throw new Error('Web app request failed (' + response.status + ').');
+          }
+          if (!data || data.ok === false) {
+            var appErr = new Error((data && (data.message || data.error)) || 'Web app request failed.');
+            appErr.isWebAppAppError = true;
+            appErr.response = data || {};
+            throw appErr;
+          }
+          return data;
+        });
+      });
+    }
+
+    function loginViaWebAppPost_(email, password, onSuccess, onFailure) {
+      swClientLoadTiming.signInTransport = 'webAppPost';
+      dashboardPostJson_('sw_login', {
+        email: email,
+        password: password,
+        options: { includeBootstrap: true }
+      }).then(onSuccess).catch(onFailure);
+    }
+
+    function bootstrapViaWebAppPost_(requestId, onSuccess, onFailure) {
+      swClientLoadTiming.bootstrapTransport = 'webAppPost';
+      dashboardPostJson_('sw_getBootstrap', {
+        token: appState.token || ''
+      }).then(function (res) {
+        onSuccess(res, requestId);
+      }).catch(onFailure);
+    }
+
     function openAppointmentUploadFolder(sourceButton) {
       if (!appState.selectedTaskId) return;
       var artifactType = valueOf('appointmentDriveArtifactType') || 'APPOINTMENT_RECORDING';
@@ -3651,10 +3714,23 @@
     function bootstrap() {
       var requestId = beginMainRequest('mine');
       swClientMark_('bootstrapRequestStart');
-      serverCall('sw_getBootstrap', [], function (res) {
+      bootstrapViaWebAppPost_(requestId, function (res) {
         swClientMark_('bootstrapResponse');
         applyBootstrap(res, requestId);
-      }, 'Opening dashboard');
+      }, function (err) {
+        if (err && err.isWebAppAppError) {
+          appState.token = '';
+          sessionStorage.removeItem('salesWorkflowToken');
+          showLogin();
+          setLoginStatus(err.message || 'Session expired. Please sign in again.');
+          return;
+        }
+        swClientLoadTiming.bootstrapTransport = 'google.script.run';
+        serverCall('sw_getBootstrap', [], function (res) {
+          swClientMark_('bootstrapResponse');
+          applyBootstrap(res, requestId);
+        }, 'Opening dashboard');
+      });
     }
 
     function applyBootstrap(res, requestId) {
@@ -3744,7 +3820,7 @@
       swClientMark_('signInRequestStart');
       setLoginBusy(true);
       setLoginStatus('Signing in');
-      serverCall('sw_login', [email, password, { includeBootstrap: true }], function (res) {
+      loginViaWebAppPost_(email, password, function (res) {
         swClientMark_('signInResponse');
         setLoginStatus('Opening dashboard');
         appState.token = res.token || '';
@@ -3752,6 +3828,7 @@
         sessionStorage.setItem('salesWorkflowToken', appState.token);
         setLoginBusy(false);
         if (res.bootstrap && res.bootstrap.ok) {
+          swClientLoadTiming.bootstrapTransport = 'bundled:' + (swClientLoadTiming.signInTransport || 'webAppPost');
           swClientMark_('bootstrapResponse');
           applyBootstrap(res.bootstrap, beginMainRequest('mine'));
           return;
@@ -3763,7 +3840,35 @@
         });
         document.getElementById('taskList').innerHTML = '<div class="loading">LOADING TASKS</div>';
         bootstrap();
-      }, 'Signing in');
+      }, function (err) {
+        if (err && err.isWebAppAppError) {
+          setLoginBusy(false);
+          setLoginStatus(err.message || 'Sign in failed.');
+          return;
+        }
+        swClientLoadTiming.signInTransport = 'google.script.run';
+        serverCall('sw_login', [email, password, { includeBootstrap: true }], function (res) {
+          swClientMark_('signInResponse');
+          setLoginStatus('Opening dashboard');
+          appState.token = res.token || '';
+          appState.user = res.user || null;
+          sessionStorage.setItem('salesWorkflowToken', appState.token);
+          setLoginBusy(false);
+          if (res.bootstrap && res.bootstrap.ok) {
+            swClientLoadTiming.bootstrapTransport = 'bundled:' + (swClientLoadTiming.signInTransport || 'google.script.run');
+            swClientMark_('bootstrapResponse');
+            applyBootstrap(res.bootstrap, beginMainRequest('mine'));
+            return;
+          }
+          showApp();
+          renderUser({
+            user: appState.user || {},
+            views: clientViewsForUser(appState.user || {})
+          });
+          document.getElementById('taskList').innerHTML = '<div class="loading">LOADING TASKS</div>';
+          bootstrap();
+        }, 'Signing in');
+      });
     }
 
     function clientViewsForUser(user) {

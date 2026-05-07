@@ -140,6 +140,15 @@ function getReportIdForRoot_(rootApptId){
 function doPost(e) {
   var ct = (e && e.postData && e.postData.type) || '';
   var p  = (e && e.parameter) || {};
+  var body = {};
+
+  if (/^application\/json/i.test(ct)) {
+    try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
+    var action = String((body && body.action) || p.action || '').trim();
+    if (action === 'sw_login' || action === 'sw_getBootstrap') {
+      return sw_taskQueueDoPost_(e);
+    }
+  }
 
   // Ask/Chat JSON posts from the sidebar or external tools
   if (/^application\/json/i.test(ct) || p.action === 'chat' || p.action === 'apply_patch') {
