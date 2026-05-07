@@ -617,7 +617,9 @@ function swBuildBootstrapResponse_(ss, user, mark) {
     mine: buckets.mine.length,
     cleanup: buckets.cleanup.length,
     coverage: buckets.coverage.length,
-    admin: buckets.admin.length
+    admin: buckets.admin.length,
+    source: taskRead.source,
+    fallbackReason: taskRead.fallbackReason || ''
   });
   return {
     ok: true,
@@ -2322,6 +2324,7 @@ function swSanitizeClientLoadTiming_(payload) {
     view: swClientLoadString_(payload.view, 40),
     taskCount: swClientLoadNumber_(payload.taskCount),
     counts: swClientLoadNumberMap_(payload.counts, 12),
+    transports: swClientLoadStringMap_(payload.transports, 8),
     timings: swClientLoadNumberMap_(payload.timings, 24),
     marks: swClientLoadNumberMap_(payload.marks, 40),
     navigation: swClientLoadNumberMap_(payload.navigation, 12),
@@ -2344,6 +2347,15 @@ function swClientLoadNumberMap_(map, maxKeys) {
   map = map || {};
   Object.keys(map).slice(0, maxKeys || 20).forEach(function (key) {
     out[swClientLoadString_(key, 60)] = swClientLoadNumber_(map[key]);
+  });
+  return out;
+}
+
+function swClientLoadStringMap_(map, maxKeys) {
+  var out = {};
+  map = map || {};
+  Object.keys(map).slice(0, maxKeys || 20).forEach(function (key) {
+    out[swClientLoadString_(key, 60)] = swClientLoadString_(map[key], 120);
   });
   return out;
 }

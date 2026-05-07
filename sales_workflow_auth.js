@@ -277,6 +277,15 @@ function swAuthCachedLoginRow_(ss, email) {
   return null;
 }
 
+function swAuthCachedLoginRows_(ss) {
+  try {
+    var cached = CacheService.getScriptCache().get(swAuthLoginRowsCacheKey_(ss));
+    var rows = cached ? swParseJson_(cached, null) : null;
+    return Array.isArray(rows) ? rows : null;
+  } catch (_) {}
+  return null;
+}
+
 function swAuthCacheApiUser_(ss, user) {
   if (!user || !user.email) return;
   try {
@@ -290,6 +299,16 @@ function swAuthCacheLoginRow_(ss, row) {
   if (!email) return;
   try {
     CacheService.getScriptCache().put(swAuthLoginRowCacheKey_(ss, email), swStringify_(row), SW_AUTH_USER_CACHE_SECONDS);
+  } catch (_) {}
+}
+
+function swAuthCacheLoginRows_(ss, rows) {
+  rows = Array.isArray(rows) ? rows : [];
+  try {
+    var payload = swStringify_(rows);
+    if (payload.length < 90000) {
+      CacheService.getScriptCache().put(swAuthLoginRowsCacheKey_(ss), payload, SW_AUTH_USER_CACHE_SECONDS);
+    }
   } catch (_) {}
 }
 
@@ -334,6 +353,7 @@ function swAuthClearUserCaches_(ss, email) {
   try {
     var cache = CacheService.getScriptCache();
     cache.remove(swAuthUserListCacheKey_(ss));
+    cache.remove(swAuthLoginRowsCacheKey_(ss));
     email = swNormEmail_(email);
     if (email) {
       cache.remove(swAuthUserCacheKey_(ss, email));
@@ -348,6 +368,10 @@ function swAuthUserCacheKey_(ss, email) {
 
 function swAuthLoginRowCacheKey_(ss, email) {
   return 'sw:loginRow:v1:' + ss.getId() + ':' + swNormEmail_(email);
+}
+
+function swAuthLoginRowsCacheKey_(ss) {
+  return 'sw:loginRows:v1:' + ss.getId();
 }
 
 function swAuthUserListCacheKey_(ss) {
@@ -628,6 +652,15 @@ function swAuthFindUserRowForLogin_(ss, email) {
   if (!email) return null;
   var cached = swAuthCachedLoginRow_(ss, email);
   if (cached) return cached;
+  var cachedRows = swAuthCachedLoginRows_(ss);
+  if (cachedRows) {
+    for (var i = 0; i < cachedRows.length; i++) {
+      if (swNormEmail_(cachedRows[i]['Email']) === email) {
+        swAuthCacheLoginRow_(ss, cachedRows[i]);
+        return cachedRows[i];
+      }
+    }
+  }
   var row = swAuthFindUserRowReadOnly_(ss, email) || swAuthFindUserRow_(ss, email);
   if (row) swAuthCacheLoginRow_(ss, row);
   return row;
@@ -639,6 +672,7 @@ function swAuthFindUserRow_(ss, email) {
   var sh = swEnsureSheet_(ss, SW_SHEETS.USERS, SW_AUTH_USER_HEADERS);
   var rows = swAuthReadUserRows_(ss, false);
   swAuthCachePublicUserRowsFromAuthRows_(ss, rows);
+  swAuthCacheLoginRows_(ss, rows);
   for (var i = 0; i < rows.length; i++) {
     if (swNormEmail_(rows[i]['Email']) === email) return rows[i];
   }
@@ -648,8 +682,15 @@ function swAuthFindUserRow_(ss, email) {
 function swAuthFindUserRowReadOnly_(ss, email) {
   email = swNormEmail_(email);
   if (!email) return null;
+  var cachedRows = swAuthCachedLoginRows_(ss);
+  if (cachedRows) {
+    for (var i = 0; i < cachedRows.length; i++) {
+      if (swNormEmail_(cachedRows[i]['Email']) === email) return cachedRows[i];
+    }
+  }
   var rows = swAuthReadUserRows_(ss, true);
   swAuthCachePublicUserRowsFromAuthRows_(ss, rows);
+  swAuthCacheLoginRows_(ss, rows);
   for (var i = 0; i < rows.length; i++) {
     if (swNormEmail_(rows[i]['Email']) === email) return rows[i];
   }
