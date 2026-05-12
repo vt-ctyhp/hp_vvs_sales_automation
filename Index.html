@@ -5424,17 +5424,41 @@
       return adminFilterOptionTags(customerSearchIndividualNames(options), selected, 'All Advisors');
     }
 
+    function customerSearchNormalizeAdvisorPart_(part) {
+      return String(part || '').trim().replace(/\([^)]*\)\s*$/, '').trim();
+    }
+
+    function customerSearchCanonicalAdvisorPart_(part, aliases) {
+      part = customerSearchNormalizeAdvisorPart_(part);
+      var key = norm(part);
+      if (!part || !key) return '';
+      if (aliases && /\s/.test(key)) {
+        var first = key.split(/\s+/)[0];
+        if (first && aliases[first]) return part.split(/\s+/)[0];
+      }
+      return part;
+    }
+
     function customerSearchIndividualNames(options) {
       var seen = {};
       var out = [];
+      var aliases = {};
+      var parts = [];
       (options || []).forEach(function (option) {
         String(option || '').split(/\s*(?:\/|,|;|\+|&|\band\b)\s*/i).forEach(function (part) {
-          part = part.trim();
+          part = customerSearchNormalizeAdvisorPart_(part);
           var key = norm(part);
-          if (!part || seen[key]) return;
-          seen[key] = true;
-          out.push(part);
+          if (!part) return;
+          if (!/\s/.test(key)) aliases[key] = true;
+          parts.push(part);
         });
+      });
+      parts.forEach(function (part) {
+        part = customerSearchCanonicalAdvisorPart_(part, aliases);
+        var key = norm(part);
+        if (!part || seen[key]) return;
+        seen[key] = true;
+        out.push(part);
       });
       out.sort(function (a, b) { return a.localeCompare(b); });
       return out;

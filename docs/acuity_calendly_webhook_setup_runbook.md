@@ -28,7 +28,7 @@ This separation is intentional to minimize risk to the live Calendly flow.
 ### HP Acuity queue spreadsheet
 - Spreadsheet ID: `1gWXpPXkuoNdK9I5KyPqDYD3Re0Mbn3ouDxpCjxJ_5MA`
 - Full URL:  
-  `https://docs.google.com/spreadsheets/d/1gWXpPXkuoNdK9I5KyPqDYD3Re0Mbn3ouDxpCjxJ_5MA/edit`
+  `https://docs.google.com/spreadsheets/d/1gWXpPXkuoNdK9I5KyPqDYD3Re0Mbn3ouDxpCjxJ_5MA/edit?gid=327751876#gid=327751876`
 - Queue tab name: `_ExternalBookingEvents`
 
 ### Calendly script (separate project)

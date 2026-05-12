@@ -3549,6 +3549,12 @@ function applyLaunchContext(){
   const rowIndex = Number(launch.masterRowIndex || launch.rowIndex || 0);
   if (mode === 'intake' || mode === 'walkin') {
     openWalkin();
+    if (rowIndex >= 2 && window.google && google.script) {
+      google.script.run
+        .withSuccessHandler(function(rec){ prefillGfFromRecord(rec); })
+        .withFailureHandler(function(){})
+        .ipad_loadRecord(rowIndex);
+    }
     return;
   }
 
@@ -3618,6 +3624,86 @@ function openWalkin(){
   $('walkinBtn').style.display='none';
   $('walkinPanel').classList.add('on');
   setTimeout(()=>{const n=$('gf_name');if(n)n.focus();}, 150);
+}
+
+function gfNorm_(value){
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&amp;/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function gfSetSelect_(id, value){
+  const el = $(id);
+  if(!el || !value) return;
+  const target = gfNorm_(value);
+  const match = Array.from(el.options || []).find(opt => {
+    const n = gfNorm_(opt.value || opt.textContent);
+    return n === target || n.includes(target) || target.includes(n);
+  });
+  if(match) el.value = match.value;
+}
+
+function gfDateInput_(value){
+  const s = String(value || '').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s);
+  if(!m) return '';
+  const y = m[3].length === 2 ? '20' + m[3] : m[3];
+  return y + '-' + String(m[1]).padStart(2,'0') + '-' + String(m[2]).padStart(2,'0');
+}
+
+function gfTimeInput_(value){
+  const s = String(value || '').trim();
+  let m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if(m) return String(m[1]).padStart(2,'0') + ':' + m[2];
+  m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i.exec(s);
+  if(!m) return '';
+  let h = parseInt(m[1], 10);
+  const ap = m[3].toUpperCase();
+  if(ap === 'AM' && h === 12) h = 0;
+  if(ap === 'PM' && h !== 12) h += 12;
+  return String(h).padStart(2,'0') + ':' + m[2];
+}
+
+function gfCheckByText_(selector, value){
+  const s = gfNorm_(value);
+  if(!s) return;
+  document.querySelectorAll(selector).forEach(chk => {
+    const n = gfNorm_(chk.value);
+    if(n && (s.includes(n) || n.includes(s))) chk.checked = true;
+  });
+}
+
+function gfPrefillDiamond_(value){
+  const s = gfNorm_(value);
+  if(!s) return;
+  const lab = $('gf_dt_lab');
+  const nat = $('gf_dt_nat');
+  const both = /\bboth\b|\beither\b|no preference/.test(s) || (s.includes('lab') && s.includes('natural'));
+  if(lab && (both || s.includes('lab'))) lab.checked = true;
+  if(nat && (both || s.includes('natural') || s.includes('mined'))) nat.checked = true;
+}
+
+function prefillGfFromRecord(rec){
+  if(!rec || !rec.ok) return;
+  gfSetSelect_('gf_company', rec.brand || '');
+  if($('gf_name') && rec.customerName) $('gf_name').value = rec.customerName;
+  if($('gf_phone') && rec.phone) $('gf_phone').value = rec.phone;
+  if($('gf_email') && rec.email) $('gf_email').value = rec.email;
+  gfSetSelect_('gf_visittype', rec.visitType || '');
+  gfSetSelect_('gf_location', rec.location || '');
+  const d = gfDateInput_(rec.visitDate || '');
+  if(d && $('gf_date')) $('gf_date').value = d;
+  const t = gfTimeInput_(rec.visitTime || '');
+  if(t && $('gf_time')) $('gf_time').value = t;
+  gfPrefillDiamond_(rec.diamondType || '');
+  gfCheckByText_('#walkinPanel input[name=gf_budget]', rec.budgetRange || '');
+  gfCheckByText_('#walkinPanel input[name=gf_source]', rec.source || '');
+  if($('gf_notes') && rec.styleNotes) $('gf_notes').value = rec.styleNotes;
+  if($('gf_uid') && rec.bookingUid) $('gf_uid').value = rec.bookingUid;
 }
 
 function _loadIntakeRecord(targetPanel, onLoaded) {

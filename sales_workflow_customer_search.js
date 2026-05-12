@@ -1214,10 +1214,11 @@ function swCustomerSearchFilterOptions_(appointments) {
   var brands = [];
   var advisors = [];
   var jocs = [];
+  var advisorAliases = swCustomerSearchAdvisorSingleWordAliases_(appointments);
   (appointments || []).forEach(function (rec) {
     if (!swIsAppointmentActive_(rec)) return;
     if (rec.brand) brands.push(rec.brand);
-    swCustomerSearchAdvisorParts_(rec.assignedRep).forEach(function (advisor) { advisors.push(advisor); });
+    swCustomerSearchAdvisorParts_(rec.assignedRep, advisorAliases).forEach(function (advisor) { advisors.push(advisor); });
     if (rec.assistedRep) jocs.push(rec.assistedRep);
   });
   return {
@@ -1227,11 +1228,34 @@ function swCustomerSearchFilterOptions_(appointments) {
   };
 }
 
-function swCustomerSearchAdvisorParts_(value) {
+function swCustomerSearchAdvisorSingleWordAliases_(appointments) {
+  var aliases = {};
+  (appointments || []).forEach(function (rec) {
+    String(rec && rec.assignedRep || '').split(/\s*(?:\/|,|;|\+|&|\band\b)\s*/i).forEach(function (part) {
+      part = swCustomerSearchNormalizeAdvisorPart_(part);
+      var key = swNorm_(part);
+      if (!part || /\s/.test(key)) return;
+      aliases[key] = part;
+    });
+  });
+  return aliases;
+}
+
+function swCustomerSearchNormalizeAdvisorPart_(part) {
+  return swTrim_(String(part || '')).replace(/\([^)]*\)\s*$/, '').trim();
+}
+
+function swCustomerSearchAdvisorParts_(value, aliases) {
   var seen = {};
   var out = [];
   String(value || '').split(/\s*(?:\/|,|;|\+|&|\band\b)\s*/i).forEach(function (part) {
-    part = swTrim_(part);
+    part = swCustomerSearchNormalizeAdvisorPart_(part);
+    var norm = swNorm_(part);
+    if (!part || !norm) return;
+    if (aliases && /\s/.test(norm)) {
+      var first = norm.split(/\s+/)[0];
+      if (first && aliases[first]) part = part.split(/\s+/)[0];
+    }
     var key = swNorm_(part);
     if (!part || seen[key]) return;
     seen[key] = true;
@@ -1266,6 +1290,7 @@ function swCustomerSearchDefaultAdvisor_(appointments, user) {
   if (!user.isRep) return '';
   var candidates = swCustomerSearchUserAdvisorCandidates_(user);
   if (!candidates.length) return '';
+  var advisorAliases = swCustomerSearchAdvisorSingleWordAliases_(appointments);
   var candidateMap = {};
   candidates.forEach(function (candidate) {
     var key = swNorm_(candidate);
@@ -1273,7 +1298,7 @@ function swCustomerSearchDefaultAdvisor_(appointments, user) {
   });
   var active = (appointments || []).filter(function (rec) { return swIsAppointmentActive_(rec); });
   for (var i = 0; i < active.length; i++) {
-    var parts = swCustomerSearchAdvisorParts_(active[i].assignedRep);
+    var parts = swCustomerSearchAdvisorParts_(active[i].assignedRep, advisorAliases);
     for (var j = 0; j < parts.length; j++) {
       if (candidateMap[swNorm_(parts[j])]) return parts[j];
     }

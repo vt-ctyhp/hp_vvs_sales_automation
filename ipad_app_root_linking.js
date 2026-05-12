@@ -526,12 +526,21 @@ function ipad_loadRecord(rowIndex) {
       }
     } catch(_) {}
 
-    // ── Extra columns ──────────────────────────────────────────────
-    const phoneIdx = rp_pick0(m.map,'Phone','Phone Number','Tel','Mobile');
-    const emailIdx = rp_pick0(m.map,'Email','Email Address','E-mail');
-    const pfIdx        = rp_pick0(m.map, 'PaymentsFolderURL');
-    const intakeIdx    = rp_pick0(m.map, 'IntakeDocURL');
-    const checklistIdx = rp_pick0(m.map, 'ChecklistURL', 'Checklist URL');
+	    // ── Extra columns ──────────────────────────────────────────────
+	    const phoneIdx = rp_pick0(m.map,'Phone','Phone Number','Tel','Mobile');
+	    const emailIdx = rp_pick0(m.map,'Email','Email Address','E-mail');
+	    const visitTypeIdx  = rp_pick0(m.map, 'Visit Type');
+	    const visitDateIdx  = rp_pick0(m.map, 'Visit Date');
+	    const visitTimeIdx  = rp_pick0(m.map, 'Visit Time');
+	    const locationIdx   = rp_pick0(m.map, 'Location');
+	    const diamondIdx    = rp_pick0(m.map, 'Diamond Type', 'Stone Type', 'Center Stone Type');
+	    const budgetIdx     = rp_pick0(m.map, 'Budget Range', 'Budget', 'Preferred Budget', 'Preferred Price Range');
+	    const sourceIdx     = rp_pick0(m.map, 'Source', 'Source (normalized)', 'Lead Source');
+	    const styleNotesIdx = rp_pick0(m.map, 'Style Notes', 'Notes', 'Design Notes');
+	    const uidIdx        = rp_pick0(m.map, 'CalendlyEventUID', 'Admin: Calendly Event UID', 'Calendly Event UID', 'Acuity ID');
+	    const pfIdx        = rp_pick0(m.map, 'PaymentsFolderURL');
+	    const intakeIdx    = rp_pick0(m.map, 'IntakeDocURL');
+	    const checklistIdx = rp_pick0(m.map, 'ChecklistURL', 'Checklist URL');
     const quotationIdx = rp_pick0(m.map, 'QuotationURL', 'Quotation URL');
 
     // ── Kế thừa IntakeDocURL / ChecklistURL / QuotationURL ─────
@@ -608,10 +617,19 @@ function ipad_loadRecord(rowIndex) {
       customerName:      m.customerName,
       soNumber:          m.soNumber || '',
       rootApptId:        m.rootApptId || '',
-      trackerUrl:        m.trackerUrl || '',
-      phone:             phoneIdx >= 0 ? String(m.rowVals[phoneIdx]||'').trim() : '',
-      email:             emailIdx >= 0 ? String(m.rowVals[emailIdx]||'').trim() : '',
-      orderTotal:        String(orderTotal || ''),
+	      trackerUrl:        m.trackerUrl || '',
+	      phone:             phoneIdx >= 0 ? String(m.rowVals[phoneIdx]||'').trim() : '',
+	      email:             emailIdx >= 0 ? String(m.rowVals[emailIdx]||'').trim() : '',
+	      visitType:         visitTypeIdx >= 0 ? String(m.rowVals[visitTypeIdx]||'').trim() : '',
+	      visitDate:         visitDateIdx >= 0 ? String(m.rowVals[visitDateIdx]||'').trim() : '',
+	      visitTime:         visitTimeIdx >= 0 ? String(m.rowVals[visitTimeIdx]||'').trim() : '',
+	      location:          locationIdx >= 0 ? String(m.rowVals[locationIdx]||'').trim() : '',
+	      diamondType:       diamondIdx >= 0 ? String(m.rowVals[diamondIdx]||'').trim() : '',
+	      budgetRange:       budgetIdx >= 0 ? String(m.rowVals[budgetIdx]||'').trim() : '',
+	      source:            sourceIdx >= 0 ? String(m.rowVals[sourceIdx]||'').trim() : '',
+	      styleNotes:        styleNotesIdx >= 0 ? String(m.rowVals[styleNotesIdx]||'').trim() : '',
+	      bookingUid:        uidIdx >= 0 ? String(m.rowVals[uidIdx]||'').trim() : '',
+	      orderTotal:        String(orderTotal || ''),
       paidToDate:        String(paidToDate || ''),
       balance:           String(balance),
       taxRate,

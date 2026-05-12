@@ -105,6 +105,167 @@ function nvGet(nv, key){
   return k ? (nv[k][0] || '') : '';
 }
 
+function intakeNamedValueText_(value){
+  if (Array.isArray(value)) {
+    return value.map(function(v){ return String(v == null ? '' : v).trim(); })
+      .filter(Boolean)
+      .join(', ');
+  }
+  return String(value == null ? '' : value).trim();
+}
+
+function intakeQuestionKey_(value){
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&amp;/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function intakeGetByAliases_(nv, aliases, tokenGroups){
+  nv = nv || {};
+  aliases = aliases || [];
+  tokenGroups = tokenGroups || [];
+
+  for (var i = 0; i < aliases.length; i++) {
+    var direct = intakeNamedValueText_(nv[aliases[i]]);
+    if (direct) return direct;
+  }
+
+  var aliasKeys = aliases.map(intakeQuestionKey_).filter(Boolean);
+  var keys = Object.keys(nv);
+  for (var k = 0; k < keys.length; k++) {
+    var key = keys[k];
+    var nk = intakeQuestionKey_(key);
+    if (!nk) continue;
+    var val = intakeNamedValueText_(nv[key]);
+    if (!val) continue;
+
+    for (var a = 0; a < aliasKeys.length; a++) {
+      var ak = aliasKeys[a];
+      if (nk === ak || nk.indexOf(ak) >= 0 || ak.indexOf(nk) >= 0) return val;
+    }
+
+    for (var g = 0; g < tokenGroups.length; g++) {
+      var group = tokenGroups[g].map(intakeQuestionKey_).filter(Boolean);
+      if (group.length && group.every(function(token){ return nk.indexOf(token) >= 0; })) return val;
+    }
+  }
+  return '';
+}
+
+function intakeBudgetNumber_(token){
+  var s = String(token || '').trim().toLowerCase();
+  var isK = /k\b/.test(s);
+  var n = Number(s.replace(/k\b/g, '').replace(/[^\d.]/g, ''));
+  if (!isFinite(n) || n <= 0) return 0;
+  return isK ? n * 1000 : n;
+}
+
+function intakeBudgetNumbers_(raw){
+  var s = String(raw || '').toLowerCase();
+  var out = [];
+  var re = /(?:\$?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*k?)/g;
+  var m;
+  while ((m = re.exec(s)) !== null) {
+    var n = intakeBudgetNumber_(m[0]);
+    if (n > 0) out.push(n);
+  }
+  return out;
+}
+
+function intakeNormalizeBudgetRange_(raw){
+  var value = intakeNamedValueText_(raw);
+  if (!value) return '';
+  var s = value
+    .replace(/[–—]/g, '-')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  var lower = s.toLowerCase();
+  var exactBuckets = [];
+  if (/\$?\s*1,?000\s*-\s*\$?\s*5,?000/.test(lower)) exactBuckets.push('$1,000 - $5,000');
+  if (/\$?\s*5,?0?01\s*-\s*\$?\s*10,?000|\$?\s*5,?000\s*-\s*\$?\s*10,?000/.test(lower)) exactBuckets.push('$5,001 - $10,000');
+  if (/\$?\s*10,?0?01\s*-\s*\$?\s*15,?000|\$?\s*10,?000\s*-\s*\$?\s*15,?000/.test(lower)) exactBuckets.push('$10,001 - $15,000');
+  if (/\$?\s*15,?0?01\s*-\s*\$?\s*20,?000|\$?\s*15,?000\s*-\s*\$?\s*20,?000/.test(lower)) exactBuckets.push('$15,001 - $20,000');
+  if (/\$?\s*20,?0?01\s*\+|\$?\s*20,?000\s*\+/.test(lower)) exactBuckets.push('$20,001+');
+  if (exactBuckets.length) {
+    return exactBuckets.filter(function(v, i, arr){ return arr.indexOf(v) === i; }).join(', ');
+  }
+
+  if (/under|below|less than/.test(lower)) return '$1,000 - $5,000';
+  if (/\b20\s*k\s*\+|20000\s*\+|20001\s*\+|20,000\s*\+|20,001\s*\+|over\s*\$?\s*(?:20\s*k|20,?000|20,?001)/i.test(s)) return '$20,001+';
+
+  var nums = intakeBudgetNumbers_(s).sort(function(a, b){ return a - b; });
+  if (!nums.length) return s;
+  var low = nums[0], high = nums[nums.length - 1];
+
+  if (high <= 5000) return '$1,000 - $5,000';
+  if (high <= 10000 || (low >= 5000 && high <= 10000)) return '$5,001 - $10,000';
+  if (high <= 15000 || (low >= 10000 && high <= 15000)) return '$10,001 - $15,000';
+  if (high <= 20000 || (low >= 15000 && high <= 20000)) return '$15,001 - $20,000';
+  if (low >= 20000 || /\+|plus|and up|over|above/.test(lower)) return '$20,001+';
+  return s;
+}
+
+function intakeNormalizeDiamondType_(raw){
+  var value = intakeNamedValueText_(raw);
+  if (!value) return '';
+  var s = value.toLowerCase();
+  if (/not\s+natural/.test(s)) return 'Lab';
+  var hasLab = /\blab(?:[-\s]?grown)?\b|\blg\b|cvd|hpht/.test(s);
+  var hasNatural = /\bnatural\b|\bmined\b|\bearth[-\s]?grown\b/.test(s);
+  if (hasLab && hasNatural) return 'Both';
+  if (hasLab) return 'Lab';
+  if (hasNatural) return 'Natural';
+  if (/\bboth\b|\beither\b|open to both|no preference/.test(s)) return 'Both';
+  return '';
+}
+
+function intakeBudgetAnswer_(nv){
+  return intakeNormalizeBudgetRange_(intakeGetByAliases_(nv, [
+    'Budget Range',
+    'Budget',
+    'Preferred Budget',
+    'Preferred Price Range',
+    'What is your preferred price range?',
+    'What budget are you looking for?',
+    'What is your budget?',
+    'Budget you are looking for',
+    'Price Range',
+    'Price Point'
+  ], [
+    ['budget'],
+    ['price', 'range'],
+    ['price', 'point'],
+    ['preferred', 'price'],
+    ['looking', 'spend']
+  ]));
+}
+
+function intakeDiamondAnswer_(nv){
+  return intakeNormalizeDiamondType_(intakeGetByAliases_(nv, [
+    'Diamond Type',
+    'Preferred Diamond Type',
+    'What is your preferred diamond type?',
+    'Are you looking for lab or natural?',
+    'Are you looking for lab-grown or natural diamond?',
+    'Lab or Natural',
+    'Lab/Natural',
+    'Stone Type',
+    'Center Stone Type'
+  ], [
+    ['diamond', 'type'],
+    ['preferred', 'diamond'],
+    ['lab', 'natural'],
+    ['lab', 'grown'],
+    ['stone', 'type'],
+    ['natural', 'diamond']
+  ]));
+}
+
 function setOnce_(sheetName, row, colName, value){
   const cur = getCell_(sheetName, row, colName);
   if (!cur && value) setCell_(sheetName, row, colName, value);
@@ -436,12 +597,16 @@ function brandFromCompany_(company){
 
 function parseBudget_(raw){
   if(!raw) return {min:'',max:''};
-  const picks = (''+raw).split(';').map(s=>s.trim()).filter(Boolean);
-  if (picks.length!==1) return {min:'',max:''};
-  const m = picks[0].match(/\$?\s*([\d,]+)\s*[-–]\s*\$?\s*([\d,]+)/);
-  if(!m) return {min:'',max:''};
-  const toNum = s => Number(String(s).replace(/[^\d]/g,''))||'';
-  return {min: toNum(m[1]), max: toNum(m[2])};
+  const s = String(raw || '').toLowerCase();
+  const nums = intakeBudgetNumbers_(s);
+  if (!nums.length) return {min:'',max:''};
+  if (nums.length === 1) {
+    if (/\+|plus|and up|over|above/.test(s)) return {min: nums[0], max: ''};
+    if (/under|below|less than/.test(s)) return {min: '', max: nums[0]};
+    return {min: '', max: ''};
+  }
+  nums.sort(function(a, b){ return a - b; });
+  return {min: nums[0] || '', max: nums[nums.length - 1] || ''};
 }
 
 /********** ID / APPT_ID **********/
@@ -636,8 +801,9 @@ function ensureProspectFolder_(clientFolder, apptId){
 }
 
 function cloneIntakeDoc_(destFolder, brand, apptId){
-  if(!CFG.INTAKE_TPL) return '';
-  const file = DriveApp.getFileById(CFG.INTAKE_TPL);
+  const tplId = driveIdFromProp_(CFG.INTAKE_TPL);
+  if(!tplId) return '';
+  const file = DriveApp.getFileById(tplId);
   const copy = file.makeCopy(`${brand} – ${apptId} – Intake`, destFolder);
   return copy.getUrl();
 }
@@ -847,14 +1013,25 @@ function countVisits_(emailLower, phoneNorm){
 }
 
 /***** Template selection *****/
+function driveIdFromProp_(raw){
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const byPath = idFromUrl_(s);
+  if (byPath) return byPath;
+  const byQuery = s.match(/[?&]id=([a-zA-Z0-9\-_]+)/);
+  if (byQuery && byQuery[1]) return byQuery[1];
+  if (/^[a-zA-Z0-9\-_]{20,}$/.test(s)) return s;
+  return s;
+}
+
 function intakeTemplateIdForBrand_(brand){
   const SP = PropertiesService.getScriptProperties();
   const vvs = SP.getProperty('INTAKE_TEMPLATE_ID_VVS') || '';
   const hp  = SP.getProperty('INTAKE_TEMPLATE_ID_HPUSA') || '';
   const any = SP.getProperty('INTAKE_TEMPLATE_ID') || '';
-  if (brand === 'VVS' && vvs) return vvs;
-  if (brand === 'HPUSA' && hp) return hp;
-  return any;
+  if (brand === 'VVS' && vvs) return driveIdFromProp_(vvs);
+  if (brand === 'HPUSA' && hp) return driveIdFromProp_(hp);
+  return driveIdFromProp_(any);
 }
 
 // ====================================================================
@@ -1723,47 +1900,36 @@ function _ensureArtifactsForRowImpl_(row) {
   }
 
   // ── 7. FILL PLACEHOLDERS ─────────────────────────────────────
-  const hadNewFiles = Object.keys(pending).some(k =>
-    k === 'IntakeDocURL' || k === 'Checklist URL' || k === 'Quotation URL'
-  );
-
-  if (!hadNewFiles) {
-    Logger.log('[artifact] skip placeholder fill - no new files created');
-    Logger.log('=== ARTIFACT END row=' + row + ' ===');
-    return;
-  }
-
-  Logger.log('[artifact] filling placeholders for new files...');
+  Logger.log('[artifact] filling placeholders...');
   const data = buildIntakeData_(row);
 
   try {
-      if (intakeUrl && pending['IntakeDocURL']) {
-        const docId = idFromUrl_(intakeUrl);
-        if (docId) {
-          // ── Fill placeholders vào Doc trước ──────────────────
-          fillIntakeDocPlaceholders_(docId, data);
-          upsertAutofillBlock_(docId, data);
-          Logger.log('[PDF] Intake Doc filled, exporting to PDF...');
+      if (intakeUrl) {
+        if (!/docs\.google\.com\/document\//i.test(String(intakeUrl))) {
+          Logger.log('[artifact] IntakeDocURL is not a Google Doc URL, skip fill: ' + intakeUrl);
+        } else {
+          const docId = idFromUrl_(intakeUrl);
+          if (docId) {
+            // ── Fill placeholders vào Doc trước ──────────────────
+            fillIntakeDocPlaceholders_(docId, data);
+            upsertAutofillBlock_(docId, data);
+            Logger.log('[PDF] Intake Doc filled, exporting PDF copy...');
 
-          // ── Export PDF → ghi đè URL vào IntakeDocURL ─────────
-          let destFolder;
-          try { destFolder = DriveApp.getFolderById(pfId); } catch(_) {}
+            // ── Export PDF copy → save IntakePdfURL (keep IntakeDocURL as Doc) ──
+            let destFolder;
+            try { destFolder = DriveApp.getFolderById(pfId); } catch(_) {}
 
-          if (destFolder) {
-            const pdfUrl = exportIntakeDocToPdf_(docId, destFolder, brand, apptId);
-            if (pdfUrl) {
-              // Ghi PDF URL vào IntakeDocURL (thay thế Docs URL)
-              pending['IntakeDocURL'] = pdfUrl;
-              SH(SHT.MASTER).getRange(row, headers_(SHT.MASTER)['IntakeDocURL']).setValue(pdfUrl);
-              SpreadsheetApp.flush();
-              Logger.log('[PDF] ✅ IntakeDocURL updated to PDF URL');
-
-              // ── Xóa Doc gốc sau khi đã có PDF ────────────────
-              try {
-                DriveApp.getFileById(docId).setTrashed(true);
-                Logger.log('[PDF] Doc gốc đã xóa: ' + docId);
-              } catch(e) {
-                Logger.log('[PDF] Không xóa được Doc gốc: ' + e.message);
+            if (destFolder) {
+              const pdfUrl = exportIntakeDocToPdf_(docId, destFolder, brand, apptId);
+              if (pdfUrl) {
+                const H = headers_(SHT.MASTER);
+                if (H['IntakePdfURL']) {
+                  SH(SHT.MASTER).getRange(row, H['IntakePdfURL']).setValue(pdfUrl);
+                  SpreadsheetApp.flush();
+                  Logger.log('[PDF] ✅ IntakePdfURL updated');
+                } else {
+                  Logger.log('[PDF] IntakePdfURL column not found; keeping PDF only in Drive.');
+                }
               }
             }
           }
@@ -1774,14 +1940,14 @@ function _ensureArtifactsForRowImpl_(row) {
     }
 
   try {
-    if (chkUrl && pending['Checklist URL']) {
+    if (chkUrl) {
       const id = idFromUrl_(chkUrl);
       if (id) fillIntakeDocPlaceholders_(id, data);
     }
   } catch (_) {}
 
   try {
-    if (quoUrl && pending['Quotation URL']) {
+    if (quoUrl) {
       const id = idFromUrl_(quoUrl);
       if (id) fillSheetPlaceholders_(id, data);
     }
@@ -1800,14 +1966,14 @@ function checklistTemplateIdForBrand_(brand){
   const SP = PropertiesService.getScriptProperties();
   const vvs = SP.getProperty('CHECKLIST_TEMPLATE_ID_VVS') || '';
   const hp  = SP.getProperty('CHECKLIST_TEMPLATE_ID_HPUSA') || '';
-  return brand === 'VVS' ? vvs : brand === 'HPUSA' ? hp : '';
+  return brand === 'VVS' ? driveIdFromProp_(vvs) : brand === 'HPUSA' ? driveIdFromProp_(hp) : '';
 }
 
 function quotationTemplateIdForBrand_(brand){
   const SP = PropertiesService.getScriptProperties();
   const vvs = SP.getProperty('QUOTATION_TEMPLATE_ID_VVS') || '';
   const hp  = SP.getProperty('QUOTATION_TEMPLATE_ID_HPUSA') || '';
-  return brand === 'VVS' ? vvs : brand === 'HPUSA' ? hp : '';
+  return brand === 'VVS' ? driveIdFromProp_(vvs) : brand === 'HPUSA' ? driveIdFromProp_(hp) : '';
 }
 
 function fillSheetPlaceholders_(spreadsheetId, data){
@@ -1897,19 +2063,13 @@ function onFormSubmit(e){
     (nv['Preferred Visit Time']||[''])[0] ||
     '';
     const location    = (nv['Location']||[''])[0];
-    const budgetRaw   = (nv['Budget Range']||[''])[0];
+    const budgetRaw   = intakeBudgetAnswer_(nv);
     const sourceRaw   = (nv['Source']||[''])[0];
     const notes       = (nv['Style Notes']||[''])[0];
     // Legacy form/header name. This is the external appointment occurrence UID:
     // Calendly UUID for old bookings, Acuity appointment/synthetic UID for new bookings.
     const calUID      = nvGet(nv, 'Admin: Calendly Event UID');
-    const diamondTypeQ = (nv['Diamond Type']||[''])[0];
-    
-    const diamondTypeNorm = (() => {
-      const s = (diamondTypeQ||'').toLowerCase();
-      const hasLab = /lab/.test(s), hasNat = /natural/.test(s);
-      return hasLab && hasNat ? 'Both' : hasLab ? 'Lab' : hasNat ? 'Natural' : '';
-    })();
+    const diamondTypeNorm = intakeDiamondAnswer_(nv);
 
     const brand       = brandFromCompany_(company);
     const emailLower  = normEmail_(email);
@@ -3958,8 +4118,8 @@ function findNewTemplateIds() {
 
 function slidesTemplateIdForBrand_(brand) {
   const SP = PropertiesService.getScriptProperties();
-  if (brand === 'HPUSA') return SP.getProperty('SLIDES_TEMPLATE_ID_HPUSA') || '';
-  if (brand === 'VVS')   return SP.getProperty('SLIDES_TEMPLATE_ID_VVS')   || '';
+  if (brand === 'HPUSA') return driveIdFromProp_(SP.getProperty('SLIDES_TEMPLATE_ID_HPUSA') || '');
+  if (brand === 'VVS')   return driveIdFromProp_(SP.getProperty('SLIDES_TEMPLATE_ID_VVS')   || '');
   return '';
 }
 

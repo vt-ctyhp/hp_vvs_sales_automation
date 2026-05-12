@@ -13,6 +13,11 @@
         "userSymbol": "Drivev3",
         "version": "v3",
         "serviceId": "drive"
+      },
+      {
+        "userSymbol": "Sheets",
+        "version": "v4",
+        "serviceId": "sheets"
       }
     ]
   },

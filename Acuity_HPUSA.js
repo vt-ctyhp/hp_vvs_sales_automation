@@ -625,9 +625,42 @@ function acuityToFormFieldMap_(appt) {
     : '';
 
   const location    = acuityExtractLocation_(appt);
-  const budgetRaw   = acuityFindAnswer_(formData, ['What is your preferred price range?', 'preferred price range', 'price range', 'budget']);
+  const budgetRaw   = acuityFindAnswer_(formData, [
+    'What is your preferred price range?',
+    'preferred price range',
+    'price range',
+    'budget range',
+    'budget',
+    'what budget are you looking for?',
+    'what is your budget?',
+    'budget you are looking for',
+    'price point'
+  ], [
+    ['budget'],
+    ['price', 'range'],
+    ['price', 'point'],
+    ['preferred', 'price'],
+    ['looking', 'spend']
+  ]);
   const sourceRaw   = acuityFindAnswer_(formData, ['How did you hear about us?', 'hear about us', 'source']);
-  const diamondRaw  = acuityFindAnswer_(formData, ['What is your preferred diamond type?', 'preferred diamond type', 'diamond type']);
+  const diamondRaw  = acuityFindAnswer_(formData, [
+    'What is your preferred diamond type?',
+    'preferred diamond type',
+    'diamond type',
+    'lab or natural',
+    'lab/natural',
+    'are you looking for lab or natural?',
+    'are you looking for lab-grown or natural diamond?',
+    'stone type',
+    'center stone type'
+  ], [
+    ['diamond', 'type'],
+    ['preferred', 'diamond'],
+    ['lab', 'natural'],
+    ['lab', 'grown'],
+    ['stone', 'type'],
+    ['natural', 'diamond']
+  ]);
   const designNotes = acuityFindAnswer_(formData, ['Do you have a design in mind?', 'design in mind', 'ring design', 'style notes']);
   const diamondLink = acuityFindAnswer_(formData, ['diamond link', 'link']);
 
@@ -649,7 +682,7 @@ function acuityToFormFieldMap_(appt) {
     'Visit Date':                 visitDate,
     'Visit Time':                 visitTime,
     'Location':                   location,
-    'Diamond Type':               diamondNorm  ? [diamondNorm]  : [],
+    'Diamond Type':               diamondNorm,
     'Budget Range':               budgetNorm   ? [budgetNorm]   : [],
     'Source':                     sourceNorm   ? [sourceNorm]   : ['Did not disclose'],
     'Style Notes':                styleNotes,
@@ -708,27 +741,92 @@ function acuityExtractLocation_(appt) {
   return /virtual|zoom|phone|video|google meet/.test(s) ? 'Virtual' : 'In Store';
 }
 
-function acuityFindAnswer_(formData, keys) {
+function acuityAnswerText_(value) {
+  if (Array.isArray(value)) {
+    return value.map(v => String(v == null ? '' : v).trim()).filter(Boolean).join(', ');
+  }
+  return String(value == null ? '' : value).trim();
+}
+
+function acuityQuestionKey_(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&amp;/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function acuityFindAnswer_(formData, keys, tokenGroups) {
+  keys = keys || [];
+  tokenGroups = tokenGroups || [];
+
   for (const key of keys) {
-    if (formData[key] !== undefined) return String(formData[key] || '').trim();
-    const keyLower = key.toLowerCase();
-    for (const k of Object.keys(formData)) {
-      if (k.toLowerCase().includes(keyLower) || keyLower.includes(k.toLowerCase())) {
-        return String(formData[k] || '').trim();
-      }
+    if (formData[key] !== undefined) {
+      const val = acuityAnswerText_(formData[key]);
+      if (val) return val;
+    }
+  }
+
+  const aliases = keys.map(acuityQuestionKey_).filter(Boolean);
+  for (const k of Object.keys(formData || {})) {
+    const val = acuityAnswerText_(formData[k]);
+    if (!val) continue;
+    const nk = acuityQuestionKey_(k);
+    if (!nk) continue;
+
+    for (const alias of aliases) {
+      if (nk === alias || nk.includes(alias) || alias.includes(nk)) return val;
+    }
+
+    for (const group of tokenGroups) {
+      const tokens = group.map(acuityQuestionKey_).filter(Boolean);
+      if (tokens.length && tokens.every(token => nk.includes(token))) return val;
     }
   }
   return '';
 }
 
+function acuityBudgetNumber_(token) {
+  const s = String(token || '').trim().toLowerCase();
+  const isK = /k\b/.test(s);
+  const n = Number(s.replace(/k\b/g, '').replace(/[^\d.]/g, ''));
+  if (!isFinite(n) || n <= 0) return 0;
+  return isK ? n * 1000 : n;
+}
+
+function acuityBudgetNumbers_(raw) {
+  const s = String(raw || '').toLowerCase();
+  const nums = [];
+  const re = /(?:\$?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*k?)/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const n = acuityBudgetNumber_(m[0]);
+    if (n > 0) nums.push(n);
+  }
+  return nums;
+}
+
 function acuityNormalizeBudget_(raw) {
   if (!raw) return '';
-  const s = raw.trim().replace(/\s*-\s*/g, ' - ').replace(/\s+/g, ' ');
+  const s = raw.trim().replace(/[–—]/g, '-').replace(/\s*-\s*/g, ' - ').replace(/\s+/g, ' ');
   if (ACUITY_CFG.BUDGET_MAP[s])          return ACUITY_CFG.BUDGET_MAP[s];
   if (ACUITY_CFG.BUDGET_MAP[raw.trim()]) return ACUITY_CFG.BUDGET_MAP[raw.trim()];
 
-  const nums = raw.replace(/[^\d]/g, ' ').trim().split(/\s+/)
-    .map(Number).filter(n => n > 0).sort((a, b) => a - b);
+  const lower = s.toLowerCase();
+  const exactBuckets = [];
+  if (/\$?\s*1,?000\s*-\s*\$?\s*5,?000/.test(lower)) exactBuckets.push('$1,000 - $5,000');
+  if (/\$?\s*5,?0?01\s*-\s*\$?\s*10,?000|\$?\s*5,?000\s*-\s*\$?\s*10,?000/.test(lower)) exactBuckets.push('$5,001 - $10,000');
+  if (/\$?\s*10,?0?01\s*-\s*\$?\s*15,?000|\$?\s*10,?000\s*-\s*\$?\s*15,?000/.test(lower)) exactBuckets.push('$10,001 - $15,000');
+  if (/\$?\s*15,?0?01\s*-\s*\$?\s*20,?000|\$?\s*15,?000\s*-\s*\$?\s*20,?000/.test(lower)) exactBuckets.push('$15,001 - $20,000');
+  if (/\$?\s*20,?0?01\s*\+|\$?\s*20,?000\s*\+/.test(lower)) exactBuckets.push('$20,001+');
+  if (exactBuckets.length) return exactBuckets.filter((v, i, arr) => arr.indexOf(v) === i).join(', ');
+
+  if (/under|below|less than/.test(lower)) return '$1,000 - $5,000';
+  if (/\b20\s*k\s*\+|20000\s*\+|20001\s*\+|20,000\s*\+|20,001\s*\+|over\s*\$?\s*(?:20\s*k|20,?000|20,?001)/i.test(s)) return '$20,001+';
+
+  const nums = acuityBudgetNumbers_(s).sort((a, b) => a - b);
   if (!nums.length) return raw.trim();
 
   const low  = nums[0];
@@ -737,7 +835,7 @@ function acuityNormalizeBudget_(raw) {
   if (high <= 10000 || (low >= 5000  && high <= 10000)) return '$5,001 - $10,000';
   if (high <= 15000 || (low >= 10000 && high <= 15000)) return '$10,001 - $15,000';
   if (high <= 20000 || (low >= 15000 && high <= 20000)) return '$15,001 - $20,000';
-  if (low >= 20000 || raw.includes('+'))                return '$20,001+';
+  if (low >= 20000 || /\+|plus|and up|over|above/.test(lower)) return '$20,001+';
   return raw.trim();
 }
 
@@ -752,12 +850,32 @@ function acuityNormalizeSource_(raw) {
 }
 
 function acuityNormalizeDiamond_(raw) {
-  if (!raw) return '';
+  if (!raw) return [];
   const lower = raw.trim().toLowerCase();
-  if (ACUITY_CFG.DIAMOND_MAP[lower]) return ACUITY_CFG.DIAMOND_MAP[lower];
+  if (/not\s+natural/.test(lower)) return ['Lab Diamond'];
+
+  const hasLab = /\blab(?:[-\s]?grown)?\b|\blg\b|cvd|hpht/.test(lower);
+  const hasNatural = /\bnatural\b|\bmined\b|\bearth[-\s]?grown\b/.test(lower);
+  if (hasLab && hasNatural) return ['Lab Diamond', 'Natural Diamond'];
+  if (hasLab) return ['Lab Diamond'];
+  if (hasNatural) return ['Natural Diamond'];
+  if (/\bboth\b|\beither\b|open to both|no preference/.test(lower)) return ['Lab Diamond', 'Natural Diamond'];
+
+  if (ACUITY_CFG.DIAMOND_MAP[lower]) return [ACUITY_CFG.DIAMOND_MAP[lower]];
   for (const [k, v] of Object.entries(ACUITY_CFG.DIAMOND_MAP)) {
-    if (lower.includes(k)) return v;
+    if (lower.includes(k)) return [v];
   }
+  return [];
+}
+
+function acuityDiamondMasterValue_(answers) {
+  const values = Array.isArray(answers) ? answers : (answers ? [answers] : []);
+  const joined = values.join(' ').toLowerCase();
+  const hasLab = /\blab\b/.test(joined);
+  const hasNatural = /\bnatural\b/.test(joined);
+  if (hasLab && hasNatural) return 'Both';
+  if (hasLab) return 'Lab';
+  if (hasNatural) return 'Natural';
   return '';
 }
 
@@ -1008,7 +1126,7 @@ function acuityHandleExisting_(appt, formId) {
   }
 
   if (H['Diamond Type'] && fieldMap['Diamond Type'] && fieldMap['Diamond Type'].length) {
-    const newVal = fieldMap['Diamond Type'][0];
+    const newVal = acuityDiamondMasterValue_(fieldMap['Diamond Type']);
     const curVal = String(sh.getRange(masterRow, H['Diamond Type']).getValue() || '').trim();
     Logger.log('Diamond: cur="' + curVal + '" new="' + newVal + '" match=' + (curVal === newVal));
     if (newVal && newVal !== curVal) {
@@ -1137,7 +1255,8 @@ function debugCompareFields() {
   const notes   = String(sh.getRange(masterRow, H['Style Notes']).getValue() || '').trim();
 
   Logger.log('Phone:   Master="' + phone   + '" Acuity="' + fieldMap['Phone'] + '" match=' + (phone === fieldMap['Phone']));
-  Logger.log('Diamond: Master="' + diamond + '" Acuity="' + (fieldMap['Diamond Type'][0]||'') + '" match=' + (diamond === (fieldMap['Diamond Type'][0]||'')));
+  const diamondMapped = acuityDiamondMasterValue_(fieldMap['Diamond Type']);
+  Logger.log('Diamond: Master="' + diamond + '" Acuity="' + diamondMapped + '" match=' + (diamond === diamondMapped));
   Logger.log('Budget:  Master="' + budget  + '" Acuity="' + (fieldMap['Budget Range'][0]||'') + '" match=' + (budget === (fieldMap['Budget Range'][0]||'')));
   Logger.log('Source:  Master="' + source  + '" Acuity="' + (fieldMap['Source'][0]||'') + '" match=' + (source === (fieldMap['Source'][0]||'')));
   Logger.log('Notes:   Master="' + notes   + '" Acuity="' + fieldMap['Style Notes'] + '" match=' + (notes === fieldMap['Style Notes']));
